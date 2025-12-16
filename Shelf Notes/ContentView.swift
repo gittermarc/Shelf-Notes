@@ -366,12 +366,8 @@ struct BookDetailView: View {
         }
         .navigationTitle(book.title.isEmpty ? "Buchdetails" : book.title)
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            tagsText = book.tags.joined(separator: ", ")
-        }
-        .onDisappear {
-            try? modelContext.save()
-        }
+        .onAppear { tagsText = book.tags.joined(separator: ", ") }
+        .onDisappear { try? modelContext.save() }
     }
 
     @ViewBuilder
@@ -379,9 +375,7 @@ struct BookDetailView: View {
         if let urlString = book.thumbnailURL, let url = URL(string: urlString) {
             AsyncImage(url: url) { image in
                 image.resizable().scaledToFit()
-            } placeholder: {
-                ProgressView()
-            }
+            } placeholder: { ProgressView() }
             .frame(width: 70, height: 105)
             .clipShape(RoundedRectangle(cornerRadius: 10))
         } else {
@@ -440,11 +434,15 @@ struct AddBookView: View {
 
     @State private var showingImportSheet = false
 
+    // NEW: Quick-Add used inside BookImportView?
+    @State private var didQuickAdd = false
+
     var body: some View {
         NavigationStack {
             Form {
                 Section {
                     Button {
+                        didQuickAdd = false
                         showingImportSheet = true
                     } label: {
                         Label("Aus Google Books suchen", systemImage: "magnifyingglass")
@@ -480,9 +478,7 @@ struct AddBookView: View {
                     Section("Cover") {
                         AsyncImage(url: url) { image in
                             image.resizable().scaledToFit()
-                        } placeholder: {
-                            ProgressView()
-                        }
+                        } placeholder: { ProgressView() }
                         .frame(maxWidth: .infinity)
                         .frame(height: 180)
                     }
@@ -520,20 +516,32 @@ struct AddBookView: View {
                     .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
-            .sheet(isPresented: $showingImportSheet) {
-                BookImportView { imported in
-                    title = imported.title
-                    author = imported.author
-                    isbn13 = imported.isbn13
-                    thumbnailURL = imported.thumbnailURL
-                    publisher = imported.publisher
-                    publishedDate = imported.publishedDate
-                    pageCount = imported.pageCount
-                    language = imported.language
-                    categories = imported.categories
-                    bookDescription = imported.description
-                    googleVolumeID = imported.googleVolumeID
+            .sheet(isPresented: $showingImportSheet, onDismiss: {
+                // If user used Quick-Add and didn't start manual entry -> close AddBookView
+                let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                if didQuickAdd && trimmedTitle.isEmpty {
+                    dismiss()
                 }
+            }) {
+                BookImportView(
+                    onPick: { imported in
+                        // Fill fields (detail flow)
+                        title = imported.title
+                        author = imported.author
+                        isbn13 = imported.isbn13
+                        thumbnailURL = imported.thumbnailURL
+                        publisher = imported.publisher
+                        publishedDate = imported.publishedDate
+                        pageCount = imported.pageCount
+                        language = imported.language
+                        categories = imported.categories
+                        bookDescription = imported.description
+                        googleVolumeID = imported.googleVolumeID
+                    },
+                    onQuickAddHappened: {
+                        didQuickAdd = true
+                    }
+                )
             }
         }
     }
@@ -578,7 +586,6 @@ struct GoalsView: View {
     @State private var selectedYear: Int = Calendar.current.component(.year, from: Date())
     @State private var targetCount: Int = 50
 
-    // IMPORTANT: Adaptive grid keeps slot width reasonable on iPad + landscape
     private let columns: [GridItem] = [
         GridItem(.adaptive(minimum: 62), spacing: 10)
     ]
@@ -808,7 +815,6 @@ private struct GoalSlotView: View {
 
     var body: some View {
         ZStack {
-            // Background
             RoundedRectangle(cornerRadius: 12)
                 .fill(.ultraThinMaterial)
                 .opacity(isFilled ? 0.18 : 0.12)
@@ -825,7 +831,6 @@ private struct GoalSlotView: View {
                     .opacity(0.45)
             }
         }
-        // IMPORTANT: enforce portrait cover ratio (2:3)
         .aspectRatio(2.0/3.0, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
@@ -917,9 +922,7 @@ struct TagChip: View {
                 .font(.caption)
                 .lineLimit(1)
 
-            Button {
-                onRemove()
-            } label: {
+            Button { onRemove() } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.caption)
             }

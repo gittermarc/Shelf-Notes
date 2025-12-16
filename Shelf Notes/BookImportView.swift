@@ -6,6 +6,11 @@
 //
 
 import SwiftUI
+import SwiftData
+
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct ImportedBook {
     let googleVolumeID: String
@@ -23,7 +28,13 @@ struct ImportedBook {
 
 struct BookImportView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Query private var existingBooks: [Book]
+
     let onPick: (ImportedBook) -> Void
+
+    /// Wird beim ersten Quick-Add aufgerufen (damit der Caller z.B. AddBookView automatisch schließen kann)
+    var onQuickAddHappened: (() -> Void)? = nil
 
     // Persisted search history (simple JSON array of strings)
     @AppStorage("gb_search_history_json") private var historyJSON: String = "[]"
@@ -36,6 +47,10 @@ struct BookImportView: View {
     @FocusState private var searchFocused: Bool
 
     private let maxHistoryItems = 10
+
+    // Local UI: what was added during this session (fast feedback)
+    @State private var addedVolumeIDs: Set<String> = []
+    @State private var didTriggerQuickAddCallback = false
 
     var body: some View {
         NavigationStack {
@@ -71,7 +86,6 @@ struct BookImportView: View {
                 }
             }
             .onAppear {
-                // Don’t auto-search. Just focus if empty.
                 if queryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                         searchFocused = true
@@ -152,10 +166,8 @@ struct BookImportView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button("Löschen") {
-                    clearHistory()
-                }
-                .font(.caption)
+                Button("Löschen") { clearHistory() }
+                    .font(.caption)
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -188,12 +200,15 @@ struct BookImportView: View {
     private var resultsList: some View {
         LazyVStack(spacing: 10) {
             ForEach(results) { volume in
-                Button {
-                    pick(volume)
-                } label: {
-                    ResultCard(volume: volume)
-                }
-                .buttonStyle(.plain)
+                let already = isAlreadyAdded(volume)
+                ResultCard(
+                    volume: volume,
+                    isAlreadyInLibrary: already,
+                    onDetails: { pick(volume) },
+                    onQuickAdd: { status in
+                        Task { await quickAdd(volume, status: status) }
+                    }
+                )
             }
         }
     }
@@ -253,7 +268,6 @@ struct BookImportView: View {
         let trimmed = queryText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        // Save to history (dedup + most recent first)
         addToHistory(trimmed)
 
         await MainActor.run {
@@ -263,8 +277,10 @@ struct BookImportView: View {
         }
 
         do {
-            // Keep your current client API (debug-capable), but we ignore debug UI.
-            let res = try await GoogleBooksClient.shared.searchVolumesWithDebug(query: normalizedQuery(trimmed), maxResults: 20)
+            let res = try await GoogleBooksClient.shared.searchVolumesWithDebug(
+                query: normalizedQuery(trimmed),
+                maxResults: 20
+            )
 
             await MainActor.run {
                 results = res.volumes
@@ -278,7 +294,73 @@ struct BookImportView: View {
         }
     }
 
-    // MARK: - Pick
+    // MARK: - Add
+
+    private func isAlreadyAdded(_ volume: GoogleBookVolume) -> Bool {
+        if addedVolumeIDs.contains(volume.id) { return true }
+
+        if existingBooks.contains(where: { $0.googleVolumeID == volume.id }) {
+            return true
+        }
+
+        if let isbn = volume.isbn13,
+           existingBooks.contains(where: { ($0.isbn13 ?? "").caseInsensitiveCompare(isbn) == .orderedSame }) {
+            return true
+        }
+
+        return false
+    }
+
+    @MainActor
+    private func quickAdd(_ volume: GoogleBookVolume, status: ReadingStatus) async {
+        guard !isAlreadyAdded(volume) else { return }
+
+        let info = volume.volumeInfo
+
+        let newBook = Book(
+            title: volume.bestTitle,
+            author: volume.bestAuthors,
+            status: status
+        )
+
+        if status == .finished {
+            newBook.readFrom = Date()
+            newBook.readTo = Date()
+        } else {
+            newBook.readFrom = nil
+            newBook.readTo = nil
+        }
+
+        newBook.googleVolumeID = volume.id
+        newBook.isbn13 = volume.isbn13
+        newBook.thumbnailURL = volume.bestThumbnailURLString
+        newBook.publisher = info.publisher
+        newBook.publishedDate = info.publishedDate
+        newBook.pageCount = info.pageCount
+        newBook.language = info.language
+        newBook.categories = info.categories ?? []
+        newBook.bookDescription = info.description ?? ""
+
+        modelContext.insert(newBook)
+        try? modelContext.save()
+
+        // ✅ Kill the warning: explicitly discard result
+        _ = withAnimation(.snappy) {
+            addedVolumeIDs.insert(volume.id)
+        }
+
+        if !didTriggerQuickAddCallback {
+            didTriggerQuickAddCallback = true
+            onQuickAddHappened?()
+        }
+
+        #if canImport(UIKit)
+        let gen = UINotificationFeedbackGenerator()
+        gen.notificationOccurred(.success)
+        #endif
+    }
+
+    // MARK: - Pick (Detail flow)
 
     private func pick(_ volume: GoogleBookVolume) {
         let info = volume.volumeInfo
@@ -324,10 +406,7 @@ struct BookImportView: View {
         guard !normalized.isEmpty else { return }
 
         var items = history
-
-        // Remove existing (case-insensitive) to dedupe
         items.removeAll { $0.compare(normalized, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame }
-
         items.insert(normalized, at: 0)
         saveHistory(items)
     }
@@ -341,40 +420,64 @@ struct BookImportView: View {
 
 private struct ResultCard: View {
     let volume: GoogleBookVolume
+    let isAlreadyInLibrary: Bool
+    let onDetails: () -> Void
+    let onQuickAdd: (ReadingStatus) -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            cover
+        VStack(alignment: .leading, spacing: 10) {
+            Button(action: onDetails) {
+                HStack(alignment: .top, spacing: 12) {
+                    cover
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(volume.bestTitle)
-                    .font(.headline)
-                    .lineLimit(2)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(volume.bestTitle)
+                            .font(.headline)
+                            .lineLimit(2)
 
-                if !volume.bestAuthors.isEmpty {
-                    Text(volume.bestAuthors)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        if !volume.bestAuthors.isEmpty {
+                            Text(volume.bestAuthors)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        HStack(spacing: 8) {
+                            if let isbn = volume.isbn13 {
+                                metaPill(text: "ISBN \(isbn)", systemImage: "barcode")
+                            }
+
+                            if let year = volume.volumeInfo.publishedDate, !year.isEmpty {
+                                metaPill(text: year, systemImage: "calendar")
+                            }
+                        }
                         .lineLimit(1)
-                }
-
-                HStack(spacing: 8) {
-                    if let isbn = volume.isbn13 {
-                        metaPill(text: "ISBN \(isbn)", systemImage: "barcode")
                     }
 
-                    if let year = volume.volumeInfo.publishedDate, !year.isEmpty {
-                        metaPill(text: year, systemImage: "calendar")
-                    }
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 4)
                 }
-                .lineLimit(1)
             }
+            .buttonStyle(.plain)
 
-            Spacer(minLength: 0)
-
-            Image(systemName: "chevron.right")
-                .foregroundStyle(.tertiary)
-                .padding(.top, 4)
+            if isAlreadyInLibrary {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text("Bereits in deiner Bibliothek")
+                        .font(.caption)
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 2)
+            } else {
+                HStack(spacing: 8) {
+                    QuickAddButton(title: "Will lesen", systemImage: "bookmark") { onQuickAdd(.toRead) }
+                    QuickAddButton(title: "Lese gerade", systemImage: "book") { onQuickAdd(.reading) }
+                    QuickAddButton(title: "Gelesen", systemImage: "checkmark.circle") { onQuickAdd(.finished) }
+                }
+            }
         }
         .padding(12)
         .background(.thinMaterial)
@@ -414,5 +517,29 @@ private struct ResultCard: View {
         .background(.ultraThinMaterial)
         .clipShape(Capsule())
         .foregroundStyle(.secondary)
+    }
+}
+
+private struct QuickAddButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.caption2)
+                Text(title)
+                    .font(.caption)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial)
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title) hinzufügen")
     }
 }
