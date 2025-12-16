@@ -578,7 +578,10 @@ struct GoalsView: View {
     @State private var selectedYear: Int = Calendar.current.component(.year, from: Date())
     @State private var targetCount: Int = 50
 
-    private let columns: [GridItem] = Array(repeating: GridItem(.flexible(), spacing: 10), count: 5)
+    // IMPORTANT: Adaptive grid keeps slot width reasonable on iPad + landscape
+    private let columns: [GridItem] = [
+        GridItem(.adaptive(minimum: 62), spacing: 10)
+    ]
 
     var body: some View {
         NavigationStack {
@@ -607,7 +610,7 @@ struct GoalsView: View {
             HStack(spacing: 12) {
                 Picker("Jahr", selection: $selectedYear) {
                     ForEach(yearOptions, id: \.self) { y in
-                        Text(String(y)).tag(y) // avoids "2.025"
+                        Text(String(y)).tag(y)
                     }
                 }
                 .pickerStyle(.menu)
@@ -651,7 +654,6 @@ struct GoalsView: View {
 
             ProgressView(value: pct)
 
-            // Stats row
             HStack(spacing: 10) {
                 StatPill(systemImage: "doc.plaintext", title: "Seiten", value: formatInt(pagesReadInSelectedYear))
                 StatPill(systemImage: "divide.circle", title: "Ø/Buch", value: avgPagesPerBookText)
@@ -737,15 +739,11 @@ struct GoalsView: View {
         let cal = Calendar.current
         let currentYear = cal.component(.year, from: Date())
 
-        if selectedYear < currentYear {
-            return 12
-        } else if selectedYear > currentYear {
-            // future year: show 12 as "planned" baseline
-            return 12
-        } else {
-            let month = cal.component(.month, from: Date())
-            return max(1, month) // at least 1
-        }
+        if selectedYear < currentYear { return 12 }
+        if selectedYear > currentYear { return 12 }
+
+        let month = cal.component(.month, from: Date())
+        return max(1, month)
     }
 
     private func formatInt(_ n: Int) -> String {
@@ -810,8 +808,10 @@ private struct GoalSlotView: View {
 
     var body: some View {
         ZStack {
+            // Background
             RoundedRectangle(cornerRadius: 12)
-                .opacity(isFilled ? 0.10 : 0.08)
+                .fill(.ultraThinMaterial)
+                .opacity(isFilled ? 0.18 : 0.12)
 
             if let thumbnailURL, let url = URL(string: thumbnailURL) {
                 AsyncImage(url: url) { image in
@@ -819,14 +819,15 @@ private struct GoalSlotView: View {
                 } placeholder: {
                     ProgressView()
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipped()
             } else {
                 Image(systemName: "book")
                     .opacity(0.45)
             }
         }
-        .frame(height: 90)
-        .clipped()
+        // IMPORTANT: enforce portrait cover ratio (2:3)
+        .aspectRatio(2.0/3.0, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
 
