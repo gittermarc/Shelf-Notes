@@ -18,7 +18,9 @@ enum ReadingStatus: String, Codable, CaseIterable, Identifiable {
 
 @Model
 final class Book {
-    @Attribute(.unique) var id: UUID = UUID()
+    // CloudKit/SwiftData: KEIN @Attribute(.unique)
+    // UUID bleibt trotzdem stabil und eindeutig genug für dich
+    var id: UUID = UUID()
 
     // Core
     var title: String = ""
@@ -28,7 +30,7 @@ final class Book {
     var tags: [String] = []
     var notes: String = ""
 
-    // Reading period (only meaningful for finished books)
+    // Reading period (für Zeitleiste / Goals)
     var readFrom: Date?
     var readTo: Date?
 

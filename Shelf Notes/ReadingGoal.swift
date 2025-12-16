@@ -10,9 +10,12 @@ import SwiftData
 
 @Model
 final class ReadingGoal {
-    @Attribute(.unique) var year: Int
-    var targetCount: Int
-    var updatedAt: Date
+    // IMPORTANT for CloudKit sync:
+    // - no @Attribute(.unique)
+    // - provide defaults for non-optional properties
+    var year: Int = Calendar.current.component(.year, from: Date())
+    var targetCount: Int = 0
+    var updatedAt: Date = Date()
 
     init(year: Int, targetCount: Int) {
         self.year = year

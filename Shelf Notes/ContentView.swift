@@ -594,12 +594,8 @@ struct GoalsView: View {
             }
             .navigationTitle("Leseziele")
             .navigationBarTitleDisplayMode(.inline)
-            .onAppear {
-                loadGoalForSelectedYear()
-            }
-            .onChange(of: selectedYear) { _, _ in
-                loadGoalForSelectedYear()
-            }
+            .onAppear { loadGoalForSelectedYear() }
+            .onChange(of: selectedYear) { _, _ in loadGoalForSelectedYear() }
         }
     }
 
@@ -611,8 +607,7 @@ struct GoalsView: View {
             HStack(spacing: 12) {
                 Picker("Jahr", selection: $selectedYear) {
                     ForEach(yearOptions, id: \.self) { y in
-                        // IMPORTANT: String(y) avoids locale grouping like "2.025"
-                        Text(String(y)).tag(y)
+                        Text(String(y)).tag(y) // avoids "2.025"
                     }
                 }
                 .pickerStyle(.menu)
@@ -643,7 +638,7 @@ struct GoalsView: View {
         let total = max(targetCount, 1)
         let pct = min(Double(done) / Double(total), 1.0)
 
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Fortschritt \(String(selectedYear))")
                     .font(.headline)
@@ -656,15 +651,11 @@ struct GoalsView: View {
 
             ProgressView(value: pct)
 
-            HStack {
-                Text("Gelesene Seiten:")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("\(pagesReadInSelectedYear)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+            // Stats row
+            HStack(spacing: 10) {
+                StatPill(systemImage: "doc.plaintext", title: "Seiten", value: formatInt(pagesReadInSelectedYear))
+                StatPill(systemImage: "divide.circle", title: "Ø/Buch", value: avgPagesPerBookText)
+                StatPill(systemImage: "calendar", title: "/Monat", value: pagesPerMonthText)
             }
         }
         .padding(14)
@@ -723,6 +714,48 @@ struct GoalsView: View {
         }
     }
 
+    private var countedBooksWithPagesInSelectedYear: [Book] {
+        finishedBooksInSelectedYear.filter { ($0.pageCount ?? 0) > 0 }
+    }
+
+    private var avgPagesPerBookText: String {
+        let arr = countedBooksWithPagesInSelectedYear
+        guard !arr.isEmpty else { return "–" }
+        let pages = arr.reduce(0) { $0 + ($1.pageCount ?? 0) }
+        let avg = Double(pages) / Double(arr.count)
+        return formatInt(Int(avg.rounded()))
+    }
+
+    private var pagesPerMonthText: String {
+        let months = monthsCountForSelectedYear()
+        guard months > 0 else { return "–" }
+        let perMonth = Double(pagesReadInSelectedYear) / Double(months)
+        return formatInt(Int(perMonth.rounded()))
+    }
+
+    private func monthsCountForSelectedYear() -> Int {
+        let cal = Calendar.current
+        let currentYear = cal.component(.year, from: Date())
+
+        if selectedYear < currentYear {
+            return 12
+        } else if selectedYear > currentYear {
+            // future year: show 12 as "planned" baseline
+            return 12
+        } else {
+            let month = cal.component(.month, from: Date())
+            return max(1, month) // at least 1
+        }
+    }
+
+    private func formatInt(_ n: Int) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.groupingSeparator = "."
+        f.decimalSeparator = ","
+        return f.string(from: NSNumber(value: n)) ?? "\(n)"
+    }
+
     private func loadGoalForSelectedYear() {
         if let existing = goals.first(where: { $0.year == selectedYear }) {
             targetCount = max(existing.targetCount, 1)
@@ -741,6 +774,33 @@ struct GoalsView: View {
             modelContext.insert(goal)
         }
         try? modelContext.save()
+    }
+}
+
+private struct StatPill: View {
+    let systemImage: String
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.caption)
+                    .monospacedDigit()
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
 
