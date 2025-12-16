@@ -125,7 +125,7 @@ struct LibraryView: View {
                 }
 
                 if (selectedStatus == nil && selectedTag == nil && !onlyWithNotes) {
-                    Text("Filter: keine (noch 😄)")
+                    Text("Filter: kein Filter gesetzt")
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 6)
