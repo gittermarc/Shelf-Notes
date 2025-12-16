@@ -434,15 +434,15 @@ struct AddBookView: View {
 
     @State private var showingImportSheet = false
 
-    // NEW: Quick-Add used inside BookImportView?
-    @State private var didQuickAdd = false
+    // NEW: track if we currently have quick-added books in this session (and not undone)
+    @State private var quickAddActive = false
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
                     Button {
-                        didQuickAdd = false
+                        quickAddActive = false
                         showingImportSheet = true
                     } label: {
                         Label("Aus Google Books suchen", systemImage: "magnifyingglass")
@@ -519,7 +519,7 @@ struct AddBookView: View {
             .sheet(isPresented: $showingImportSheet, onDismiss: {
                 // If user used Quick-Add and didn't start manual entry -> close AddBookView
                 let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-                if didQuickAdd && trimmedTitle.isEmpty {
+                if quickAddActive && trimmedTitle.isEmpty {
                     dismiss()
                 }
             }) {
@@ -539,7 +539,11 @@ struct AddBookView: View {
                         googleVolumeID = imported.googleVolumeID
                     },
                     onQuickAddHappened: {
-                        didQuickAdd = true
+                        // keep legacy behavior if you rely on it elsewhere
+                        quickAddActive = true
+                    },
+                    onQuickAddActiveChanged: { isActive in
+                        quickAddActive = isActive
                     }
                 )
             }

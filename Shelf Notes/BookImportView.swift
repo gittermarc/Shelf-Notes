@@ -33,8 +33,11 @@ struct BookImportView: View {
 
     let onPick: (ImportedBook) -> Void
 
-    /// Wird beim ersten Quick-Add aufgerufen (damit der Caller z.B. AddBookView automatisch schließen kann)
+    /// Legacy: einmalig beim ersten Quick-Add (kannst du weiter nutzen)
     var onQuickAddHappened: (() -> Void)? = nil
+
+    /// Neu: true sobald in dieser Session mindestens 1 Quick-Add existiert (und wieder false, wenn alles rückgängig gemacht wurde)
+    var onQuickAddActiveChanged: ((Bool) -> Void)? = nil
 
     // Persisted search history (simple JSON array of strings)
     @AppStorage("gb_search_history_json") private var historyJSON: String = "[]"
@@ -52,31 +55,64 @@ struct BookImportView: View {
     @State private var addedVolumeIDs: Set<String> = []
     @State private var didTriggerQuickAddCallback = false
 
+    // Undo / Snackbar
+    private struct UndoPayload: Identifiable, Equatable {
+        let id = UUID()
+        let bookID: UUID
+        let volumeID: String
+        let title: String
+        let status: ReadingStatus
+        let thumbnailURL: String?
+    }
+
+    @State private var undoPayload: UndoPayload?
+    @State private var undoHideTask: Task<Void, Never>?
+    @State private var sessionQuickAddCount: Int = 0
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 12) {
-                    searchSection
+            ZStack(alignment: .bottom) {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        searchSection
 
-                    if isLoading {
-                        ProgressView("Suche läuft …")
-                            .padding(.top, 4)
-                    }
+                        if isLoading {
+                            ProgressView("Suche läuft …")
+                                .padding(.top, 4)
+                        }
 
-                    if let errorMessage {
-                        errorCard(errorMessage)
-                    }
+                        if let errorMessage {
+                            errorCard(errorMessage)
+                        }
 
-                    if results.isEmpty, !isLoading, errorMessage == nil {
-                        emptyState
-                            .padding(.top, 8)
-                    } else {
-                        resultsList
-                            .padding(.top, 4)
+                        if results.isEmpty, !isLoading, errorMessage == nil {
+                            emptyState
+                                .padding(.top, 8)
+                        } else {
+                            resultsList
+                                .padding(.top, 4)
+                        }
                     }
+                    .padding(.horizontal)
+                    .padding(.bottom, 16)
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 16)
+
+                if let payload = undoPayload {
+                    UndoToastView(
+                        title: payload.title,
+                        status: payload.status,
+                        thumbnailURL: payload.thumbnailURL,
+                        onUndo: {
+                            Task { await undoLastAdd(payload) }
+                        },
+                        onDismiss: {
+                            hideUndo()
+                        }
+                    )
+                    .padding(.horizontal)
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
             .navigationTitle("Google Books")
             .navigationBarTitleDisplayMode(.inline)
@@ -91,6 +127,10 @@ struct BookImportView: View {
                         searchFocused = true
                     }
                 }
+            }
+            .onDisappear {
+                undoHideTask?.cancel()
+                undoHideTask = nil
             }
         }
     }
@@ -344,19 +384,97 @@ struct BookImportView: View {
         modelContext.insert(newBook)
         try? modelContext.save()
 
-        // ✅ Kill the warning: explicitly discard result
         _ = withAnimation(.snappy) {
             addedVolumeIDs.insert(volume.id)
         }
+
+        sessionQuickAddCount += 1
+        onQuickAddActiveChanged?(sessionQuickAddCount > 0)
 
         if !didTriggerQuickAddCallback {
             didTriggerQuickAddCallback = true
             onQuickAddHappened?()
         }
 
+        showUndo(for: newBook, volumeID: volume.id, status: status)
+
         #if canImport(UIKit)
         let gen = UINotificationFeedbackGenerator()
         gen.notificationOccurred(.success)
+        #endif
+    }
+
+    // MARK: - Undo
+
+    @MainActor
+    private func showUndo(for book: Book, volumeID: String, status: ReadingStatus) {
+        undoHideTask?.cancel()
+        undoHideTask = nil
+
+        let payload = UndoPayload(
+            bookID: book.id,
+            volumeID: volumeID,
+            title: book.title.isEmpty ? "Ohne Titel" : book.title,
+            status: status,
+            thumbnailURL: book.thumbnailURL
+        )
+
+        withAnimation(.snappy) {
+            undoPayload = payload
+        }
+
+        undoHideTask = Task {
+            try? await Task.sleep(nanoseconds: 4_500_000_000)
+            await MainActor.run {
+                guard undoPayload?.id == payload.id else { return }
+                withAnimation(.snappy) {
+                    undoPayload = nil
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func hideUndo() {
+        undoHideTask?.cancel()
+        undoHideTask = nil
+        withAnimation(.snappy) {
+            undoPayload = nil
+        }
+    }
+
+    @MainActor
+    private func undoLastAdd(_ payload: UndoPayload) async {
+        undoHideTask?.cancel()
+        undoHideTask = nil
+
+        withAnimation(.snappy) {
+            undoPayload = nil
+        }
+
+        // ✅ IMPORTANT: copy to local constant so #Predicate sees a plain UUID constant
+        let bookID = payload.bookID
+
+        do {
+            let fd = FetchDescriptor<Book>(predicate: #Predicate<Book> { $0.id == bookID })
+            if let book = try modelContext.fetch(fd).first {
+                modelContext.delete(book)
+                try? modelContext.save()
+            }
+        } catch {
+            // ignore – UI is still consistent
+        }
+
+        _ = withAnimation(.snappy) {
+            addedVolumeIDs.remove(payload.volumeID)
+        }
+
+        if sessionQuickAddCount > 0 { sessionQuickAddCount -= 1 }
+        onQuickAddActiveChanged?(sessionQuickAddCount > 0)
+
+        #if canImport(UIKit)
+        let gen = UINotificationFeedbackGenerator()
+        gen.notificationOccurred(.warning)
         #endif
     }
 
@@ -541,5 +659,89 @@ private struct QuickAddButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(title) hinzufügen")
+    }
+}
+
+// MARK: - Undo Toast UI
+
+private struct UndoToastView: View {
+    let title: String
+    let status: ReadingStatus
+    let thumbnailURL: String?
+    let onUndo: () -> Void
+    let onDismiss: () -> Void
+
+    private var statusLabel: String {
+        switch status {
+        case .toRead: return "Will lesen"
+        case .reading: return "Lese gerade"
+        case .finished: return "Gelesen"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            cover
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Hinzugefügt")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                Text(title)
+                    .font(.subheadline)
+                    .lineLimit(1)
+
+                Text(statusLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Button("Rückgängig") {
+                onUndo()
+            }
+            .font(.subheadline.weight(.semibold))
+            .buttonStyle(.borderedProminent)
+
+            Button {
+                onDismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(6)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Hinweis schließen")
+        }
+        .padding(12)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .shadow(radius: 8, y: 3)
+    }
+
+    @ViewBuilder
+    private var cover: some View {
+        if let thumbnailURL, let url = URL(string: thumbnailURL) {
+            AsyncImage(url: url) { image in
+                image.resizable().scaledToFill()
+            } placeholder: {
+                RoundedRectangle(cornerRadius: 10)
+                    .opacity(0.12)
+                    .overlay(ProgressView())
+            }
+            .frame(width: 40, height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        } else {
+            RoundedRectangle(cornerRadius: 10)
+                .frame(width: 40, height: 56)
+                .opacity(0.12)
+                .overlay(Image(systemName: "book").opacity(0.6))
+        }
     }
 }
