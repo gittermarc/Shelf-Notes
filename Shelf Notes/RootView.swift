@@ -24,11 +24,6 @@ struct RootView: View {
                 .tabItem {
                     Label("Tags", systemImage: "tag")
                 }
-
-            SettingsView()
-                .tabItem {
-                    Label("Einstellungen", systemImage: "gear")
-                }
         }
     }
 }

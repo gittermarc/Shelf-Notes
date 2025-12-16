@@ -890,27 +890,6 @@ struct TagsView: View {
     }
 }
 
-// MARK: - Settings placeholder
-struct SettingsView: View {
-    var body: some View {
-        NavigationStack {
-            List {
-                Section("Export") {
-                    Text("PDF-Export (kommt)")
-                    Text("Markdown-Export (kommt)")
-                }
-                Section("Sync") {
-                    Text("iCloud-Sync (kommt)")
-                }
-                Section("Pro") {
-                    Text("Paywall/Subscription (kommt)")
-                }
-            }
-            .navigationTitle("Einstellungen")
-        }
-    }
-}
-
 // MARK: - UI: removable chip
 struct TagChip: View {
     let text: String
