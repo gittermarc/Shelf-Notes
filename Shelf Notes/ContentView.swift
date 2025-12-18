@@ -155,35 +155,48 @@ struct LibraryView: View {
     }
 
     private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                if let selectedStatus {
-                    TagChip(text: selectedStatus.rawValue, systemImage: "flag.fill") {
-                        withAnimation { self.selectedStatus = nil }
+        VStack(alignment: .leading, spacing: 6) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    if let selectedStatus {
+                        TagChip(text: selectedStatus.rawValue, systemImage: "flag.fill") {
+                            withAnimation { self.selectedStatus = nil }
+                        }
+                    }
+
+                    if let selectedTag {
+                        TagChip(text: "#\(selectedTag)", systemImage: "tag.fill") {
+                            withAnimation { self.selectedTag = nil }
+                        }
+                    }
+
+                    if onlyWithNotes {
+                        TagChip(text: "mit Notizen", systemImage: "note.text") {
+                            withAnimation { self.onlyWithNotes = false }
+                        }
+                    }
+
+                    if (selectedStatus == nil && selectedTag == nil && !onlyWithNotes) {
+                        Text("Filter: kein Filter gesetzt")
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
                     }
                 }
+                .padding(.horizontal)
+                .padding(.top, 10)
+            }
 
-                if let selectedTag {
-                    TagChip(text: "#\(selectedTag)", systemImage: "tag.fill") {
-                        withAnimation { self.selectedTag = nil }
-                    }
-                }
-
-                if onlyWithNotes {
-                    TagChip(text: "mit Notizen", systemImage: "note.text") {
-                        withAnimation { self.onlyWithNotes = false }
-                    }
-                }
-
-                if (selectedStatus == nil && selectedTag == nil && !onlyWithNotes) {
-                    Text("Filter: kein Filter gesetzt")
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                }
+            // NEW: count row (always, reflects current filtered list)
+            HStack {
+                Text("Bücher in deiner Liste: \(displayedBooks.count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                Spacer(minLength: 0)
             }
             .padding(.horizontal)
-            .padding(.vertical, 10)
+            .padding(.bottom, 10)
         }
         .background(.ultraThinMaterial)
     }
