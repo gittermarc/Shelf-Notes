@@ -698,8 +698,29 @@ struct GoalsView: View {
     }
 
     private var yearOptions: [Int] {
-        let current = Calendar.current.component(.year, from: Date())
-        return Array((current - 3)...(current + 1)).reversed()
+        let cal = Calendar.current
+        let currentYear = cal.component(.year, from: Date())
+        let nextYear = currentYear + 1
+
+        var years = Set<Int>()
+        years.insert(currentYear)
+        years.insert(nextYear)
+
+        // 1) Jahre aus gelesenen Büchern einsammeln
+        for b in books {
+            guard b.status == .finished else { continue }
+            if let d = b.readTo ?? b.readFrom {
+                years.insert(cal.component(.year, from: d))
+            }
+        }
+
+        // 2) (Optional, aber empfehlenswert) Jahre aus bestehenden Goals
+        for g in goals {
+            years.insert(g.year)
+        }
+
+        // Absteigend sortiert fürs Picker-Menü
+        return years.sorted(by: >)
     }
 
     private var finishedBooksInSelectedYear: [Book] {
