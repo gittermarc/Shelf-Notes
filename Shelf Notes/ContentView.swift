@@ -26,6 +26,29 @@ struct LibraryView: View {
     @State private var selectedTag: String? = nil
     @State private var onlyWithNotes: Bool = false
 
+    // Sorting (persisted)
+    private enum SortField: String, CaseIterable, Identifiable {
+        case createdAt = "Hinzugefügt"
+        case title = "Titel"
+        case author = "Autor"
+
+        var id: String { rawValue }
+    }
+
+    @AppStorage("library_sort_field") private var sortFieldRaw: String = SortField.createdAt.rawValue
+    @AppStorage("library_sort_ascending") private var sortAscending: Bool = false
+
+    private var sortField: SortField {
+        get { SortField(rawValue: sortFieldRaw) ?? .createdAt }
+        set { sortFieldRaw = newValue.rawValue }
+    }
+
+    // A–Z hint logic (only show when it’s actually helpful)
+    private let alphaIndexHintThreshold: Int = 30
+    private var shouldShowAlphaIndexHint: Bool {
+        sortField == .title && displayedBooks.count >= alphaIndexHintThreshold
+    }
+
     init(initialTag: String? = nil) {
         _selectedTag = State(initialValue: initialTag)
     }
@@ -35,19 +58,19 @@ struct LibraryView: View {
             VStack(spacing: 0) {
                 filterBar
 
+                if shouldShowAlphaIndexHint {
+                    alphaIndexHint
+                }
+
                 Group {
-                    if filteredBooks.isEmpty {
+                    if displayedBooks.isEmpty {
                         emptyState
                     } else {
-                        List {
-                            ForEach(filteredBooks) { book in
-                                NavigationLink {
-                                    BookDetailView(book: book)
-                                } label: {
-                                    BookRowView(book: book)
-                                }
-                            }
-                            .onDelete(perform: deleteBooks)
+                        // Alphabet index makes most sense for title sort
+                        if sortField == .title {
+                            alphaIndexedList
+                        } else {
+                            plainList
                         }
                     }
                 }
@@ -57,35 +80,54 @@ struct LibraryView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Picker("Status", selection: Binding(
-                            get: { selectedStatus?.rawValue ?? "Alle" },
-                            set: { newValue in
-                                selectedStatus = ReadingStatus.allCases.first(where: { $0.rawValue == newValue })
-                                if newValue == "Alle" { selectedStatus = nil }
+                        // --- Sort ---
+                        Section("Sortieren") {
+                            Picker("Feld", selection: Binding(
+                                get: { sortField.rawValue },
+                                set: { sortFieldRaw = $0 }
+                            )) {
+                                ForEach(SortField.allCases) { f in
+                                    Text(f.rawValue).tag(f.rawValue)
+                                }
                             }
-                        )) {
-                            Text("Alle").tag("Alle")
-                            ForEach(ReadingStatus.allCases) { status in
-                                Text(status.rawValue).tag(status.rawValue)
+
+                            Toggle(isOn: $sortAscending) {
+                                Text(sortAscendingLabel)
                             }
                         }
 
-                        Toggle("Nur mit Notizen", isOn: $onlyWithNotes)
+                        // --- Filter (existing) ---
+                        Section("Filter") {
+                            Picker("Status", selection: Binding(
+                                get: { selectedStatus?.rawValue ?? "Alle" },
+                                set: { newValue in
+                                    selectedStatus = ReadingStatus.allCases.first(where: { $0.rawValue == newValue })
+                                    if newValue == "Alle" { selectedStatus = nil }
+                                }
+                            )) {
+                                Text("Alle").tag("Alle")
+                                ForEach(ReadingStatus.allCases) { status in
+                                    Text(status.rawValue).tag(status.rawValue)
+                                }
+                            }
 
-                        if selectedTag != nil || selectedStatus != nil || onlyWithNotes || !searchText.isEmpty {
-                            Button("Filter zurücksetzen") {
-                                withAnimation {
-                                    selectedTag = nil
-                                    selectedStatus = nil
-                                    onlyWithNotes = false
-                                    searchText = ""
+                            Toggle("Nur mit Notizen", isOn: $onlyWithNotes)
+
+                            if selectedTag != nil || selectedStatus != nil || onlyWithNotes || !searchText.isEmpty {
+                                Button("Filter zurücksetzen") {
+                                    withAnimation {
+                                        selectedTag = nil
+                                        selectedStatus = nil
+                                        onlyWithNotes = false
+                                        searchText = ""
+                                    }
                                 }
                             }
                         }
                     } label: {
                         Image(systemName: "line.3.horizontal.decrease.circle")
                     }
-                    .accessibilityLabel("Filter")
+                    .accessibilityLabel("Filter & Sortierung")
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
@@ -100,6 +142,15 @@ struct LibraryView: View {
             .sheet(isPresented: $showingAddSheet) {
                 AddBookView()
             }
+        }
+    }
+
+    private var sortAscendingLabel: String {
+        switch sortField {
+        case .createdAt:
+            return sortAscending ? "Alt → Neu" : "Neu → Alt"
+        case .title, .author:
+            return sortAscending ? "A → Z" : "Z → A"
         }
     }
 
@@ -137,6 +188,28 @@ struct LibraryView: View {
         .background(.ultraThinMaterial)
     }
 
+    private var alphaIndexHint: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "textformat.abc")
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("A–Z Index aktiv")
+                    .font(.caption.weight(.semibold))
+                Text("Tippe rechts auf einen Buchstaben, um schnell zu springen.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
+    }
+
+    // MARK: - Filtering + Sorting
+
     private var filteredBooks: [Book] {
         books.filter { book in
             if let selectedStatus, book.status != selectedStatus { return false }
@@ -165,6 +238,169 @@ struct LibraryView: View {
         }
     }
 
+    private var displayedBooks: [Book] {
+        sortBooks(filteredBooks)
+    }
+
+    private func sortBooks(_ input: [Book]) -> [Book] {
+        switch sortField {
+        case .createdAt:
+            return input.sorted { a, b in
+                if a.createdAt != b.createdAt {
+                    return sortAscending ? (a.createdAt < b.createdAt) : (a.createdAt > b.createdAt)
+                }
+                // stable fallback
+                return a.id.uuidString < b.id.uuidString
+            }
+
+        case .title:
+            return input.sorted { a, b in
+                let ta = bestTitle(a)
+                let tb = bestTitle(b)
+                let cmp = ta.localizedCaseInsensitiveCompare(tb)
+                if cmp != .orderedSame {
+                    return sortAscending ? (cmp == .orderedAscending) : (cmp == .orderedDescending)
+                }
+                return a.createdAt > b.createdAt
+            }
+
+        case .author:
+            return input.sorted { a, b in
+                let aa = a.author.trimmingCharacters(in: .whitespacesAndNewlines)
+                let ab = b.author.trimmingCharacters(in: .whitespacesAndNewlines)
+                let sa = aa.isEmpty ? "—" : aa
+                let sb = ab.isEmpty ? "—" : ab
+                let cmp = sa.localizedCaseInsensitiveCompare(sb)
+                if cmp != .orderedSame {
+                    return sortAscending ? (cmp == .orderedAscending) : (cmp == .orderedDescending)
+                }
+                // secondary sort by title
+                let ta = bestTitle(a)
+                let tb = bestTitle(b)
+                let cmp2 = ta.localizedCaseInsensitiveCompare(tb)
+                if cmp2 != .orderedSame {
+                    return cmp2 == .orderedAscending
+                }
+                return a.createdAt > b.createdAt
+            }
+        }
+    }
+
+    private func bestTitle(_ book: Book) -> String {
+        let t = book.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? "Ohne Titel" : t
+    }
+
+    // MARK: - Alphabet indexing (Title sort)
+
+    private struct AlphaSection: Identifiable {
+        let id: String
+        let key: String
+        let books: [Book]
+    }
+
+    private var alphaSections: [AlphaSection] {
+        let input = displayedBooks
+        var buckets: [String: [Book]] = [:]
+
+        for b in input {
+            let key = alphaKey(for: bestTitle(b))
+            buckets[key, default: []].append(b)
+        }
+
+        // Order sections A..Z, then #
+        let keys = buckets.keys.sorted { a, b in
+            if a == "#" { return false }
+            if b == "#" { return true }
+            return a < b
+        }
+
+        return keys.map { k in
+            AlphaSection(id: k, key: k, books: buckets[k] ?? [])
+        }
+    }
+
+    private func alphaKey(for title: String) -> String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = trimmed.first else { return "#" }
+
+        // Normalize (ä/ö/ü -> a/o/u-ish), then take first letter
+        let folded = String(first).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        let upper = folded.uppercased()
+
+        if upper.range(of: "^[A-Z]$", options: .regularExpression) != nil {
+            return upper
+        }
+        return "#"
+    }
+
+    private var alphaIndexLetters: [String] {
+        alphaSections.map(\.key)
+    }
+
+    private var alphaIndexedList: some View {
+        ScrollViewReader { proxy in
+            ZStack(alignment: .trailing) {
+                List {
+                    ForEach(alphaSections) { section in
+                        Section {
+                            ForEach(section.books) { book in
+                                NavigationLink {
+                                    BookDetailView(book: book)
+                                } label: {
+                                    BookRowView(book: book)
+                                }
+                            }
+                            .onDelete { offsets in
+                                deleteBooksInSection(section.books, offsets: offsets)
+                            }
+                        } header: {
+                            Text(section.key)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .padding(.vertical, 2)
+                        }
+                        .id(section.key)
+                    }
+                }
+
+                // Right-side A-Z index (like Contacts)
+                VStack(spacing: 2) {
+                    ForEach(alphaIndexLetters, id: \.self) { letter in
+                        Button {
+                            withAnimation(.snappy) {
+                                proxy.scrollTo(letter, anchor: .top)
+                            }
+                        } label: {
+                            Text(letter)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 18, height: 14)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Springe zu \(letter)")
+                    }
+                }
+                .padding(.trailing, 6)
+                .padding(.vertical, 10)
+            }
+        }
+    }
+
+    private var plainList: some View {
+        List {
+            ForEach(displayedBooks) { book in
+                NavigationLink {
+                    BookDetailView(book: book)
+                } label: {
+                    BookRowView(book: book)
+                }
+            }
+            .onDelete(perform: deleteBooks)
+        }
+    }
+
     private var emptyState: some View {
         VStack(spacing: 14) {
             Image(systemName: "books.vertical")
@@ -182,9 +418,18 @@ struct LibraryView: View {
         .padding(.top, 30)
     }
 
+    // MARK: - Delete
+
     private func deleteBooks(at offsets: IndexSet) {
         for index in offsets {
-            modelContext.delete(filteredBooks[index])
+            modelContext.delete(displayedBooks[index])
+        }
+        try? modelContext.save()
+    }
+
+    private func deleteBooksInSection(_ sectionBooks: [Book], offsets: IndexSet) {
+        for index in offsets {
+            modelContext.delete(sectionBooks[index])
         }
         try? modelContext.save()
     }
@@ -525,7 +770,6 @@ struct AddBookView: View {
             }) {
                 BookImportView(
                     onPick: { imported in
-                        // Fill fields (detail flow)
                         title = imported.title
                         author = imported.author
                         isbn13 = imported.isbn13
@@ -539,7 +783,6 @@ struct AddBookView: View {
                         googleVolumeID = imported.googleVolumeID
                     },
                     onQuickAddHappened: {
-                        // keep legacy behavior if you rely on it elsewhere
                         quickAddActive = true
                     },
                     onQuickAddActiveChanged: { isActive in
@@ -706,7 +949,6 @@ struct GoalsView: View {
         years.insert(currentYear)
         years.insert(nextYear)
 
-        // 1) Jahre aus gelesenen Büchern einsammeln
         for b in books {
             guard b.status == .finished else { continue }
             if let d = b.readTo ?? b.readFrom {
@@ -714,12 +956,10 @@ struct GoalsView: View {
             }
         }
 
-        // 2) (Optional, aber empfehlenswert) Jahre aus bestehenden Goals
         for g in goals {
             years.insert(g.year)
         }
 
-        // Absteigend sortiert fürs Picker-Menü
         return years.sorted(by: >)
     }
 
