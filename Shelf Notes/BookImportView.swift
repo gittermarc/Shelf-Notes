@@ -17,13 +17,40 @@ struct ImportedBook {
     let title: String
     let author: String
     let isbn13: String?
+
+    /// Primary cover used across the app
     let thumbnailURL: String?
+
     let publisher: String?
     let publishedDate: String?
     let pageCount: Int?
     let language: String?
     let categories: [String]
     let description: String
+
+    // ✅ New rich metadata
+    let subtitle: String?
+    let previewLink: String?
+    let infoLink: String?
+    let canonicalVolumeLink: String?
+
+    let averageRating: Double?
+    let ratingsCount: Int?
+    let mainCategory: String?
+
+    let coverURLCandidates: [String]
+
+    let viewability: String?
+    let isPublicDomain: Bool
+    let isEmbeddable: Bool
+
+    let isEpubAvailable: Bool
+    let isPdfAvailable: Bool
+    let epubAcsTokenLink: String?
+    let pdfAcsTokenLink: String?
+
+    let saleability: String?
+    let isEbook: Bool
 }
 
 struct BookImportView: View {
@@ -371,15 +398,46 @@ struct BookImportView: View {
             newBook.readTo = nil
         }
 
+        // Existing mappings
         newBook.googleVolumeID = volume.id
         newBook.isbn13 = volume.isbn13
-        newBook.thumbnailURL = volume.bestThumbnailURLString
+
+        // Prefer best cover candidate (if your DTO has it), otherwise thumbnail
+        let bestCover = (volume.bestCoverURLString ?? volume.bestThumbnailURLString)
+        newBook.thumbnailURL = bestCover
+
         newBook.publisher = info.publisher
         newBook.publishedDate = info.publishedDate
         newBook.pageCount = info.pageCount
         newBook.language = info.language
-        newBook.categories = info.categories ?? []
+
+        // Prefer merged categories (mainCategory + categories) if available
+        newBook.categories = volume.allCategories
         newBook.bookDescription = info.description ?? ""
+
+        // ✅ New rich metadata mappings
+        newBook.subtitle = volume.bestSubtitle
+        newBook.previewLink = volume.previewLink
+        newBook.infoLink = volume.infoLink
+        newBook.canonicalVolumeLink = volume.canonicalVolumeLink
+
+        newBook.averageRating = volume.averageRating
+        newBook.ratingsCount = volume.ratingsCount
+        newBook.mainCategory = info.mainCategory
+
+        newBook.coverURLCandidates = volume.coverURLCandidates
+
+        newBook.viewability = volume.viewability
+        newBook.isPublicDomain = volume.isPublicDomain
+        newBook.isEmbeddable = volume.isEmbeddable
+
+        newBook.isEpubAvailable = volume.isEpubAvailable
+        newBook.isPdfAvailable = volume.isPdfAvailable
+        newBook.epubAcsTokenLink = volume.epubAcsTokenLink
+        newBook.pdfAcsTokenLink = volume.pdfAcsTokenLink
+
+        newBook.saleability = volume.saleability
+        newBook.isEbook = volume.isEbook
 
         modelContext.insert(newBook)
         try? modelContext.save()
@@ -419,7 +477,7 @@ struct BookImportView: View {
             thumbnailURL: book.thumbnailURL
         )
 
-        withAnimation(.snappy) {
+        _ = withAnimation(.snappy) {
             undoPayload = payload
         }
 
@@ -427,7 +485,7 @@ struct BookImportView: View {
             try? await Task.sleep(nanoseconds: 4_500_000_000)
             await MainActor.run {
                 guard undoPayload?.id == payload.id else { return }
-                withAnimation(.snappy) {
+                _ = withAnimation(.snappy) {
                     undoPayload = nil
                 }
             }
@@ -438,7 +496,7 @@ struct BookImportView: View {
     private func hideUndo() {
         undoHideTask?.cancel()
         undoHideTask = nil
-        withAnimation(.snappy) {
+        _ = withAnimation(.snappy) {
             undoPayload = nil
         }
     }
@@ -448,7 +506,7 @@ struct BookImportView: View {
         undoHideTask?.cancel()
         undoHideTask = nil
 
-        withAnimation(.snappy) {
+        _ = withAnimation(.snappy) {
             undoPayload = nil
         }
 
@@ -483,18 +541,39 @@ struct BookImportView: View {
     private func pick(_ volume: GoogleBookVolume) {
         let info = volume.volumeInfo
 
+        let bestCover = (volume.bestCoverURLString ?? volume.bestThumbnailURLString)
+
         let imported = ImportedBook(
             googleVolumeID: volume.id,
             title: volume.bestTitle,
             author: volume.bestAuthors,
             isbn13: volume.isbn13,
-            thumbnailURL: volume.bestThumbnailURLString,
+            thumbnailURL: bestCover,
             publisher: info.publisher,
             publishedDate: info.publishedDate,
             pageCount: info.pageCount,
             language: info.language,
-            categories: info.categories ?? [],
-            description: info.description ?? ""
+            categories: volume.allCategories,
+            description: info.description ?? "",
+
+            // ✅ New rich metadata
+            subtitle: volume.bestSubtitle,
+            previewLink: volume.previewLink,
+            infoLink: volume.infoLink,
+            canonicalVolumeLink: volume.canonicalVolumeLink,
+            averageRating: volume.averageRating,
+            ratingsCount: volume.ratingsCount,
+            mainCategory: info.mainCategory,
+            coverURLCandidates: volume.coverURLCandidates,
+            viewability: volume.viewability,
+            isPublicDomain: volume.isPublicDomain,
+            isEmbeddable: volume.isEmbeddable,
+            isEpubAvailable: volume.isEpubAvailable,
+            isPdfAvailable: volume.isPdfAvailable,
+            epubAcsTokenLink: volume.epubAcsTokenLink,
+            pdfAcsTokenLink: volume.pdfAcsTokenLink,
+            saleability: volume.saleability,
+            isEbook: volume.isEbook
         )
 
         onPick(imported)
@@ -604,7 +683,9 @@ private struct ResultCard: View {
 
     @ViewBuilder
     private var cover: some View {
-        if let urlString = volume.bestThumbnailURLString,
+        let best = volume.bestCoverURLString ?? volume.bestThumbnailURLString
+
+        if let urlString = best,
            let url = URL(string: urlString) {
             AsyncImage(url: url) { image in
                 image.resizable().scaledToFill()

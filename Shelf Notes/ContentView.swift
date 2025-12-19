@@ -29,6 +29,7 @@ struct LibraryView: View {
     // Sorting (persisted)
     private enum SortField: String, CaseIterable, Identifiable {
         case createdAt = "Hinzugefügt"
+        case readDate = "Gelesen"
         case title = "Titel"
         case author = "Autor"
 
@@ -96,7 +97,7 @@ struct LibraryView: View {
                             }
                         }
 
-                        // --- Filter (existing) ---
+                        // --- Filter ---
                         Section("Filter") {
                             Picker("Status", selection: Binding(
                                 get: { selectedStatus?.rawValue ?? "Alle" },
@@ -147,7 +148,7 @@ struct LibraryView: View {
 
     private var sortAscendingLabel: String {
         switch sortField {
-        case .createdAt:
+        case .createdAt, .readDate:
             return sortAscending ? "Alt → Neu" : "Neu → Alt"
         case .title, .author:
             return sortAscending ? "A → Z" : "Z → A"
@@ -187,7 +188,7 @@ struct LibraryView: View {
                 .padding(.top, 10)
             }
 
-            // NEW: count row (always, reflects current filtered list)
+            // Count row (always, reflects current filtered list)
             HStack {
                 Text("Bücher in deiner Liste: \(displayedBooks.count)")
                     .font(.caption)
@@ -262,7 +263,30 @@ struct LibraryView: View {
                 if a.createdAt != b.createdAt {
                     return sortAscending ? (a.createdAt < b.createdAt) : (a.createdAt > b.createdAt)
                 }
-                // stable fallback
+                return a.id.uuidString < b.id.uuidString
+            }
+
+        case .readDate:
+            // Sort by readTo/readFrom for finished books.
+            // Books without a read date fall back to createdAt, and we prefer "has read date" first.
+            return input.sorted { a, b in
+                let aRead = readKeyDate(a)
+                let bRead = readKeyDate(b)
+
+                let aHas = aRead != nil
+                let bHas = bRead != nil
+
+                if aHas != bHas {
+                    // Prefer read-dated books first (so "Gelesen" sort is meaningful)
+                    return aHas && !bHas
+                }
+
+                let da = aRead ?? a.createdAt
+                let db = bRead ?? b.createdAt
+
+                if da != db {
+                    return sortAscending ? (da < db) : (da > db)
+                }
                 return a.id.uuidString < b.id.uuidString
             }
 
@@ -287,7 +311,7 @@ struct LibraryView: View {
                 if cmp != .orderedSame {
                     return sortAscending ? (cmp == .orderedAscending) : (cmp == .orderedDescending)
                 }
-                // secondary sort by title
+
                 let ta = bestTitle(a)
                 let tb = bestTitle(b)
                 let cmp2 = ta.localizedCaseInsensitiveCompare(tb)
@@ -297,6 +321,11 @@ struct LibraryView: View {
                 return a.createdAt > b.createdAt
             }
         }
+    }
+
+    private func readKeyDate(_ book: Book) -> Date? {
+        guard book.status == .finished else { return nil }
+        return book.readTo ?? book.readFrom
     }
 
     private func bestTitle(_ book: Book) -> String {
@@ -321,7 +350,6 @@ struct LibraryView: View {
             buckets[key, default: []].append(b)
         }
 
-        // Order sections A..Z, then #
         let keys = buckets.keys.sorted { a, b in
             if a == "#" { return false }
             if b == "#" { return true }
@@ -337,7 +365,6 @@ struct LibraryView: View {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let first = trimmed.first else { return "#" }
 
-        // Normalize (ä/ö/ü -> a/o/u-ish), then take first letter
         let folded = String(first).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
         let upper = folded.uppercased()
 
@@ -377,7 +404,6 @@ struct LibraryView: View {
                     }
                 }
 
-                // Right-side A-Z index (like Contacts)
                 VStack(spacing: 2) {
                     ForEach(alphaIndexLetters, id: \.self) { letter in
                         Button {
@@ -466,20 +492,35 @@ struct BookRowView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                HStack(spacing: 8) {
+                // Status + (Monat/Jahr, wenn gelesen)
+                HStack(spacing: 6) {
                     Text(book.status.rawValue)
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    if !book.tags.isEmpty {
-                        Text("• \(book.tags.prefix(2).map { "#\($0)" }.joined(separator: " "))")
+                    if let monthYear = readMonthYearText {
+                        Text("• \(monthYear)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .monospacedDigit()
                     }
+                }
+
+                // Tags eine Zeile tiefer
+                if !book.tags.isEmpty {
+                    Text(book.tags.prefix(2).map { "#\($0)" }.joined(separator: " "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
         .padding(.vertical, 2)
+    }
+
+    private var readMonthYearText: String? {
+        guard book.status == .finished else { return nil }
+        guard let d = book.readTo ?? book.readFrom else { return nil }
+        return d.formatted(.dateTime.month(.abbreviated).year())
     }
 
     @ViewBuilder
@@ -516,6 +557,20 @@ struct BookDetailView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         TextField("Titel", text: $book.title)
                             .font(.headline)
+
+                        // Subtitle (optional, only show if exists OR user wants to edit)
+                        if shouldShowSubtitleField {
+                            TextField("Untertitel", text: Binding(
+                                get: { book.subtitle ?? "" },
+                                set: { newValue in
+                                    let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    book.subtitle = t.isEmpty ? nil : t
+                                }
+                            ))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        }
+
                         TextField("Autor", text: $book.author)
                             .foregroundStyle(.secondary)
 
@@ -538,6 +593,12 @@ struct BookDetailView: View {
                             }
                         }
                     }
+                }
+
+                // Rating row (nice + compact)
+                if let ratingView = ratingLineView {
+                    ratingView
+                        .padding(.top, 6)
                 }
             }
 
@@ -595,9 +656,96 @@ struct BookDetailView: View {
                 if let language = book.language, !language.isEmpty {
                     LabeledContent("Sprache", value: language)
                 }
+
+                // Categories + optional main category
+                if let main = book.mainCategory?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !main.isEmpty {
+                    LabeledContent("Hauptkategorie", value: main)
+                }
+
                 if !book.categories.isEmpty {
                     Text("Kategorien: \(book.categories.joined(separator: ", "))")
                         .foregroundStyle(.secondary)
+                }
+            }
+
+            // ✅ New: Links
+            if hasAnyLinks {
+                Section("Links") {
+                    if let url = urlFromString(book.previewLink) {
+                        LinkRow(title: "Vorschau", subtitle: "previewLink", systemImage: "play.rectangle", url: url)
+                    }
+                    if let url = urlFromString(book.infoLink) {
+                        LinkRow(title: "Info", subtitle: "infoLink", systemImage: "info.circle", url: url)
+                    }
+                    if let url = urlFromString(book.canonicalVolumeLink) {
+                        LinkRow(title: "Original", subtitle: "canonical", systemImage: "link", url: url)
+                    }
+                }
+            }
+
+            // ✅ New: Access / Availability
+            if hasAnyAccessInfo {
+                Section("Zugriff & Formate") {
+                    if let v = book.viewability?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !v.isEmpty {
+                        LabeledContent("Viewability", value: prettifyViewability(v))
+                    }
+
+                    LabeledContent("Public Domain") {
+                        Image(systemName: book.isPublicDomain ? "checkmark.circle.fill" : "xmark.circle")
+                            .foregroundStyle(book.isPublicDomain ? .green : .secondary)
+                    }
+
+                    LabeledContent("Embeddable") {
+                        Image(systemName: book.isEmbeddable ? "checkmark.circle.fill" : "xmark.circle")
+                            .foregroundStyle(book.isEmbeddable ? .green : .secondary)
+                    }
+
+                    LabeledContent("EPUB") {
+                        availabilityLabel(book.isEpubAvailable)
+                    }
+
+                    LabeledContent("PDF") {
+                        availabilityLabel(book.isPdfAvailable)
+                    }
+
+                    if let s = book.saleability?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !s.isEmpty {
+                        LabeledContent("Saleability", value: prettifySaleability(s))
+                    }
+
+                    LabeledContent("E-Book") {
+                        Image(systemName: book.isEbook ? "checkmark.circle.fill" : "xmark.circle")
+                            .foregroundStyle(book.isEbook ? .green : .secondary)
+                    }
+                }
+            }
+
+            // ✅ New: Cover variants (tap to use)
+            if !book.coverURLCandidates.isEmpty {
+                Section("Cover-Varianten") {
+                    Text("Tippe ein Cover an, um es als Standardcover zu setzen.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(book.coverURLCandidates, id: \.self) { s in
+                                Button {
+                                    let isSame = (book.thumbnailURL ?? "").caseInsensitiveCompare(s) == .orderedSame
+                                    if !isSame {
+                                        book.thumbnailURL = s
+                                        try? modelContext.save()
+                                    }
+                                } label: {
+                                    CoverThumb(urlString: s, isSelected: (book.thumbnailURL ?? "") == s)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
                 }
             }
 
@@ -627,6 +775,93 @@ struct BookDetailView: View {
         .onAppear { tagsText = book.tags.joined(separator: ", ") }
         .onDisappear { try? modelContext.save() }
     }
+
+    // MARK: - Helpers (UI)
+
+    private var shouldShowSubtitleField: Bool {
+        if let s = book.subtitle?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty { return true }
+        // if we have a google volume id, user likely imported -> show field for convenience
+        if let id = book.googleVolumeID, !id.isEmpty { return true }
+        return false
+    }
+
+    private var hasAnyLinks: Bool {
+        (book.previewLink?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+        || (book.infoLink?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+        || (book.canonicalVolumeLink?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+    }
+
+    private var hasAnyAccessInfo: Bool {
+        (book.viewability?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+        || book.isPublicDomain
+        || book.isEmbeddable
+        || book.isEpubAvailable
+        || book.isPdfAvailable
+        || (book.saleability?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+        || book.isEbook
+    }
+
+    private var ratingLineView: AnyView? {
+        guard let avg = book.averageRating, avg > 0 else { return nil }
+        let count = book.ratingsCount ?? 0
+        return AnyView(
+            HStack(spacing: 8) {
+                StarsView(rating: avg)
+
+                Text(String(format: "%.1f", avg))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+
+                if count > 0 {
+                    Text("(\(count))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+
+                Spacer()
+            }
+        )
+    }
+
+    private func availabilityLabel(_ ok: Bool) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle")
+                .foregroundStyle(ok ? .green : .secondary)
+            Text(ok ? "verfügbar" : "nicht verfügbar")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func urlFromString(_ s: String?) -> URL? {
+        guard let s = s?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private func prettifyViewability(_ v: String) -> String {
+        // common values: NO_PAGES, PARTIAL, ALL_PAGES, UNKNOWN (depends on API)
+        switch v.uppercased() {
+        case "NO_PAGES": return "Keine Seiten"
+        case "PARTIAL": return "Teilweise"
+        case "ALL_PAGES": return "Alle Seiten"
+        case "UNKNOWN": return "Unbekannt"
+        default: return v
+        }
+    }
+
+    private func prettifySaleability(_ s: String) -> String {
+        switch s.uppercased() {
+        case "FOR_SALE": return "Käuflich"
+        case "NOT_FOR_SALE": return "Nicht käuflich"
+        case "FREE": return "Kostenlos"
+        case "FOR_PREORDER": return "Vorbestellbar"
+        default: return s
+        }
+    }
+
+    // MARK: - Existing helpers
 
     @ViewBuilder
     private var cover: some View {
@@ -668,6 +903,93 @@ struct BookDetailView: View {
     }
 }
 
+// MARK: - Small UI Components
+
+private struct LinkRow: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let url: URL
+
+    var body: some View {
+        Link(destination: url) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "arrow.up.right.square")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct StarsView: View {
+    let rating: Double
+
+    var body: some View {
+        let full = Int(rating.rounded(.down))
+        let hasHalf = (rating - Double(full)) >= 0.5
+        let empty = max(0, 5 - full - (hasHalf ? 1 : 0))
+
+        HStack(spacing: 2) {
+            ForEach(0..<full, id: \.self) { _ in
+                Image(systemName: "star.fill").font(.caption).foregroundStyle(.yellow)
+            }
+            if hasHalf {
+                Image(systemName: "star.leadinghalf.filled").font(.caption).foregroundStyle(.yellow)
+            }
+            ForEach(0..<empty, id: \.self) { _ in
+                Image(systemName: "star").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityLabel("Bewertung \(String(format: "%.1f", rating)) von 5")
+    }
+}
+
+private struct CoverThumb: View {
+    let urlString: String
+    let isSelected: Bool
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(.ultraThinMaterial)
+                .opacity(0.12)
+
+            if let url = URL(string: urlString) {
+                AsyncImage(url: url) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    ProgressView()
+                }
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                Image(systemName: "book")
+                    .opacity(0.45)
+            }
+
+            if isSelected {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(lineWidth: 2)
+                    .foregroundStyle(.primary.opacity(0.35))
+            }
+        }
+        .frame(width: 56, height: 84)
+        .clipped()
+    }
+}
+
 // MARK: - Add Book
 struct AddBookView: View {
     @Environment(\.dismiss) private var dismiss
@@ -680,6 +1002,7 @@ struct AddBookView: View {
     @State private var readFrom: Date = Date()
     @State private var readTo: Date = Date()
 
+    // Existing imported metadata
     @State private var isbn13: String?
     @State private var thumbnailURL: String?
     @State private var publisher: String?
@@ -690,9 +1013,33 @@ struct AddBookView: View {
     @State private var bookDescription: String = ""
     @State private var googleVolumeID: String?
 
+    // ✅ New imported metadata (persisted into Book)
+    @State private var subtitle: String?
+    @State private var previewLink: String?
+    @State private var infoLink: String?
+    @State private var canonicalVolumeLink: String?
+
+    @State private var averageRating: Double?
+    @State private var ratingsCount: Int?
+    @State private var mainCategory: String?
+
+    @State private var coverURLCandidates: [String] = []
+
+    @State private var viewability: String?
+    @State private var isPublicDomain: Bool = false
+    @State private var isEmbeddable: Bool = false
+
+    @State private var isEpubAvailable: Bool = false
+    @State private var isPdfAvailable: Bool = false
+    @State private var epubAcsTokenLink: String?
+    @State private var pdfAcsTokenLink: String?
+
+    @State private var saleability: String?
+    @State private var isEbook: Bool = false
+
     @State private var showingImportSheet = false
 
-    // NEW: track if we currently have quick-added books in this session (and not undone)
+    // track if we currently have quick-added books in this session (and not undone)
     @State private var quickAddActive = false
 
     var body: some View {
@@ -775,7 +1122,6 @@ struct AddBookView: View {
                 }
             }
             .sheet(isPresented: $showingImportSheet, onDismiss: {
-                // If user used Quick-Add and didn't start manual entry -> close AddBookView
                 let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
                 if quickAddActive && trimmedTitle.isEmpty {
                     dismiss()
@@ -785,6 +1131,7 @@ struct AddBookView: View {
                     onPick: { imported in
                         title = imported.title
                         author = imported.author
+
                         isbn13 = imported.isbn13
                         thumbnailURL = imported.thumbnailURL
                         publisher = imported.publisher
@@ -794,6 +1141,30 @@ struct AddBookView: View {
                         categories = imported.categories
                         bookDescription = imported.description
                         googleVolumeID = imported.googleVolumeID
+
+                        // ✅ New rich metadata
+                        subtitle = imported.subtitle
+                        previewLink = imported.previewLink
+                        infoLink = imported.infoLink
+                        canonicalVolumeLink = imported.canonicalVolumeLink
+
+                        averageRating = imported.averageRating
+                        ratingsCount = imported.ratingsCount
+                        mainCategory = imported.mainCategory
+
+                        coverURLCandidates = imported.coverURLCandidates
+
+                        viewability = imported.viewability
+                        isPublicDomain = imported.isPublicDomain
+                        isEmbeddable = imported.isEmbeddable
+
+                        isEpubAvailable = imported.isEpubAvailable
+                        isPdfAvailable = imported.isPdfAvailable
+                        epubAcsTokenLink = imported.epubAcsTokenLink
+                        pdfAcsTokenLink = imported.pdfAcsTokenLink
+
+                        saleability = imported.saleability
+                        isEbook = imported.isEbook
                     },
                     onQuickAddHappened: {
                         quickAddActive = true
@@ -807,7 +1178,33 @@ struct AddBookView: View {
     }
 
     private var hasAnyImportedMetadata: Bool {
-        isbn13 != nil || thumbnailURL != nil || publisher != nil || publishedDate != nil || pageCount != nil || language != nil || !categories.isEmpty || !bookDescription.isEmpty
+        isbn13 != nil
+        || thumbnailURL != nil
+        || publisher != nil
+        || publishedDate != nil
+        || pageCount != nil
+        || language != nil
+        || !categories.isEmpty
+        || !bookDescription.isEmpty
+
+        // new fields (optional)
+        || subtitle != nil
+        || previewLink != nil
+        || infoLink != nil
+        || canonicalVolumeLink != nil
+        || averageRating != nil
+        || ratingsCount != nil
+        || mainCategory != nil
+        || !coverURLCandidates.isEmpty
+        || viewability != nil
+        || isPublicDomain
+        || isEmbeddable
+        || isEpubAvailable
+        || isPdfAvailable
+        || epubAcsTokenLink != nil
+        || pdfAcsTokenLink != nil
+        || saleability != nil
+        || isEbook
     }
 
     private func addBook() {
@@ -822,6 +1219,7 @@ struct AddBookView: View {
             newBook.readTo = readTo
         }
 
+        // Existing mappings
         newBook.isbn13 = isbn13
         newBook.thumbnailURL = thumbnailURL
         newBook.publisher = publisher
@@ -831,6 +1229,30 @@ struct AddBookView: View {
         newBook.categories = categories
         newBook.bookDescription = bookDescription
         newBook.googleVolumeID = googleVolumeID
+
+        // ✅ New rich metadata mappings
+        newBook.subtitle = subtitle
+        newBook.previewLink = previewLink
+        newBook.infoLink = infoLink
+        newBook.canonicalVolumeLink = canonicalVolumeLink
+
+        newBook.averageRating = averageRating
+        newBook.ratingsCount = ratingsCount
+        newBook.mainCategory = mainCategory
+
+        newBook.coverURLCandidates = coverURLCandidates
+
+        newBook.viewability = viewability
+        newBook.isPublicDomain = isPublicDomain
+        newBook.isEmbeddable = isEmbeddable
+
+        newBook.isEpubAvailable = isEpubAvailable
+        newBook.isPdfAvailable = isPdfAvailable
+        newBook.epubAcsTokenLink = epubAcsTokenLink
+        newBook.pdfAcsTokenLink = pdfAcsTokenLink
+
+        newBook.saleability = saleability
+        newBook.isEbook = isEbook
 
         modelContext.insert(newBook)
         try? modelContext.save()

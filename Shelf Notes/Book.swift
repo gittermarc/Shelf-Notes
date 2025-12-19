@@ -34,7 +34,7 @@ final class Book {
     var readFrom: Date?
     var readTo: Date?
 
-    // Imported metadata (optional / defaults)
+    // Imported metadata (bisher)
     var googleVolumeID: String?
     var isbn13: String?
     var thumbnailURL: String?
@@ -44,6 +44,35 @@ final class Book {
     var language: String?
     var categories: [String] = []
     var bookDescription: String = ""
+
+    // ✅ Neue Metadaten (persistiert)
+    // VolumeInfo
+    var subtitle: String?
+    var previewLink: String?
+    var infoLink: String?
+    var canonicalVolumeLink: String?
+
+    var averageRating: Double?
+    var ratingsCount: Int?
+
+    var mainCategory: String?
+
+    /// Mehr Cover-Varianten (best-first), falls vorhanden
+    var coverURLCandidates: [String] = []
+
+    // AccessInfo
+    var viewability: String?
+    var isPublicDomain: Bool = false
+    var isEmbeddable: Bool = false
+
+    var isEpubAvailable: Bool = false
+    var isPdfAvailable: Bool = false
+    var epubAcsTokenLink: String?
+    var pdfAcsTokenLink: String?
+
+    // SaleInfo
+    var saleability: String?
+    var isEbook: Bool = false
 
     var status: ReadingStatus {
         get { ReadingStatus(rawValue: statusRawValue) ?? .toRead }
