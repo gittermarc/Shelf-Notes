@@ -19,7 +19,7 @@ final class BookCollection {
 
     // ✅ Many-to-many
     // CloudKit: Beziehungen müssen optional sein
-    // -> KEIN @Relationship Macro (macht bei dir gerade Ärger)
+    // -> kein @Relationship-Macro nötig (und bei dir zuletzt problematisch)
     var books: [Book]?
 
     // Komfort: nil wie leeres Array behandeln
@@ -33,5 +33,28 @@ final class BookCollection {
         self.createdAt = Date()
         self.updatedAt = Date()
         self.books = nil
+    }
+}
+
+// MARK: - Books helpers
+
+extension BookCollection {
+    func contains(_ book: Book) -> Bool {
+        booksSafe.contains(where: { $0.id == book.id })
+    }
+
+    func addBook(_ book: Book) {
+        if contains(book) { return }
+        var arr = booksSafe
+        arr.append(book)
+        booksSafe = arr
+        updatedAt = Date()
+    }
+
+    func removeBook(_ book: Book) {
+        var arr = booksSafe
+        arr.removeAll { $0.id == book.id }
+        booksSafe = arr
+        updatedAt = Date()
     }
 }

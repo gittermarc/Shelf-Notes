@@ -35,7 +35,7 @@ final class Book {
 
     // ✅ Collections / Listen (many-to-many)
     // CloudKit: Beziehungen müssen optional sein
-    // -> KEIN @Relationship Macro (macht bei dir gerade Ärger)
+    // -> kein @Relationship-Macro nötig (und bei dir zuletzt problematisch)
     var collections: [BookCollection]?
 
     // Imported metadata (bisher)
@@ -102,5 +102,26 @@ final class Book {
         self.tags = tags
         self.notes = notes
         self.collections = nil
+    }
+}
+
+// MARK: - Collections helpers
+
+extension Book {
+    func isInCollection(_ collection: BookCollection) -> Bool {
+        collectionsSafe.contains(where: { $0.id == collection.id })
+    }
+
+    func addToCollection(_ collection: BookCollection) {
+        if isInCollection(collection) { return }
+        var arr = collectionsSafe
+        arr.append(collection)
+        collectionsSafe = arr
+    }
+
+    func removeFromCollection(_ collection: BookCollection) {
+        var arr = collectionsSafe
+        arr.removeAll { $0.id == collection.id }
+        collectionsSafe = arr
     }
 }

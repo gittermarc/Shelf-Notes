@@ -14,7 +14,7 @@ struct Shelf_NotesApp: App {
         let schema = Schema([
             Book.self,
             ReadingGoal.self,
-            BookCollection.self // ✅ NEU
+            BookCollection.self
         ])
 
         // CloudKit sync via iCloud (uses the container from your entitlements)

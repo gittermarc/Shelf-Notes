@@ -549,6 +549,13 @@ struct BookDetailView: View {
 
     @State private var tagsText: String = ""
 
+    // ✅ Collections: Auswahl direkt in den Buchdetails
+    @Query(sort: \BookCollection.name, order: .forward)
+    private var allCollections: [BookCollection]
+
+    @State private var showingNewCollectionSheet = false
+
+
     var body: some View {
         Form {
             // MARK: - Overview
@@ -758,6 +765,41 @@ struct BookDetailView: View {
             }
 
             // MARK: - Classic metadata
+
+            Section("Listen") {
+                if allCollections.isEmpty {
+                    HStack {
+                        Text("Noch keine Listen")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Anlegen") { showingNewCollectionSheet = true }
+                    }
+                } else {
+                    ForEach(allCollections) { col in
+                        Toggle(isOn: Binding(
+                            get: { book.isInCollection(col) },
+                            set: { isOn in
+                                setMembership(isOn, for: col)
+                            }
+                        )) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(col.name.isEmpty ? "Ohne Namen" : col.name)
+                                Text("\(col.booksSafe.count) Bücher")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            }
+                        }
+                    }
+
+                    Button {
+                        showingNewCollectionSheet = true
+                    } label: {
+                        Label("Neue Liste …", systemImage: "plus")
+                    }
+                }
+            }
+
             Section("Metadaten") {
                 if let isbn = book.isbn13, !isbn.isEmpty {
                     LabeledContent("ISBN 13", value: isbn)
@@ -810,6 +852,11 @@ struct BookDetailView: View {
         }
         .navigationTitle(book.title.isEmpty ? "Buchdetails" : book.title)
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showingNewCollectionSheet) {
+            InlineNewCollectionSheet { name in
+                createAndAttachCollection(named: name)
+            }
+        }
         .onAppear { tagsText = book.tags.joined(separator: ", ") }
         .onDisappear { try? modelContext.save() }
     }
@@ -921,6 +968,44 @@ struct BookDetailView: View {
             return "Gelesen bis: \(df.string(from: to))"
         }
         return nil
+    }
+
+
+    // MARK: - Collections (Phase 1) helpers
+
+    private func setMembership(_ isMember: Bool, for collection: BookCollection) {
+        // Keep both sides in sync (book <-> collection)
+        var cols = book.collectionsSafe
+        var books = collection.booksSafe
+
+        if isMember {
+            if !cols.contains(where: { $0.id == collection.id }) { cols.append(collection) }
+            if !books.contains(where: { $0.id == book.id }) { books.append(book) }
+        } else {
+            cols.removeAll { $0.id == collection.id }
+            books.removeAll { $0.id == book.id }
+        }
+
+        book.collectionsSafe = cols
+        collection.booksSafe = books
+        collection.updatedAt = Date()
+
+        try? modelContext.save()
+    }
+
+    private func createAndAttachCollection(named name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        // If same name exists already, just attach.
+        if let existing = allCollections.first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            setMembership(true, for: existing)
+            return
+        }
+
+        let newCol = BookCollection(name: trimmed)
+        modelContext.insert(newCol)
+        setMembership(true, for: newCol)
     }
 
     private func urlFromString(_ s: String?) -> URL? {
@@ -1116,72 +1201,6 @@ struct CollectionsView: View {
             }
         }
     }
-    
-    struct CollectionDetailView: View {
-        @Environment(\.modelContext) private var modelContext
-        @Bindable var collection: BookCollection
-
-        @State private var nameDraft: String = ""
-
-        var body: some View {
-            List {
-                Section("Name") {
-                    TextField("Listenname", text: $nameDraft)
-                        .onChange(of: nameDraft) { _, newValue in
-                            let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                            collection.name = t
-                            collection.updatedAt = Date()
-                            try? modelContext.save()
-                        }
-                }
-
-                Section("Bücher") {
-                    // ✅ books ist optional
-                    if (collection.books ?? []).isEmpty {
-                        ContentUnavailableView(
-                            "Noch leer",
-                            systemImage: "book",
-                            description: Text("Öffne ein Buch → „Listen“ → Haken setzen.")
-                        )
-                    } else {
-                        ForEach(sortedBooks) { b in
-                            NavigationLink {
-                                BookDetailView(book: b)
-                            } label: {
-                                BookRowView(book: b)
-                            }
-                            .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) {
-                                    // ✅ collections ist optional
-                                    var current = b.collections ?? []
-                                    current.removeAll(where: { $0.id == collection.id })
-                                    b.collections = current
-                                    try? modelContext.save()
-                                } label: {
-                                    Label("Entfernen", systemImage: "trash")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .navigationTitle(collection.name.isEmpty ? "Liste" : collection.name)
-            .navigationBarTitleDisplayMode(.inline)
-            .onAppear {
-                nameDraft = collection.name
-            }
-        }
-
-        private var sortedBooks: [Book] {
-            // ✅ books ist optional
-            (collection.books ?? []).sorted { a, b in
-                let ta = a.title.trimmingCharacters(in: .whitespacesAndNewlines)
-                let tb = b.title.trimmingCharacters(in: .whitespacesAndNewlines)
-                return ta.localizedCaseInsensitiveCompare(tb) == .orderedAscending
-            }
-        }
-    }
-
 
     private func deleteCollections(at offsets: IndexSet) {
         for index in offsets {
@@ -1203,6 +1222,67 @@ struct CollectionsView: View {
     }
 }
 
+// ✅ OUTSIDE now: can be linked from anywhere
+struct CollectionDetailView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var collection: BookCollection
+
+    @State private var nameDraft: String = ""
+
+    var body: some View {
+        List {
+            Section("Name") {
+                TextField("Listenname", text: $nameDraft)
+                    .onChange(of: nameDraft) { _, newValue in
+                        let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                        collection.name = t
+                        collection.updatedAt = Date()
+                        try? modelContext.save()
+                    }
+            }
+
+            Section("Bücher") {
+                if (collection.books ?? []).isEmpty {
+                    ContentUnavailableView(
+                        "Noch leer",
+                        systemImage: "book",
+                        description: Text("Öffne ein Buch → „Listen“ → Haken setzen.")
+                    )
+                } else {
+                    ForEach(sortedBooks) { b in
+                        NavigationLink {
+                            BookDetailView(book: b)
+                        } label: {
+                            BookRowView(book: b)
+                        }
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                var current = b.collections ?? []
+                                current.removeAll(where: { $0.id == collection.id })
+                                b.collections = current
+                                try? modelContext.save()
+                            } label: {
+                                Label("Entfernen", systemImage: "trash")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle(collection.name.isEmpty ? "Liste" : collection.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { nameDraft = collection.name }
+    }
+
+    private var sortedBooks: [Book] {
+        (collection.books ?? []).sorted { a, b in
+            let ta = a.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let tb = b.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ta.localizedCaseInsensitiveCompare(tb) == .orderedAscending
+        }
+    }
+
+}
 
 // MARK: - Add Book
 struct AddBookView: View {
@@ -1903,5 +1983,44 @@ struct NewCollectionSheet: View {
         guard !trimmed.isEmpty else { return }
         onCreate(trimmed)
         dismiss()
+    }
+}
+
+
+// MARK: - Sheet: Neue Liste anlegen (Inline)
+
+private struct InlineNewCollectionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let onCreate: (String) -> Void
+
+    @State private var name: String = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Name") {
+                    TextField("Listenname", text: $name)
+                }
+                Section {
+                    Text("Du kannst das später jederzeit umbenennen.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Neue Liste")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Abbrechen") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Anlegen") {
+                        onCreate(name)
+                        dismiss()
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
     }
 }
