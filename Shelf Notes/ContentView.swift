@@ -551,14 +551,16 @@ struct BookDetailView: View {
 
     var body: some View {
         Form {
+            // MARK: - Overview
             Section("Überblick") {
                 HStack(alignment: .top, spacing: 12) {
                     cover
+
                     VStack(alignment: .leading, spacing: 6) {
                         TextField("Titel", text: $book.title)
                             .font(.headline)
 
-                        // Subtitle (optional, only show if exists OR user wants to edit)
+                        // Untertitel: nur zeigen, wenn vorhanden ODER wenn importiert (damit man ihn leicht ergänzen kann)
                         if shouldShowSubtitleField {
                             TextField("Untertitel", text: Binding(
                                 get: { book.subtitle ?? "" },
@@ -595,13 +597,23 @@ struct BookDetailView: View {
                     }
                 }
 
-                // Rating row (nice + compact)
-                if let ratingView = ratingLineView {
-                    ratingView
-                        .padding(.top, 6)
+                // Bewertung kompakt direkt im Überblick
+                if hasRating {
+                    HStack(spacing: 10) {
+                        StarsView(rating: book.averageRating ?? 0)
+
+                        Text(ratingText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+
+                        Spacer()
+                    }
+                    .padding(.top, 6)
                 }
             }
 
+            // MARK: - Read range
             if book.status == .finished {
                 Section("Gelesen") {
                     if let readLine = formattedReadRangeLine(from: book.readFrom, to: book.readTo) {
@@ -640,6 +652,112 @@ struct BookDetailView: View {
                 }
             }
 
+            // MARK: - Bibliophile block (human-friendly)
+            if hasAnyBibliophileInfo {
+                Section("Bibliophile Infos") {
+                    // Online
+                    if hasAnyLinks {
+                        DisclosureGroup {
+                            if let url = urlFromString(book.previewLink) {
+                                PrettyLinkRow(title: "Leseprobe / Vorschau", url: url, systemImage: "book.pages")
+                            }
+                            if let url = urlFromString(book.infoLink) {
+                                PrettyLinkRow(title: "Info-Seite", url: url, systemImage: "info.circle")
+                            }
+                            if let url = urlFromString(book.canonicalVolumeLink) {
+                                PrettyLinkRow(title: "Original bei Google Books", url: url, systemImage: "link")
+                            }
+                        } label: {
+                            Label("Online ansehen", systemImage: "safari")
+                        }
+                    }
+
+                    // Formate & Verfügbarkeit
+                    if hasAnyAvailability {
+                        DisclosureGroup {
+                            if let viewability = prettyViewability {
+                                LabeledContent("Vorschauumfang", value: viewability)
+                            }
+
+                            LabeledContent("EPUB") { availabilityLabel(book.isEpubAvailable) }
+                            LabeledContent("PDF") { availabilityLabel(book.isPdfAvailable) }
+
+                            if let sale = prettySaleability {
+                                LabeledContent("Kaufstatus", value: sale)
+                            }
+
+                            LabeledContent("E-Book") {
+                                boolLabel(book.isEbook, trueText: "Ja", falseText: "Nein")
+                            }
+
+                            LabeledContent("Einbettbar") {
+                                boolIcon(book.isEmbeddable)
+                            }
+
+                            LabeledContent("Public Domain") {
+                                boolIcon(book.isPublicDomain)
+                            }
+                        } label: {
+                            Label("Formate & Verfügbarkeit", systemImage: "doc.on.doc")
+                        }
+                    }
+
+                    // Bewertung
+                    if hasRating {
+                        DisclosureGroup {
+                            HStack(spacing: 10) {
+                                StarsView(rating: book.averageRating ?? 0)
+                                Text(ratingText)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                                Spacer()
+                            }
+
+                            Text("Hinweis: Bewertungen können je nach Buch/Edition stark variieren.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } label: {
+                            Label("Bewertungen", systemImage: "star.bubble")
+                        }
+                    }
+
+                    // Cover-Auswahl
+                    if !book.coverURLCandidates.isEmpty {
+                        DisclosureGroup {
+                            Text("Tippe ein Cover an, um es als Standardcover zu setzen.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 10) {
+                                    ForEach(book.coverURLCandidates, id: \.self) { s in
+                                        Button {
+                                            let current = (book.thumbnailURL ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                                            let isSame = current.caseInsensitiveCompare(s) == .orderedSame
+                                            if !isSame {
+                                                book.thumbnailURL = s
+                                                try? modelContext.save()
+                                            }
+                                        } label: {
+                                            CoverThumb(
+                                                urlString: s,
+                                                isSelected: ((book.thumbnailURL ?? "").caseInsensitiveCompare(s) == .orderedSame)
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        } label: {
+                            Label("Cover auswählen", systemImage: "photo.on.rectangle")
+                        }
+                    }
+                }
+            }
+
+            // MARK: - Classic metadata
             Section("Metadaten") {
                 if let isbn = book.isbn13, !isbn.isEmpty {
                     LabeledContent("ISBN 13", value: isbn)
@@ -657,7 +775,6 @@ struct BookDetailView: View {
                     LabeledContent("Sprache", value: language)
                 }
 
-                // Categories + optional main category
                 if let main = book.mainCategory?.trimmingCharacters(in: .whitespacesAndNewlines),
                    !main.isEmpty {
                     LabeledContent("Hauptkategorie", value: main)
@@ -669,86 +786,7 @@ struct BookDetailView: View {
                 }
             }
 
-            // ✅ New: Links
-            if hasAnyLinks {
-                Section("Links") {
-                    if let url = urlFromString(book.previewLink) {
-                        LinkRow(title: "Vorschau", subtitle: "previewLink", systemImage: "play.rectangle", url: url)
-                    }
-                    if let url = urlFromString(book.infoLink) {
-                        LinkRow(title: "Info", subtitle: "infoLink", systemImage: "info.circle", url: url)
-                    }
-                    if let url = urlFromString(book.canonicalVolumeLink) {
-                        LinkRow(title: "Original", subtitle: "canonical", systemImage: "link", url: url)
-                    }
-                }
-            }
-
-            // ✅ New: Access / Availability
-            if hasAnyAccessInfo {
-                Section("Zugriff & Formate") {
-                    if let v = book.viewability?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !v.isEmpty {
-                        LabeledContent("Viewability", value: prettifyViewability(v))
-                    }
-
-                    LabeledContent("Public Domain") {
-                        Image(systemName: book.isPublicDomain ? "checkmark.circle.fill" : "xmark.circle")
-                            .foregroundStyle(book.isPublicDomain ? .green : .secondary)
-                    }
-
-                    LabeledContent("Embeddable") {
-                        Image(systemName: book.isEmbeddable ? "checkmark.circle.fill" : "xmark.circle")
-                            .foregroundStyle(book.isEmbeddable ? .green : .secondary)
-                    }
-
-                    LabeledContent("EPUB") {
-                        availabilityLabel(book.isEpubAvailable)
-                    }
-
-                    LabeledContent("PDF") {
-                        availabilityLabel(book.isPdfAvailable)
-                    }
-
-                    if let s = book.saleability?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !s.isEmpty {
-                        LabeledContent("Saleability", value: prettifySaleability(s))
-                    }
-
-                    LabeledContent("E-Book") {
-                        Image(systemName: book.isEbook ? "checkmark.circle.fill" : "xmark.circle")
-                            .foregroundStyle(book.isEbook ? .green : .secondary)
-                    }
-                }
-            }
-
-            // ✅ New: Cover variants (tap to use)
-            if !book.coverURLCandidates.isEmpty {
-                Section("Cover-Varianten") {
-                    Text("Tippe ein Cover an, um es als Standardcover zu setzen.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            ForEach(book.coverURLCandidates, id: \.self) { s in
-                                Button {
-                                    let isSame = (book.thumbnailURL ?? "").caseInsensitiveCompare(s) == .orderedSame
-                                    if !isSame {
-                                        book.thumbnailURL = s
-                                        try? modelContext.save()
-                                    }
-                                } label: {
-                                    CoverThumb(urlString: s, isSelected: (book.thumbnailURL ?? "") == s)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                    }
-                }
-            }
-
+            // MARK: - Tags + Notes
             Section("Tags") {
                 TextField("Kommagetrennte Tags", text: $tagsText)
                     .textInputAutocapitalization(.never)
@@ -776,11 +814,10 @@ struct BookDetailView: View {
         .onDisappear { try? modelContext.save() }
     }
 
-    // MARK: - Helpers (UI)
+    // MARK: - Bibliophile computed properties
 
     private var shouldShowSubtitleField: Bool {
         if let s = book.subtitle?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty { return true }
-        // if we have a google volume id, user likely imported -> show field for convenience
         if let id = book.googleVolumeID, !id.isEmpty { return true }
         return false
     }
@@ -791,7 +828,7 @@ struct BookDetailView: View {
         || (book.canonicalVolumeLink?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
     }
 
-    private var hasAnyAccessInfo: Bool {
+    private var hasAnyAvailability: Bool {
         (book.viewability?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
         || book.isPublicDomain
         || book.isEmbeddable
@@ -801,57 +838,37 @@ struct BookDetailView: View {
         || book.isEbook
     }
 
-    private var ratingLineView: AnyView? {
-        guard let avg = book.averageRating, avg > 0 else { return nil }
+    private var hasRating: Bool {
+        if let avg = book.averageRating, avg > 0 { return true }
+        return false
+    }
+
+    private var ratingText: String {
+        let avg = book.averageRating ?? 0
         let count = book.ratingsCount ?? 0
-        return AnyView(
-            HStack(spacing: 8) {
-                StarsView(rating: avg)
-
-                Text(String(format: "%.1f", avg))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-
-                if count > 0 {
-                    Text("(\(count))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-
-                Spacer()
-            }
-        )
-    }
-
-    private func availabilityLabel(_ ok: Bool) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle")
-                .foregroundStyle(ok ? .green : .secondary)
-            Text(ok ? "verfügbar" : "nicht verfügbar")
-                .foregroundStyle(.secondary)
+        if count > 0 {
+            return String(format: "%.1f", avg) + " (\(count))"
         }
+        return String(format: "%.1f", avg)
     }
 
-    private func urlFromString(_ s: String?) -> URL? {
-        guard let s = s?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !s.isEmpty else { return nil }
-        return URL(string: s)
-    }
+    private var prettyViewability: String? {
+        guard let v = book.viewability?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !v.isEmpty else { return nil }
 
-    private func prettifyViewability(_ v: String) -> String {
-        // common values: NO_PAGES, PARTIAL, ALL_PAGES, UNKNOWN (depends on API)
         switch v.uppercased() {
-        case "NO_PAGES": return "Keine Seiten"
-        case "PARTIAL": return "Teilweise"
-        case "ALL_PAGES": return "Alle Seiten"
+        case "NO_PAGES": return "Keine Vorschau"
+        case "PARTIAL": return "Teilansicht"
+        case "ALL_PAGES": return "Vollansicht"
         case "UNKNOWN": return "Unbekannt"
         default: return v
         }
     }
 
-    private func prettifySaleability(_ s: String) -> String {
+    private var prettySaleability: String? {
+        guard let s = book.saleability?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !s.isEmpty else { return nil }
+
         switch s.uppercased() {
         case "FOR_SALE": return "Käuflich"
         case "NOT_FOR_SALE": return "Nicht käuflich"
@@ -859,6 +876,10 @@ struct BookDetailView: View {
         case "FOR_PREORDER": return "Vorbestellbar"
         default: return s
         }
+    }
+
+    private var hasAnyBibliophileInfo: Bool {
+        hasAnyLinks || hasAnyAvailability || hasRating || !book.coverURLCandidates.isEmpty
     }
 
     // MARK: - Existing helpers
@@ -901,15 +922,39 @@ struct BookDetailView: View {
         }
         return nil
     }
+
+    private func urlFromString(_ s: String?) -> URL? {
+        guard let s = s?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private func availabilityLabel(_ ok: Bool) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle")
+                .foregroundStyle(ok ? .green : .secondary)
+            Text(ok ? "verfügbar" : "nicht verfügbar")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func boolIcon(_ ok: Bool) -> some View {
+        Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle")
+            .foregroundStyle(ok ? .green : .secondary)
+    }
+
+    private func boolLabel(_ ok: Bool, trueText: String, falseText: String) -> some View {
+        Text(ok ? trueText : falseText)
+            .foregroundStyle(.secondary)
+    }
 }
 
 // MARK: - Small UI Components
 
-private struct LinkRow: View {
+private struct PrettyLinkRow: View {
     let title: String
-    let subtitle: String
-    let systemImage: String
     let url: URL
+    let systemImage: String
 
     var body: some View {
         Link(destination: url) {
@@ -919,9 +964,11 @@ private struct LinkRow: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                    Text(subtitle)
+
+                    Text(prettyHost(url))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
 
                 Spacer()
@@ -931,28 +978,40 @@ private struct LinkRow: View {
             }
         }
     }
+
+    private func prettyHost(_ url: URL) -> String {
+        if let host = url.host, !host.isEmpty { return host }
+        return url.absoluteString
+    }
 }
 
 private struct StarsView: View {
     let rating: Double
 
     var body: some View {
-        let full = Int(rating.rounded(.down))
-        let hasHalf = (rating - Double(full)) >= 0.5
+        let clamped = min(max(rating, 0), 5)
+        let full = Int(clamped.rounded(.down))
+        let hasHalf = (clamped - Double(full)) >= 0.5
         let empty = max(0, 5 - full - (hasHalf ? 1 : 0))
 
         HStack(spacing: 2) {
             ForEach(0..<full, id: \.self) { _ in
-                Image(systemName: "star.fill").font(.caption).foregroundStyle(.yellow)
+                Image(systemName: "star.fill")
+                    .font(.caption)
+                    .foregroundStyle(.yellow)
             }
             if hasHalf {
-                Image(systemName: "star.leadinghalf.filled").font(.caption).foregroundStyle(.yellow)
+                Image(systemName: "star.leadinghalf.filled")
+                    .font(.caption)
+                    .foregroundStyle(.yellow)
             }
             ForEach(0..<empty, id: \.self) { _ in
-                Image(systemName: "star").font(.caption).foregroundStyle(.secondary)
+                Image(systemName: "star")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
-        .accessibilityLabel("Bewertung \(String(format: "%.1f", rating)) von 5")
+        .accessibilityLabel("Bewertung \(String(format: "%.1f", clamped)) von 5")
     }
 }
 
@@ -989,6 +1048,7 @@ private struct CoverThumb: View {
         .clipped()
     }
 }
+
 
 // MARK: - Add Book
 struct AddBookView: View {
