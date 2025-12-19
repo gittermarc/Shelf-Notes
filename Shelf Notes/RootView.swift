@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct RootView: View {
+    @StateObject private var pro = ProManager()
+
     var body: some View {
         TabView {
             LibraryView()
@@ -35,5 +37,6 @@ struct RootView: View {
                     Label("Einstellungen", systemImage: "gear")
                 }
         }
+        .environmentObject(pro)
     }
 }

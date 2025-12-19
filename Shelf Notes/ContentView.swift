@@ -7,6 +7,8 @@
 
 import SwiftUI
 import SwiftData
+import StoreKit
+import Combine
 
 struct ContentView: View {
     var body: some View {
@@ -554,7 +556,9 @@ struct BookDetailView: View {
     private var allCollections: [BookCollection]
 
     @State private var showingNewCollectionSheet = false
+    @State private var showingPaywall = false
 
+    @EnvironmentObject private var pro: ProManager
 
     var body: some View {
         Form {
@@ -772,7 +776,7 @@ struct BookDetailView: View {
                         Text("Noch keine Listen")
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Button("Anlegen") { showingNewCollectionSheet = true }
+                        Button("Anlegen") { requestNewCollection() }
                     }
                 } else {
                     ForEach(allCollections) { col in
@@ -793,7 +797,7 @@ struct BookDetailView: View {
                     }
 
                     Button {
-                        showingNewCollectionSheet = true
+                        requestNewCollection()
                     } label: {
                         Label("Neue Liste …", systemImage: "plus")
                     }
@@ -856,6 +860,11 @@ struct BookDetailView: View {
             InlineNewCollectionSheet { name in
                 createAndAttachCollection(named: name)
             }
+        }
+        .sheet(isPresented: $showingPaywall) {
+            ProPaywallView(onPurchased: {
+                showingNewCollectionSheet = true
+            })
         }
         .onAppear { tagsText = book.tags.joined(separator: ", ") }
         .onDisappear { try? modelContext.save() }
@@ -972,6 +981,16 @@ struct BookDetailView: View {
 
 
     // MARK: - Collections (Phase 1) helpers
+
+    private func requestNewCollection() {
+        let count = allCollections.count
+        if pro.hasPro || count < ProManager.maxFreeCollections {
+            showingNewCollectionSheet = true
+        } else {
+            showingPaywall = true
+        }
+    }
+
 
     private func setMembership(_ isMember: Bool, for collection: BookCollection) {
         // Keep both sides in sync (book <-> collection)
@@ -1143,6 +1162,9 @@ struct CollectionsView: View {
     private var collections: [BookCollection]
 
     @State private var showingNew = false
+    @State private var showingPaywall = false
+
+    @EnvironmentObject private var pro: ProManager
 
     var body: some View {
         NavigationStack {
@@ -1182,7 +1204,7 @@ struct CollectionsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        showingNew = true
+                        requestNewCollection()
                     } label: {
                         Image(systemName: "plus")
                     }
@@ -1191,14 +1213,26 @@ struct CollectionsView: View {
             }
             .sheet(isPresented: $showingNew) {
                 NewCollectionSheet { name in
-                    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !trimmed.isEmpty else { return }
-
-                    let new = BookCollection(name: trimmed)
-                    modelContext.insert(new)
+                    let col = BookCollection(name: name)
+                    modelContext.insert(col)
                     try? modelContext.save()
                 }
             }
+            .sheet(isPresented: $showingPaywall) {
+                ProPaywallView(onPurchased: {
+                    showingNew = true
+                })
+            }
+        }
+    }
+
+
+    private func requestNewCollection() {
+        let count = collections.count
+        if pro.hasPro || count < ProManager.maxFreeCollections {
+            showingNew = true
+        } else {
+            showingPaywall = true
         }
     }
 
@@ -1882,6 +1916,9 @@ struct TagsView: View {
 
 // MARK: - Settings
 struct SettingsView: View {
+    @EnvironmentObject private var pro: ProManager
+    @State private var showingPaywall = false
+
     var body: some View {
         NavigationStack {
             List {
@@ -1896,11 +1933,45 @@ struct SettingsView: View {
                 }
 
                 Section("Pro") {
-                    Text("Paywall/Einmalkauf für extra Listen (kommt).")
-                        .foregroundStyle(.secondary)
+                    if pro.hasPro {
+                        Label("Pro ist aktiv", systemImage: "checkmark.seal.fill")
+                            .foregroundStyle(.secondary)
+
+                        Text("Unbegrenzte Listen sind freigeschaltet.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Du kannst kostenlos bis zu \(ProManager.maxFreeCollections) Listen anlegen. Für weitere Listen brauchst du den Einmalkauf.")
+                            .font(.subheadline)
+
+                        Button {
+                            showingPaywall = true
+                        } label: {
+                            Label("Einmalkauf freischalten", systemImage: "sparkles")
+                        }
+                    }
+
+                    Button {
+                        Task { await pro.restore() }
+                    } label: {
+                        Label("Käufe wiederherstellen", systemImage: "arrow.clockwise")
+                    }
+
+                    if let err = pro.lastError, !err.isEmpty {
+                        Text(err)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
                 }
             }
             .navigationTitle("Einstellungen")
+            .sheet(isPresented: $showingPaywall) {
+                ProPaywallView()
+            }
+            .task {
+                await pro.refreshEntitlements()
+                await pro.loadProductIfNeeded()
+            }
         }
     }
 }
@@ -2022,5 +2093,255 @@ private struct InlineNewCollectionSheet: View {
                 }
             }
         }
+    }
+}
+// MARK: - Pro / Paywall (Einmalkauf für extra Listen)
+
+@MainActor
+final class ProManager: ObservableObject {
+    /// ⚠️ TODO: Setze hier später genau die Product ID aus App Store Connect ein.
+    static let productID = "001"
+    static let maxFreeCollections = 2
+
+    @Published private(set) var hasPro: Bool = false
+    @Published private(set) var product: Product?
+    @Published private(set) var isBusy: Bool = false
+    @Published var lastError: String?
+
+    private var updatesTask: Task<Void, Never>?
+
+    init() {
+        updatesTask = Task { await listenForTransactions() }
+        Task {
+            await refreshEntitlements()
+            await loadProductIfNeeded()
+        }
+    }
+
+    deinit {
+        updatesTask?.cancel()
+    }
+
+    func loadProductIfNeeded() async {
+        guard product == nil else { return }
+        do {
+            let products = try await Product.products(for: [Self.productID])
+            product = products.first
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func refreshEntitlements() async {
+        var entitled = false
+
+        for await result in Transaction.currentEntitlements {
+            guard case .verified(let transaction) = result else { continue }
+            guard transaction.productID == Self.productID else { continue }
+            // wenn revoked -> nicht gültig
+            if transaction.revocationDate == nil {
+                entitled = true
+                break
+            }
+        }
+
+        hasPro = entitled
+    }
+
+    func purchase() async -> Bool {
+        lastError = nil
+        await loadProductIfNeeded()
+
+        guard let product else {
+            lastError = "Produkt ist (noch) nicht verfügbar. Prüfe die Product ID und App Store Connect."
+            return false
+        }
+
+        isBusy = true
+        defer { isBusy = false }
+
+        do {
+            let result = try await product.purchase()
+
+            switch result {
+            case .success(let verification):
+                let transaction = try checkVerified(verification)
+                await transaction.finish()
+                await refreshEntitlements()
+                return true
+
+            case .userCancelled:
+                return false
+
+            case .pending:
+                lastError = "Kauf ausstehend (z.B. Familienfreigabe/Bestätigung)."
+                return false
+
+            @unknown default:
+                lastError = "Unbekanntes Kauf-Ergebnis."
+                return false
+            }
+        } catch {
+            lastError = error.localizedDescription
+            return false
+        }
+    }
+
+    func restore() async {
+        lastError = nil
+        isBusy = true
+        defer { isBusy = false }
+
+        do {
+            try await AppStore.sync()
+            await refreshEntitlements()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func listenForTransactions() async {
+        for await update in Transaction.updates {
+            do {
+                let transaction = try checkVerified(update)
+                // Entitlement-Status aktualisieren, dann finishen
+                await refreshEntitlements()
+                await transaction.finish()
+            } catch {
+                // ignore invalid transactions
+            }
+        }
+    }
+
+    private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
+        switch result {
+        case .unverified(_, let error):
+            throw error
+        case .verified(let signed):
+            return signed
+        }
+    }
+}
+
+struct ProPaywallView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var pro: ProManager
+
+    var onPurchased: (() -> Void)? = nil
+
+    @State private var localError: String?
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 14) {
+                VStack(spacing: 8) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 38))
+                        .padding(.top, 6)
+
+                    Text("Mehr Listen freischalten")
+                        .font(.title2)
+                        .bold()
+
+                    Text("Kostenlos: bis zu \(ProManager.maxFreeCollections) Listen.\nMit Einmalkauf: unbegrenzt.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    featureRow("Unbegrenzte Collections/Listen")
+                    featureRow("Ideal für Reihen, Themen, Challenges")
+                    featureRow("Kauf gilt auf iPhone & iPad (Apple-ID)")
+                }
+                .padding(14)
+                .background(.thinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .padding(.horizontal)
+
+                Spacer(minLength: 0)
+
+                VStack(spacing: 10) {
+                    Button {
+                        Task {
+                            localError = nil
+                            let ok = await pro.purchase()
+                            if ok {
+                                dismiss()
+                                onPurchased?()
+                            } else if let err = pro.lastError, !err.isEmpty {
+                                localError = err
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if pro.isBusy {
+                                ProgressView()
+                            } else {
+                                Text(buyButtonTitle)
+                                    .font(.headline)
+                            }
+                            Spacer()
+                        }
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(pro.isBusy || pro.hasPro)
+
+                    Button {
+                        Task { await pro.restore() }
+                    } label: {
+                        Text("Käufe wiederherstellen")
+                    }
+                    .disabled(pro.isBusy)
+
+                    if pro.hasPro {
+                        Text("Pro ist bereits aktiv ✅")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let localError, !localError.isEmpty {
+                        Text(localError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 18)
+            }
+            .navigationTitle("Pro")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Schließen") { dismiss() }
+                }
+            }
+            .task {
+                await pro.refreshEntitlements()
+                await pro.loadProductIfNeeded()
+            }
+        }
+    }
+
+    private var buyButtonTitle: String {
+        if pro.hasPro { return "Bereits freigeschaltet" }
+        if let product = pro.product {
+            return "Einmalkauf \(product.displayPrice)"
+        }
+        return "Einmalkauf"
+    }
+
+    private func featureRow(_ text: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.secondary)
+            Text(text)
+            Spacer()
+        }
+        .font(.subheadline)
     }
 }
