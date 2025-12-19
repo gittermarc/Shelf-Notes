@@ -13,7 +13,8 @@ struct Shelf_NotesApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Book.self,
-            ReadingGoal.self
+            ReadingGoal.self,
+            BookCollection.self // ✅ NEU
         ])
 
         // CloudKit sync via iCloud (uses the container from your entitlements)

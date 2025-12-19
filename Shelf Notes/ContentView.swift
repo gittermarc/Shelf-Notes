@@ -1049,6 +1049,160 @@ private struct CoverThumb: View {
     }
 }
 
+// MARK: - Collections (Phase 1)
+
+struct CollectionsView: View {
+    @Environment(\.modelContext) private var modelContext
+
+    @Query(sort: \BookCollection.createdAt, order: .reverse)
+    private var collections: [BookCollection]
+
+    @State private var showingNew = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if collections.isEmpty {
+                    ContentUnavailableView(
+                        "Noch keine Listen",
+                        systemImage: "rectangle.stack",
+                        description: Text("Lege Listen an – z.B. „NYC“, „Justizthriller“, „KI“, „2025 Highlights“…")
+                    )
+                } else {
+                    ForEach(collections) { c in
+                        NavigationLink {
+                            CollectionDetailView(collection: c)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(c.name.isEmpty ? "Ohne Namen" : c.name)
+
+                                    // ✅ books ist optional -> safe count
+                                    Text("\((c.books ?? []).count) Bücher")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .monospacedDigit()
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                    .onDelete(perform: deleteCollections)
+                }
+            }
+            .navigationTitle("Listen")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingNew = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("Neue Liste")
+                }
+            }
+            .sheet(isPresented: $showingNew) {
+                NewCollectionSheet { name in
+                    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { return }
+
+                    let new = BookCollection(name: trimmed)
+                    modelContext.insert(new)
+                    try? modelContext.save()
+                }
+            }
+        }
+    }
+    
+    struct CollectionDetailView: View {
+        @Environment(\.modelContext) private var modelContext
+        @Bindable var collection: BookCollection
+
+        @State private var nameDraft: String = ""
+
+        var body: some View {
+            List {
+                Section("Name") {
+                    TextField("Listenname", text: $nameDraft)
+                        .onChange(of: nameDraft) { _, newValue in
+                            let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                            collection.name = t
+                            collection.updatedAt = Date()
+                            try? modelContext.save()
+                        }
+                }
+
+                Section("Bücher") {
+                    // ✅ books ist optional
+                    if (collection.books ?? []).isEmpty {
+                        ContentUnavailableView(
+                            "Noch leer",
+                            systemImage: "book",
+                            description: Text("Öffne ein Buch → „Listen“ → Haken setzen.")
+                        )
+                    } else {
+                        ForEach(sortedBooks) { b in
+                            NavigationLink {
+                                BookDetailView(book: b)
+                            } label: {
+                                BookRowView(book: b)
+                            }
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    // ✅ collections ist optional
+                                    var current = b.collections ?? []
+                                    current.removeAll(where: { $0.id == collection.id })
+                                    b.collections = current
+                                    try? modelContext.save()
+                                } label: {
+                                    Label("Entfernen", systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle(collection.name.isEmpty ? "Liste" : collection.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                nameDraft = collection.name
+            }
+        }
+
+        private var sortedBooks: [Book] {
+            // ✅ books ist optional
+            (collection.books ?? []).sorted { a, b in
+                let ta = a.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                let tb = b.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                return ta.localizedCaseInsensitiveCompare(tb) == .orderedAscending
+            }
+        }
+    }
+
+
+    private func deleteCollections(at offsets: IndexSet) {
+        for index in offsets {
+            let col = collections[index]
+
+            // ✅ books ist optional
+            let booksInCol = col.books ?? []
+
+            // defensive: remove relation explicitly (CloudKit kann sonst manchmal zicken)
+            for b in booksInCol {
+                var current = b.collections ?? []
+                current.removeAll(where: { $0.id == col.id })
+                b.collections = current
+            }
+
+            modelContext.delete(col)
+        }
+        try? modelContext.save()
+    }
+}
+
 
 // MARK: - Add Book
 struct AddBookView: View {
@@ -1646,6 +1800,31 @@ struct TagsView: View {
     }
 }
 
+// MARK: - Settings
+struct SettingsView: View {
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Export") {
+                    Text("PDF-Export (kommt)")
+                    Text("Markdown-Export (kommt)")
+                }
+
+                Section("Sync") {
+                    Text("iCloud-Sync ist aktiv (CloudKit).")
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("Pro") {
+                    Text("Paywall/Einmalkauf für extra Listen (kommt).")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Einstellungen")
+        }
+    }
+}
+
 // MARK: - UI: removable chip
 struct TagChip: View {
     let text: String
@@ -1671,5 +1850,58 @@ struct TagChip: View {
         .padding(.vertical, 6)
         .background(.thinMaterial)
         .clipShape(Capsule())
+    }
+}
+
+// MARK: - New Collection Sheet
+
+struct NewCollectionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let onCreate: (String) -> Void
+
+    @State private var name: String = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Name") {
+                    TextField("z.B. „NYC“, „Thriller 2025“, „KI“ …", text: $name)
+                        .focused($focused)
+                        .submitLabel(.done)
+                        .onSubmit { create() }
+                }
+
+                Section {
+                    Text("Tipp: Du kannst Bücher später in der Buch-Detailansicht zu Listen hinzufügen.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Neue Liste")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Abbrechen") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Erstellen") { create() }
+                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    focused = true
+                }
+            }
+        }
+    }
+
+    private func create() {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        onCreate(trimmed)
+        dismiss()
     }
 }

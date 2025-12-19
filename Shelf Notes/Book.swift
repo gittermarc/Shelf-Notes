@@ -19,7 +19,6 @@ enum ReadingStatus: String, Codable, CaseIterable, Identifiable {
 @Model
 final class Book {
     // CloudKit/SwiftData: KEIN @Attribute(.unique)
-    // UUID bleibt trotzdem stabil und eindeutig genug für dich
     var id: UUID = UUID()
 
     // Core
@@ -33,6 +32,11 @@ final class Book {
     // Reading period (für Zeitleiste / Goals)
     var readFrom: Date?
     var readTo: Date?
+
+    // ✅ Collections / Listen (many-to-many)
+    // CloudKit: Beziehungen müssen optional sein
+    // -> KEIN @Relationship Macro (macht bei dir gerade Ärger)
+    var collections: [BookCollection]?
 
     // Imported metadata (bisher)
     var googleVolumeID: String?
@@ -79,6 +83,12 @@ final class Book {
         set { statusRawValue = newValue.rawValue }
     }
 
+    // Komfort: nil wie leeres Array behandeln
+    var collectionsSafe: [BookCollection] {
+        get { collections ?? [] }
+        set { collections = newValue }
+    }
+
     init(
         title: String,
         author: String = "",
@@ -91,5 +101,6 @@ final class Book {
         self.statusRawValue = status.rawValue
         self.tags = tags
         self.notes = notes
+        self.collections = nil
     }
 }

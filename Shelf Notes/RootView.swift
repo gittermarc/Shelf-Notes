@@ -15,6 +15,11 @@ struct RootView: View {
                     Label("Bibliothek", systemImage: "books.vertical")
                 }
 
+            CollectionsView()
+                .tabItem {
+                    Label("Listen", systemImage: "rectangle.stack")
+                }
+
             GoalsView()
                 .tabItem {
                     Label("Ziele", systemImage: "target")
@@ -23,6 +28,11 @@ struct RootView: View {
             TagsView()
                 .tabItem {
                     Label("Tags", systemImage: "tag")
+                }
+
+            SettingsView()
+                .tabItem {
+                    Label("Einstellungen", systemImage: "gear")
                 }
         }
     }
