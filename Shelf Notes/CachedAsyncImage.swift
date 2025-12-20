@@ -23,12 +23,16 @@ final class ImageMemoryCache {
     func setImage(_ image: UIImage, for url: URL) {
         cache.setObject(image, forKey: url as NSURL)
     }
+
+    func clear() {
+        cache.removeAllObjects()
+    }
 }
 
 // MARK: - Disk cache (local-only)
 
-/// Simple, local-only disk cache stored in the app's Caches directory.
-/// This avoids re-downloading covers on every app launch.
+/// Simple local-only disk cache stored in the app's Caches directory.
+/// Prevents re-downloading covers on every app launch.
 final class ImageDiskCache {
     static let shared = ImageDiskCache()
 
@@ -43,6 +47,11 @@ final class ImageDiskCache {
         if !fm.fileExists(atPath: dir.path) {
             try? fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: nil)
         }
+    }
+
+    private func sha256Hex(_ s: String) -> String {
+        let digest = SHA256.hash(data: Data(s.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 
     private func cacheFileURL(for url: URL) -> URL {
@@ -60,13 +69,13 @@ final class ImageDiskCache {
 
     func store(data: Data, for url: URL) {
         let fileURL = cacheFileURL(for: url)
-        // Atomic write to avoid partially written files.
         try? data.write(to: fileURL, options: [.atomic])
     }
 
-    private func sha256Hex(_ s: String) -> String {
-        let digest = SHA256.hash(data: Data(s.utf8))
-        return digest.map { String(format: "%02x", $0) }.joined()
+    func clearAll() {
+        // remove folder and recreate
+        try? fm.removeItem(at: folderURL)
+        try? fm.createDirectory(at: folderURL, withIntermediateDirectories: true, attributes: nil)
     }
 }
 
@@ -114,7 +123,6 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
             }
         }
         .onChange(of: url) { _, _ in
-            // When url changes on the same view instance, reset state so it can load again.
             uiImage = nil
             isLoading = false
         }
@@ -123,43 +131,30 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
         }
     }
 
+    @MainActor
     private func loadIfNeeded() async {
+        guard !isLoading else { return }
         guard let url else { return }
-
-        // prevent duplicate loads per-view instance
-        let shouldStart: Bool = await MainActor.run {
-            if isLoading { return false }
-            isLoading = true
-            return true
-        }
-        guard shouldStart else { return }
-
-        defer {
-            Task { @MainActor in
-                isLoading = false
-            }
-        }
 
         // 1) Memory cache
         if let cached = ImageMemoryCache.shared.image(for: url) {
-            await MainActor.run {
-                uiImage = cached
-                onLoadResult?(true)
-            }
+            uiImage = cached
+            onLoadResult?(true)
             return
         }
 
-        // 2) Disk cache (local-only)
+        // 2) Disk cache
         if let diskImg = ImageDiskCache.shared.image(for: url) {
             ImageMemoryCache.shared.setImage(diskImg, for: url)
-            await MainActor.run {
-                uiImage = diskImg
-                onLoadResult?(true)
-            }
+            uiImage = diskImg
+            onLoadResult?(true)
             return
         }
 
-        // 3) Network (still allowing URLCache as a bonus)
+        isLoading = true
+        defer { isLoading = false }
+
+        // 3) Network (URLCache as a bonus)
         var request = URLRequest(url: url)
         request.cachePolicy = .returnCacheDataElseLoad
 
@@ -167,30 +162,28 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
             let (data, response) = try await URLSession.shared.data(for: request)
 
             if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                await MainActor.run { onLoadResult?(false) }
+                onLoadResult?(false)
                 return
             }
 
             guard let img = UIImage(data: data) else {
-                await MainActor.run { onLoadResult?(false) }
+                onLoadResult?(false)
                 return
             }
 
-            // Persist bytes locally so the next app launch is instant.
+            // persist to disk + memory
             ImageDiskCache.shared.store(data: data, for: url)
             ImageMemoryCache.shared.setImage(img, for: url)
 
-            await MainActor.run {
-                uiImage = img
-                onLoadResult?(true)
-            }
+            uiImage = img
+            onLoadResult?(true)
         } catch {
-            await MainActor.run { onLoadResult?(false) }
+            onLoadResult?(false)
         }
     }
 }
 
-// MARK: - CoverCandidatesImage (tries the next URL if loading fails)
+// MARK: - CoverCandidatesImage (tries next URL if loading fails)
 
 struct CoverCandidatesImage<Content: View, Placeholder: View>: View {
     let urlStrings: [String]
@@ -259,13 +252,12 @@ struct CoverCandidatesImage<Content: View, Placeholder: View>: View {
                     content: content,
                     placeholder: placeholder
                 )
-                .id(url) // force a fresh instance when switching candidates
+                .id(url)
             } else {
                 placeholder()
             }
         }
         .onAppear {
-            // pick the preferred URL if it's in the list, otherwise start at 0
             let arr = cleaned
             if let preferredURLString {
                 let pref = preferredURLString.trimmingCharacters(in: .whitespacesAndNewlines)

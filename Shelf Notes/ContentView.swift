@@ -2256,6 +2256,9 @@ struct SettingsView: View {
     @EnvironmentObject private var pro: ProManager
     @State private var showingPaywall = false
 
+    @State private var confirmClearCoverCache = false
+    @State private var cacheInfoText: String? = nil
+
     var body: some View {
         NavigationStack {
             List {
@@ -2267,6 +2270,24 @@ struct SettingsView: View {
                 Section("Sync") {
                     Text("iCloud-Sync ist aktiv (CloudKit).")
                         .foregroundStyle(.secondary)
+                }
+
+                Section("Cover") {
+                    Button(role: .destructive) {
+                        confirmClearCoverCache = true
+                    } label: {
+                        Label("Cover-Cache löschen", systemImage: "trash")
+                    }
+
+                    Text("Löscht lokal gespeicherte Cover auf diesem Gerät. Beim nächsten Anzeigen werden sie bei Bedarf neu geladen.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if let cacheInfoText {
+                        Text(cacheInfoText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Section("Pro") {
@@ -2302,6 +2323,16 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Einstellungen")
+            .alert("Cover-Cache löschen?", isPresented: $confirmClearCoverCache) {
+                Button("Löschen", role: .destructive) {
+                    ImageDiskCache.shared.clearAll()
+                    ImageMemoryCache.shared.clear()
+                    cacheInfoText = "Cache gelöscht: \(Date().formatted(date: .numeric, time: .shortened))"
+                }
+                Button("Abbrechen", role: .cancel) { }
+            } message: {
+                Text("Die App lädt Cover bei Bedarf erneut aus dem Netz.")
+            }
             .sheet(isPresented: $showingPaywall) {
                 ProPaywallView()
             }
@@ -2312,6 +2343,7 @@ struct SettingsView: View {
         }
     }
 }
+
 
 // MARK: - UI: removable chip
 struct TagChip: View {
