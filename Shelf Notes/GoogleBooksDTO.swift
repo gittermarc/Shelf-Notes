@@ -7,20 +7,18 @@
 
 import Foundation
 
-// MARK: - Root Response
+// MARK: - Top-level response
 
 struct GoogleBooksVolumesResponse: Decodable {
     let totalItems: Int?
     let items: [GoogleBookVolume]?
 }
 
-// MARK: - Volume Item
+// MARK: - Volume
 
 struct GoogleBookVolume: Decodable, Identifiable {
     let id: String
     let volumeInfo: VolumeInfo
-
-    // Additional rich metadata you want:
     let accessInfo: AccessInfo?
     let saleInfo: SaleInfo?
 }
@@ -41,18 +39,15 @@ struct VolumeInfo: Decodable {
     let mainCategory: String?
     let language: String?
 
-    // Ratings
-    let averageRating: Double?
-    let ratingsCount: Int?
+    let industryIdentifiers: [IndustryIdentifier]?
+    let imageLinks: ImageLinks?
 
-    // Links
     let previewLink: String?
     let infoLink: String?
     let canonicalVolumeLink: String?
 
-    // IDs & Covers
-    let industryIdentifiers: [IndustryIdentifier]?
-    let imageLinks: ImageLinks?
+    let averageRating: Double?
+    let ratingsCount: Int?
 }
 
 struct IndustryIdentifier: Decodable {
@@ -60,122 +55,160 @@ struct IndustryIdentifier: Decodable {
     let identifier: String?
 }
 
-// MARK: - ImageLinks (more variants)
-
 struct ImageLinks: Decodable {
     let smallThumbnail: String?
     let thumbnail: String?
 
-    // Often present depending on record quality:
+    // Not always present, but supported by the API for many volumes
     let small: String?
     let medium: String?
     let large: String?
     let extraLarge: String?
 }
 
-// MARK: - AccessInfo (viewability / embeddable / epub/pdf)
+// MARK: - AccessInfo
 
 struct AccessInfo: Decodable {
-    let country: String?
-    let viewability: String?     // e.g. "PARTIAL", "ALL_PAGES", "NO_PAGES"
-    let embeddable: Bool?
+    let viewability: String?
     let publicDomain: Bool?
+    let embeddable: Bool?
 
-    let epub: BookFormatAvailability?
-    let pdf: BookFormatAvailability?
+    let epub: DigitalFormat?
+    let pdf: DigitalFormat?
 }
 
-struct BookFormatAvailability: Decodable {
+struct DigitalFormat: Decodable {
     let isAvailable: Bool?
-    let acsTokenLink: String?    // sometimes present for downloads/preview flows
+    let acsTokenLink: String?
 }
 
-// MARK: - SaleInfo (saleability)
+// MARK: - SaleInfo
 
 struct SaleInfo: Decodable {
-    let country: String?
-    let saleability: String?     // e.g. "FOR_SALE", "NOT_FOR_SALE", "FREE"
+    let saleability: String?
     let isEbook: Bool?
 }
 
-// MARK: - Convenience accessors
+// MARK: - Helpers / computed mapping
 
 extension GoogleBookVolume {
-    // Existing (kept for compatibility)
-    var bestTitle: String { volumeInfo.title ?? "Ohne Titel" }
+    var bestTitle: String { (volumeInfo.title ?? "Ohne Titel").trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var bestSubtitle: String? {
+        let s = (volumeInfo.subtitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return s.isEmpty ? nil : s
+    }
 
     var bestAuthors: String {
-        let a = volumeInfo.authors ?? []
+        let a = (volumeInfo.authors ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
         return a.isEmpty ? "" : a.joined(separator: ", ")
     }
 
     var isbn13: String? {
         let ids = volumeInfo.industryIdentifiers ?? []
-        if let isbn13 = ids.first(where: { $0.type == "ISBN_13" })?.identifier {
-            return isbn13
+        if let raw = ids.first(where: { $0.type == "ISBN_13" })?.identifier {
+            let cleaned = raw.filter(\.isNumber)
+            return cleaned.isEmpty ? nil : cleaned
         }
         return nil
     }
 
-    private var isbn13DigitsOnly: String? {
-        guard let raw = isbn13 else { return nil }
-        let digits = raw.filter(\.isNumber)
-        return digits.count == 13 ? digits : nil
+    var allCategories: [String] {
+        var out: [String] = []
+        func add(_ s: String?) {
+            guard let s else { return }
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty else { return }
+            if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
+                out.append(t)
+            }
+        }
+
+        add(volumeInfo.mainCategory)
+        for c in (volumeInfo.categories ?? []) { add(c) }
+        return out
     }
 
-    /// Open Library Covers API candidates (best-first). `default=false` avoids placeholder images.
-    private var openLibraryCoverURLCandidates: [String] {
-        guard let isbn = isbn13DigitsOnly else { return [] }
-        return [
-            "https://covers.openlibrary.org/b/isbn/\(isbn)-L.jpg?default=false",
-            "https://covers.openlibrary.org/b/isbn/\(isbn)-M.jpg?default=false"
-        ]
-    }
+    // MARK: Links
 
-    // New: subtitle
-    var bestSubtitle: String? {
-        let s = volumeInfo.subtitle?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return (s?.isEmpty == false) ? s : nil
-    }
-
-    // New: links
     var previewLink: String? { toHTTPS(volumeInfo.previewLink) }
     var infoLink: String? { toHTTPS(volumeInfo.infoLink) }
     var canonicalVolumeLink: String? { toHTTPS(volumeInfo.canonicalVolumeLink) }
 
-    // New: ratings
+    // MARK: Ratings
+
     var averageRating: Double? { volumeInfo.averageRating }
     var ratingsCount: Int? { volumeInfo.ratingsCount }
 
-    // New: categories / genre-like
-    var allCategories: [String] {
-        var set = Set<String>()
-        if let main = volumeInfo.mainCategory?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !main.isEmpty { set.insert(main) }
+    // MARK: Access
 
-        for c in (volumeInfo.categories ?? []) {
-            let v = c.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !v.isEmpty { set.insert(v) }
-        }
-        return Array(set).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-    }
-
-    // New: access/viewability flags
     var viewability: String? { accessInfo?.viewability }
     var isPublicDomain: Bool { accessInfo?.publicDomain ?? false }
     var isEmbeddable: Bool { accessInfo?.embeddable ?? false }
 
-    // New: EPUB/PDF availability
     var isEpubAvailable: Bool { accessInfo?.epub?.isAvailable ?? false }
     var isPdfAvailable: Bool { accessInfo?.pdf?.isAvailable ?? false }
+
     var epubAcsTokenLink: String? { toHTTPS(accessInfo?.epub?.acsTokenLink) }
     var pdfAcsTokenLink: String? { toHTTPS(accessInfo?.pdf?.acsTokenLink) }
 
-    // New: saleability
+    // MARK: Sale
+
     var saleability: String? { saleInfo?.saleability }
     var isEbook: Bool { saleInfo?.isEbook ?? false }
 
-    // Helper (kept, but now reused for more fields)
+    // MARK: Cover candidates
+
+    /// OpenLibrary fallback (best-first). Uses `default=false` so we can detect missing covers via 404.
+    var openLibraryCoverURLCandidates: [String] {
+        guard let isbn = isbn13 else { return [] }
+        return [
+            "https://covers.openlibrary.org/b/isbn/\(isbn)-L.jpg?default=false",
+            "https://covers.openlibrary.org/b/isbn/\(isbn)-M.jpg?default=false",
+            "https://covers.openlibrary.org/b/isbn/\(isbn)-S.jpg?default=false"
+        ]
+    }
+
+    /// Best-first candidates. Not all fields exist for every volume.
+    var coverURLCandidates: [String] {
+        var out: [String] = []
+
+        func add(_ raw: String?) {
+            guard let s = toHTTPS(raw) else { return }
+            if !out.contains(where: { $0.caseInsensitiveCompare(s) == .orderedSame }) {
+                out.append(s)
+            }
+        }
+
+        // Prefer larger if present
+        add(volumeInfo.imageLinks?.extraLarge)
+        add(volumeInfo.imageLinks?.large)
+        add(volumeInfo.imageLinks?.medium)
+        add(volumeInfo.imageLinks?.small)
+
+        // Classic fields
+        add(volumeInfo.imageLinks?.thumbnail)
+        add(volumeInfo.imageLinks?.smallThumbnail)
+
+        // OpenLibrary fallback at the end
+        for s in openLibraryCoverURLCandidates { add(s) }
+
+        return out
+    }
+
+    var bestCoverURLString: String? { coverURLCandidates.first }
+
+    /// Kept for older call sites (if you only want the classic thumbnail field).
+    var bestThumbnailURLString: String? {
+        // Prefer thumbnail over smallThumbnail
+        let raw = volumeInfo.imageLinks?.thumbnail ?? volumeInfo.imageLinks?.smallThumbnail
+        return toHTTPS(raw)
+    }
+
+    // MARK: - Internal helpers
+
     private func toHTTPS(_ urlString: String?) -> String? {
         guard var s = urlString?.trimmingCharacters(in: .whitespacesAndNewlines),
               !s.isEmpty else { return nil }
@@ -187,51 +220,5 @@ extension GoogleBookVolume {
         }
 
         return s
-    }
-
-    /// Existing behavior preserved: best "thumbnail" or "smallThumbnail"
-    var bestThumbnailURLString: String? {
-        let raw = volumeInfo.imageLinks?.thumbnail ?? volumeInfo.imageLinks?.smallThumbnail
-        return toHTTPS(raw)
-    }
-
-    /// New: more cover variants — returns ALL candidates, best-first
-    var coverURLCandidates: [String] {
-        // 1) Google imageLinks candidates (if any)
-        let googleLinks = volumeInfo.imageLinks
-
-        let rawCandidates: [String?] = [
-            googleLinks?.extraLarge,
-            googleLinks?.large,
-            googleLinks?.medium,
-            googleLinks?.small,
-            googleLinks?.thumbnail,
-            googleLinks?.smallThumbnail
-        ]
-
-        // normalize + dedupe while keeping order
-        var seen = Set<String>()
-        var out: [String] = []
-
-        for raw in rawCandidates {
-            guard let https = toHTTPS(raw) else { continue }
-            if seen.contains(https) { continue }
-            seen.insert(https)
-            out.append(https)
-        }
-
-        // 2) OpenLibrary fallback candidates (only if we have an ISBN)
-        for ol in openLibraryCoverURLCandidates {
-            if seen.contains(ol) { continue }
-            seen.insert(ol)
-            out.append(ol)
-        }
-
-        return out
-    }
-
-    /// New: "best" cover URL using the expanded candidate list
-    var bestCoverURLString: String? {
-        coverURLCandidates.first
     }
 }

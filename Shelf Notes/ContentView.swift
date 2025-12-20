@@ -361,7 +361,7 @@ struct LibraryView: View {
                             NavigationLink {
                                 BookDetailView(book: b)
                             } label: {
-                                LibraryCoverThumb(urlString: b.thumbnailURL)
+                                LibraryCoverThumb(book: b)
                             }
                             .buttonStyle(.plain)
                         }
@@ -749,6 +749,7 @@ struct LibraryView: View {
 
 // MARK: - Row
 struct BookRowView: View {
+    @Environment(\.modelContext) private var modelContext
     let book: Book
 
     var body: some View {
@@ -798,16 +799,26 @@ struct BookRowView: View {
 
     @ViewBuilder
     private var cover: some View {
-        if let urlString = book.bestCoverURLString, let url = URL(string: urlString) {
-            AsyncImage(url: url) { image in
+        let candidates = book.coverCandidatesAll
+
+        if !candidates.isEmpty {
+            CoverCandidatesImage(
+                urlStrings: candidates,
+                preferredURLString: book.thumbnailURL,
+                contentMode: .fit,
+                onResolvedURL: { resolvedURL in
+                    // Persist the working hit so next time it's instant.
+                    book.persistResolvedCoverURL(resolvedURL)
+                    try? modelContext.save()
+                }
+            ) { image in
                 image.resizable().scaledToFit()
             } placeholder: {
-                RoundedRectangle(cornerRadius: 8)
-                    .opacity(0.15)
-                    .overlay(Image(systemName: "book").opacity(0.6))
+                ProgressView()
             }
             .frame(width: 44, height: 66)
-            .clipShape(RoundedRectangle(cornerRadius: 8))} else {
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        } else {
             RoundedRectangle(cornerRadius: 8)
                 .frame(width: 44, height: 66)
                 .opacity(0.15)
@@ -1213,10 +1224,22 @@ struct BookDetailView: View {
 
     @ViewBuilder
     private var cover: some View {
-        if let urlString = book.bestCoverURLString, let url = URL(string: urlString) {
-            AsyncImage(url: url) { image in
+        let candidates = book.coverCandidatesAll
+
+        if !candidates.isEmpty {
+            CoverCandidatesImage(
+                urlStrings: candidates,
+                preferredURLString: book.thumbnailURL,
+                contentMode: .fit,
+                onResolvedURL: { resolvedURL in
+                    book.persistResolvedCoverURL(resolvedURL)
+                    try? modelContext.save()
+                }
+            ) { image in
                 image.resizable().scaledToFit()
-            } placeholder: { ProgressView() }
+            } placeholder: {
+                ProgressView()
+            }
             .frame(width: 70, height: 105)
             .clipShape(RoundedRectangle(cornerRadius: 10))
         } else {
@@ -1401,15 +1424,14 @@ private struct CoverThumb: View {
                 .opacity(0.12)
 
             if let url = URL(string: urlString) {
-                AsyncImage(url: url) { image in
+                CachedAsyncImage(url: url) { image in
                     image.resizable().scaledToFill()
-            } placeholder: {
-                RoundedRectangle(cornerRadius: 10)
-                    .opacity(0.15)
-                    .overlay(Image(systemName: "book").opacity(0.6))
-            }
+                } placeholder: {
+                    ProgressView()
+                }
                 .clipped()
-                .clipShape(RoundedRectangle(cornerRadius: 10))} else {
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
                 Image(systemName: "book")
                     .opacity(0.45)
             }
@@ -1681,7 +1703,7 @@ struct AddBookView: View {
 
                 if let thumbnailURL, let url = URL(string: thumbnailURL) {
                     Section("Cover") {
-                        AsyncImage(url: url) { image in
+                        CachedAsyncImage(url: url) { image in
                             image.resizable().scaledToFit()
                         } placeholder: { ProgressView() }
                         .frame(maxWidth: .infinity)
@@ -1962,11 +1984,11 @@ struct GoalsView: View {
                     NavigationLink {
                         BookDetailView(book: book)
                     } label: {
-                        GoalSlotView(thumbnailURL: book.bestCoverURLString, isFilled: true)
+                        GoalSlotView(book: book, isFilled: true)
                     }
                     .buttonStyle(.plain)
                 } else {
-                    GoalSlotView(thumbnailURL: nil, isFilled: false)
+                    GoalSlotView(book: nil, isFilled: false)
                 }
             }
         }
@@ -2110,7 +2132,9 @@ private struct StatPill: View {
 }
 
 private struct GoalSlotView: View {
-    let thumbnailURL: String?
+    @Environment(\.modelContext) private var modelContext
+
+    let book: Book?
     let isFilled: Bool
 
     var body: some View {
@@ -2119,13 +2143,28 @@ private struct GoalSlotView: View {
                 .fill(.ultraThinMaterial)
                 .opacity(isFilled ? 0.18 : 0.12)
 
-            if let thumbnailURL, let url = URL(string: thumbnailURL) {
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    ProgressView()
+            if let book {
+                let candidates = book.coverCandidatesAll
+
+                if !candidates.isEmpty {
+                    CoverCandidatesImage(
+                        urlStrings: candidates,
+                        preferredURLString: book.thumbnailURL,
+                        contentMode: .fill,
+                        onResolvedURL: { resolvedURL in
+                            book.persistResolvedCoverURL(resolvedURL)
+                            try? modelContext.save()
+                        }
+                    ) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        ProgressView()
+                    }
+                    .clipped()
+                } else {
+                    Image(systemName: "book")
+                        .opacity(0.45)
                 }
-                .clipped()
             } else {
                 Image(systemName: "book")
                     .opacity(0.45)
@@ -2319,22 +2358,32 @@ private struct LibraryStatCard: View {
 }
 
 private struct LibraryCoverThumb: View {
-    let urlString: String?
+    @Environment(\.modelContext) private var modelContext
+    let book: Book
 
     var body: some View {
-        ZStack {
+        let candidates = book.coverCandidatesAll
+
+        return ZStack {
             RoundedRectangle(cornerRadius: 10)
                 .opacity(0.10)
 
-            if let urlString, let url = URL(string: urlString) {
-                AsyncImage(url: url) { image in
+            if !candidates.isEmpty {
+                CoverCandidatesImage(
+                    urlStrings: candidates,
+                    preferredURLString: book.thumbnailURL,
+                    contentMode: .fill,
+                    onResolvedURL: { resolvedURL in
+                        book.persistResolvedCoverURL(resolvedURL)
+                        try? modelContext.save()
+                    }
+                ) { image in
                     image.resizable().scaledToFill()
-            } placeholder: {
-                RoundedRectangle(cornerRadius: 10)
-                    .opacity(0.15)
-                    .overlay(Image(systemName: "book").opacity(0.6))
-            }
-                .clipShape(RoundedRectangle(cornerRadius: 10))} else {
+                } placeholder: {
+                    ProgressView()
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
                 Image(systemName: "book")
                     .opacity(0.45)
             }

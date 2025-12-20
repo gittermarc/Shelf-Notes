@@ -97,21 +97,6 @@ final class Book {
         return s
     }
 
-    private var isbn13DigitsOnly: String? {
-        guard let raw = isbn13 else { return nil }
-        let digits = raw.filter(\.isNumber)
-        return digits.count == 13 ? digits : nil
-    }
-
-    /// Open Library Covers API candidates (best-first). `default=false` avoids placeholder images.
-    var openLibraryCoverURLCandidates: [String] {
-        guard let isbn = isbn13DigitsOnly else { return [] }
-        return [
-            "https://covers.openlibrary.org/b/isbn/\(isbn)-L.jpg?default=false",
-            "https://covers.openlibrary.org/b/isbn/\(isbn)-M.jpg?default=false"
-        ]
-    }
-
     /// Best cover URL for UI:
     /// - 1) thumbnailURL (if present)
     /// - 2) persisted coverURLCandidates
@@ -166,5 +151,62 @@ extension Book {
         var arr = collectionsSafe
         arr.removeAll { $0.id == collection.id }
         collectionsSafe = arr
+    }
+}
+
+// MARK: - Cover helpers (Google + OpenLibrary + persistence)
+
+extension Book {
+    /// OpenLibrary fallback (best-first). Uses `default=false` so we can detect missing covers via 404.
+    var openLibraryCoverURLCandidates: [String] {
+        guard let raw = isbn13?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return [] }
+        let isbn = raw.filter(\.isNumber)
+        guard !isbn.isEmpty else { return [] }
+
+        return [
+            "https://covers.openlibrary.org/b/isbn/\(isbn)-L.jpg?default=false",
+            "https://covers.openlibrary.org/b/isbn/\(isbn)-M.jpg?default=false",
+            "https://covers.openlibrary.org/b/isbn/\(isbn)-S.jpg?default=false"
+        ]
+    }
+
+    /// Best-first list of cover candidates for display.
+    /// - includes persisted `thumbnailURL` first
+    /// - then any stored `coverURLCandidates`
+    /// - then OpenLibrary fallback by ISBN
+    var coverCandidatesAll: [String] {
+        var out: [String] = []
+
+        func add(_ s: String?) {
+            guard let s else { return }
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty else { return }
+            if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
+                out.append(t)
+            }
+        }
+
+        add(thumbnailURL)
+        for s in coverURLCandidates { add(s) }
+        for s in openLibraryCoverURLCandidates { add(s) }
+
+        return out
+    }
+
+    /// Persists the winning cover URL for later ("instant" next time) and moves it to the front of candidates.
+    func persistResolvedCoverURL(_ urlString: String) {
+        let t = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+
+        // Persist as primary
+        if thumbnailURL?.caseInsensitiveCompare(t) != .orderedSame {
+            thumbnailURL = t
+        }
+
+        // Keep candidates list deduped + best-first
+        var arr = coverURLCandidates
+        arr.removeAll { $0.caseInsensitiveCompare(t) == .orderedSame }
+        arr.insert(t, at: 0)
+        coverURLCandidates = arr
     }
 }
