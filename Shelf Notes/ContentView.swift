@@ -833,6 +833,7 @@ struct BookDetailView: View {
     @Bindable var book: Book
 
     @State private var tagsText: String = ""
+    @State private var tagDraft: String = ""
 
     // ✅ Collections: Auswahl direkt in den Buchdetails
     @Query(sort: \BookCollection.name, order: .forward)
@@ -1120,12 +1121,38 @@ struct BookDetailView: View {
 
             // MARK: - Tags + Notes
             Section("Tags") {
-                TextField("Kommagetrennte Tags", text: $tagsText)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .onChange(of: tagsText) { _, newValue in
-                        book.tags = parseTags(newValue)
+                VStack(alignment: .leading, spacing: 10) {
+                    // Selected tags show up as pills (instead of plain comma text).
+                    if !book.tags.isEmpty {
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
+                            spacing: 8
+                        ) {
+                            ForEach(book.tags, id: \.self) { t in
+                                SelectedTagPill(text: t) {
+                                    removeTag(t)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 2)
                     }
+
+                    TextField("Tag hinzufügen …", text: $tagDraft)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.done)
+                        .onSubmit { addTagsFromDraft() }
+                        .onChange(of: tagDraft) { _, newValue in
+                            // If user types commas, treat it as "commit".
+                            if newValue.contains(",") {
+                                addTagsFromDraft()
+                            }
+                        }
+
+                    Text("Tipp: Tippe unten auf ein häufiges Tag – oder schreibe ein neues und bestätige mit Return oder Komma.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
                 if !topTagCounts30.isEmpty {
                     Text("Häufige Tags (Tippen = hinzufügen/entfernen)")
@@ -1174,7 +1201,7 @@ struct BookDetailView: View {
                 showingNewCollectionSheet = true
             })
         }
-        .onAppear { tagsText = book.tags.joined(separator: ", ") }
+        .onAppear { tagsText = book.tags.joined(separator: ", "); tagDraft = "" }
         .onDisappear { try? modelContext.save() }
     }
 
@@ -1326,6 +1353,64 @@ struct BookDetailView: View {
         tagsText = out.joined(separator: ", ")
         try? modelContext.save()
     }
+
+private func addTagsFromDraft() {
+    // Allows typing: "thriller, nyc" + return/comma
+    let parts = tagDraft
+        .split(separator: ",")
+        .map { normalizeTagString(String($0)) }
+        .filter { !$0.isEmpty }
+
+    // Also allow "single tag + return" without comma
+    let single = normalizeTagString(tagDraft)
+    let candidates = parts.isEmpty ? ([single].filter { !$0.isEmpty }) : parts
+
+    guard !candidates.isEmpty else {
+        tagDraft = ""
+        return
+    }
+
+    var current = book.tags.map(normalizeTagString).filter { !$0.isEmpty }
+
+    for p in candidates {
+        if !current.contains(where: { $0.caseInsensitiveCompare(p) == .orderedSame }) {
+            current.append(p)
+        }
+    }
+
+    // Dedup case-insensitive, preserve order
+    var out: [String] = []
+    for t in current {
+        if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
+            out.append(t)
+        }
+    }
+
+    book.tags = out
+    tagsText = out.joined(separator: ", ")
+    tagDraft = ""
+    try? modelContext.save()
+}
+
+private func removeTag(_ tag: String) {
+    let n = normalizeTagString(tag)
+    guard !n.isEmpty else { return }
+
+    var current = book.tags.map(normalizeTagString).filter { !$0.isEmpty }
+    current.removeAll { $0.caseInsensitiveCompare(n) == .orderedSame }
+
+    // Dedup case-insensitive, preserve order
+    var out: [String] = []
+    for t in current {
+        if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
+            out.append(t)
+        }
+    }
+
+    book.tags = out
+    tagsText = out.joined(separator: ", ")
+    try? modelContext.save()
+}
 
 
     private func parseTags(_ input: String) -> [String] {
@@ -1802,13 +1887,56 @@ struct AddBookView: View {
 
                 if let thumbnailURL, let url = URL(string: thumbnailURL) {
                     Section("Cover") {
-                        CachedAsyncImage(url: url) { image in
-                            image.resizable().scaledToFit()
-                        } placeholder: { ProgressView() }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 180)
+                        HStack(alignment: .top, spacing: 12) {
+
+                            // Cover "Card" – echtes Cover-Format, ohne Abschneiden
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.ultraThinMaterial)
+                                    .opacity(0.35)
+
+                                CachedAsyncImage(url: url) { image in
+                                    image
+                                        .resizable()
+                                        .scaledToFit()          // <- KEIN Crop
+                                } placeholder: {
+                                    ProgressView()
+                                }
+                                .padding(6)                    // <- etwas Luft, falls das Thumbnail nicht 2:3 ist
+                            }
+                            .frame(width: 120, height: 180)     // 2:3 (120x180)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                            // Rechte Seite: Mini-Preview Infos
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Ohne Titel" : title)
+                                    .font(.headline)
+                                    .lineLimit(3)
+
+                                if !author.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    Text(author)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                }
+
+                                if let isbn13, !isbn13.isEmpty {
+                                    Text("ISBN \(isbn13)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+
+                                Spacer(minLength: 0)
+                            }
+
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 6)
                     }
                 }
+
+
 
                 if hasAnyImportedMetadata {
                     Section("Übernommene Metadaten") {
@@ -2464,6 +2592,31 @@ struct TagChip: View {
         .padding(.vertical, 6)
         .background(.thinMaterial)
         .clipShape(Capsule())
+    }
+}
+
+// MARK: - UI: selected tag pill (inside tag input)
+private struct SelectedTagPill: View {
+    let text: String
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("#\(normalizeTagString(text))")
+                .font(.caption)
+                .lineLimit(1)
+
+            Button { onRemove() } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(.thinMaterial)
+        .clipShape(Capsule())
+        .accessibilityLabel("Tag \(normalizeTagString(text)) entfernen")
     }
 }
 
