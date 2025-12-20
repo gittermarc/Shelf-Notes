@@ -1620,6 +1620,9 @@ struct AddBookView: View {
     @State private var title: String = ""
     @State private var author: String = ""
     @State private var status: ReadingStatus = .toRead
+    
+    @State private var showingScannerSheet = false
+    @State private var pendingScanISBN: String? = nil
 
     @State private var readFrom: Date = Date()
     @State private var readTo: Date = Date()
@@ -1669,12 +1672,21 @@ struct AddBookView: View {
             Form {
                 Section {
                     Button {
+                        pendingScanISBN = nil
                         quickAddActive = false
                         showingImportSheet = true
                     } label: {
                         Label("Aus Google Books suchen", systemImage: "magnifyingglass")
                     }
+
+                    Button {
+                        pendingScanISBN = nil
+                        showingScannerSheet = true
+                    } label: {
+                        Label("ISBN scannen", systemImage: "barcode.viewfinder")
+                    }
                 }
+
 
                 Section("Neues Buch") {
                     TextField("Titel", text: $title)
@@ -1744,6 +1756,7 @@ struct AddBookView: View {
                 }
             }
             .sheet(isPresented: $showingImportSheet, onDismiss: {
+                pendingScanISBN = nil
                 let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
                 if quickAddActive && trimmedTitle.isEmpty {
                     dismiss()
@@ -1753,7 +1766,7 @@ struct AddBookView: View {
                     onPick: { imported in
                         title = imported.title
                         author = imported.author
-
+                        
                         isbn13 = imported.isbn13
                         thumbnailURL = imported.thumbnailURL
                         publisher = imported.publisher
@@ -1763,31 +1776,32 @@ struct AddBookView: View {
                         categories = imported.categories
                         bookDescription = imported.description
                         googleVolumeID = imported.googleVolumeID
-
+                        
                         // ✅ New rich metadata
                         subtitle = imported.subtitle
                         previewLink = imported.previewLink
                         infoLink = imported.infoLink
                         canonicalVolumeLink = imported.canonicalVolumeLink
-
+                        
                         averageRating = imported.averageRating
                         ratingsCount = imported.ratingsCount
                         mainCategory = imported.mainCategory
-
+                        
                         coverURLCandidates = imported.coverURLCandidates
-
+                        
                         viewability = imported.viewability
                         isPublicDomain = imported.isPublicDomain
                         isEmbeddable = imported.isEmbeddable
-
+                        
                         isEpubAvailable = imported.isEpubAvailable
                         isPdfAvailable = imported.isPdfAvailable
                         epubAcsTokenLink = imported.epubAcsTokenLink
                         pdfAcsTokenLink = imported.pdfAcsTokenLink
-
+                        
                         saleability = imported.saleability
                         isEbook = imported.isEbook
-                    },
+                    }, initialQuery: pendingScanISBN,
+                    autoSearchOnAppear: true,
                     onQuickAddHappened: {
                         quickAddActive = true
                     },
@@ -1795,6 +1809,18 @@ struct AddBookView: View {
                         quickAddActive = isActive
                     }
                 )
+            }
+            .sheet(isPresented: $showingScannerSheet) {
+                BarcodeScannerSheet { isbn in
+                    pendingScanISBN = isbn
+                }
+            }
+            .onChange(of: showingScannerSheet) { _, isShowing in
+                // Scanner ist zu -> wenn wir eine ISBN haben -> Import-Sheet öffnen
+                if !isShowing, let isbn = pendingScanISBN, !isbn.isEmpty {
+                    quickAddActive = false
+                    showingImportSheet = true
+                }
             }
         }
     }

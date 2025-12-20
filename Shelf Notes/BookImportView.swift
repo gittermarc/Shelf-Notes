@@ -60,6 +60,10 @@ struct BookImportView: View {
 
     let onPick: (ImportedBook) -> Void
 
+    // ✅ Neu: Vorbelegung der Suche (z.B. ISBN aus Barcode-Scan)
+    var initialQuery: String? = nil
+    var autoSearchOnAppear: Bool = true
+    
     /// Legacy: einmalig beim ersten Quick-Add (kannst du weiter nutzen)
     var onQuickAddHappened: (() -> Void)? = nil
 
@@ -149,12 +153,25 @@ struct BookImportView: View {
                 }
             }
             .onAppear {
+                // 1) Wenn initialQuery da ist und das Feld leer ist: setzen und sofort suchen
+                if autoSearchOnAppear,
+                   let initialQuery,
+                   !initialQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   queryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+
+                    queryText = initialQuery
+                    Task { await search() }
+                    return
+                }
+
+                // 2) Sonst: wie bisher Fokus auf Suche
                 if queryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                         searchFocused = true
                     }
                 }
             }
+
             .onDisappear {
                 undoHideTask?.cancel()
                 undoHideTask = nil
