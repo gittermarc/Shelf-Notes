@@ -704,7 +704,7 @@ private struct ResultCard: View {
 
         if let urlString = best,
            let url = URL(string: urlString) {
-            AsyncImage(url: url) { image in
+            CachedAsyncImage(url: url) { image in
                 image.resizable().scaledToFill()
             } placeholder: {
                 RoundedRectangle(cornerRadius: 10)
@@ -826,7 +826,7 @@ private struct UndoToastView: View {
     @ViewBuilder
     private var cover: some View {
         if let thumbnailURL, let url = URL(string: thumbnailURL) {
-            AsyncImage(url: url) { image in
+            CachedAsyncImage(url: url) { image in
                 image.resizable().scaledToFill()
             } placeholder: {
                 RoundedRectangle(cornerRadius: 10)

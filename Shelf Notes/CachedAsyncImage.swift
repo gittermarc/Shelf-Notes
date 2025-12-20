@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UIKit
+import CryptoKit
 
 // MARK: - Memory cache
 
@@ -21,6 +22,51 @@ final class ImageMemoryCache {
 
     func setImage(_ image: UIImage, for url: URL) {
         cache.setObject(image, forKey: url as NSURL)
+    }
+}
+
+// MARK: - Disk cache (local-only)
+
+/// Simple, local-only disk cache stored in the app's Caches directory.
+/// This avoids re-downloading covers on every app launch.
+final class ImageDiskCache {
+    static let shared = ImageDiskCache()
+
+    private let fm = FileManager.default
+    private let folderURL: URL
+
+    private init() {
+        let base = fm.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        let dir = base.appendingPathComponent("cover-cache", isDirectory: true)
+        self.folderURL = dir
+
+        if !fm.fileExists(atPath: dir.path) {
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: nil)
+        }
+    }
+
+    private func cacheFileURL(for url: URL) -> URL {
+        let key = sha256Hex(url.absoluteString)
+        let ext = url.pathExtension.isEmpty ? "img" : url.pathExtension
+        return folderURL.appendingPathComponent(key).appendingPathExtension(ext)
+    }
+
+    func image(for url: URL) -> UIImage? {
+        let fileURL = cacheFileURL(for: url)
+        guard fm.fileExists(atPath: fileURL.path) else { return nil }
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        return UIImage(data: data)
+    }
+
+    func store(data: Data, for url: URL) {
+        let fileURL = cacheFileURL(for: url)
+        // Atomic write to avoid partially written files.
+        try? data.write(to: fileURL, options: [.atomic])
+    }
+
+    private func sha256Hex(_ s: String) -> String {
+        let digest = SHA256.hash(data: Data(s.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 }
 
@@ -77,22 +123,43 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
         }
     }
 
-    @MainActor
     private func loadIfNeeded() async {
-        guard !isLoading else { return }
         guard let url else { return }
 
-        // Memory cache
+        // prevent duplicate loads per-view instance
+        let shouldStart: Bool = await MainActor.run {
+            if isLoading { return false }
+            isLoading = true
+            return true
+        }
+        guard shouldStart else { return }
+
+        defer {
+            Task { @MainActor in
+                isLoading = false
+            }
+        }
+
+        // 1) Memory cache
         if let cached = ImageMemoryCache.shared.image(for: url) {
-            uiImage = cached
-            onLoadResult?(true)
+            await MainActor.run {
+                uiImage = cached
+                onLoadResult?(true)
+            }
             return
         }
 
-        isLoading = true
-        defer { isLoading = false }
+        // 2) Disk cache (local-only)
+        if let diskImg = ImageDiskCache.shared.image(for: url) {
+            ImageMemoryCache.shared.setImage(diskImg, for: url)
+            await MainActor.run {
+                uiImage = diskImg
+                onLoadResult?(true)
+            }
+            return
+        }
 
-        // URLCache
+        // 3) Network (still allowing URLCache as a bonus)
         var request = URLRequest(url: url)
         request.cachePolicy = .returnCacheDataElseLoad
 
@@ -100,20 +167,25 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
             let (data, response) = try await URLSession.shared.data(for: request)
 
             if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                onLoadResult?(false)
+                await MainActor.run { onLoadResult?(false) }
                 return
             }
 
             guard let img = UIImage(data: data) else {
-                onLoadResult?(false)
+                await MainActor.run { onLoadResult?(false) }
                 return
             }
 
+            // Persist bytes locally so the next app launch is instant.
+            ImageDiskCache.shared.store(data: data, for: url)
             ImageMemoryCache.shared.setImage(img, for: url)
-            uiImage = img
-            onLoadResult?(true)
+
+            await MainActor.run {
+                uiImage = img
+                onLoadResult?(true)
+            }
         } catch {
-            onLoadResult?(false)
+            await MainActor.run { onLoadResult?(false) }
         }
     }
 }
@@ -166,9 +238,6 @@ struct CoverCandidatesImage<Content: View, Placeholder: View>: View {
         self.onResolvedURL = onResolvedURL
         self.content = content
         self.placeholder = placeholder
-
-        // We can't set @State directly here, but we can compute an initial index via a helper:
-        // the actual initialization happens in .onAppear below.
     }
 
     var body: some View {
@@ -206,7 +275,6 @@ struct CoverCandidatesImage<Content: View, Placeholder: View>: View {
             }
         }
         .onChange(of: cleaned) { _, _ in
-            // if candidate list changes, restart
             index = 0
             resolved = false
         }
