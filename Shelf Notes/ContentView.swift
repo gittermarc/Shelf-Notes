@@ -837,6 +837,10 @@ struct BookDetailView: View {
     // ✅ Collections: Auswahl direkt in den Buchdetails
     @Query(sort: \BookCollection.name, order: .forward)
     private var allCollections: [BookCollection]
+    
+    // ✅ Für Top-Tags: alle Bücher laden
+    @Query private var allBooks: [Book]
+
 
     @State private var showingNewCollectionSheet = false
     @State private var showingPaywall = false
@@ -1122,7 +1126,29 @@ struct BookDetailView: View {
                     .onChange(of: tagsText) { _, newValue in
                         book.tags = parseTags(newValue)
                     }
+
+                if !topTagCounts30.isEmpty {
+                    Text("Häufige Tags (Tippen = hinzufügen/entfernen)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
+                        spacing: 8
+                    ) {
+                        ForEach(topTagCounts30, id: \.tag) { entry in
+                            TagPickPill(
+                                text: entry.tag,
+                                count: entry.count,
+                                isSelected: isTagSelected(entry.tag),
+                                onTap: { toggleTag(entry.tag) }
+                            )
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
             }
+
 
             Section("Notizen") {
                 TextEditor(text: $book.notes)
@@ -1249,13 +1275,74 @@ struct BookDetailView: View {
                 .overlay(Image(systemName: "book").opacity(0.6))
         }
     }
+    
+    private var topTagCounts30: [(tag: String, count: Int)] {
+        var counts: [String: Int] = [:]
+
+        for b in allBooks {
+            for t in b.tags {
+                let n = normalizeTagString(t)
+                guard !n.isEmpty else { continue }
+                counts[n, default: 0] += 1
+            }
+        }
+
+        let sorted = counts
+            .map { (tag: $0.key, count: $0.value) }
+            .sorted { a, b in
+                if a.count != b.count { return a.count > b.count }
+                return a.tag.localizedCaseInsensitiveCompare(b.tag) == .orderedAscending
+            }
+
+        return Array(sorted.prefix(30))
+    }
+
+    private func isTagSelected(_ tag: String) -> Bool {
+        let n = normalizeTagString(tag)
+        return book.tags.contains { normalizeTagString($0).caseInsensitiveCompare(n) == .orderedSame }
+    }
+
+    private func toggleTag(_ tag: String) {
+        let n = normalizeTagString(tag)
+        guard !n.isEmpty else { return }
+
+        var current = book.tags.map(normalizeTagString).filter { !$0.isEmpty }
+
+        if let idx = current.firstIndex(where: { $0.caseInsensitiveCompare(n) == .orderedSame }) {
+            current.remove(at: idx)
+        } else {
+            current.append(n)
+        }
+
+        // dedupe case-insensitive, preserve order
+        var out: [String] = []
+        for t in current {
+            if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
+                out.append(t)
+            }
+        }
+
+        book.tags = out
+        tagsText = out.joined(separator: ", ")
+        try? modelContext.save()
+    }
+
 
     private func parseTags(_ input: String) -> [String] {
-        input
+        let raw = input
             .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .map { normalizeTagString(String($0)) }
             .filter { !$0.isEmpty }
+
+        var out: [String] = []
+        for t in raw {
+            if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
+                out.append(t)
+            }
+        }
+        return out
     }
+
 
     private func formattedReadRangeLine(from: Date?, to: Date?) -> String? {
         guard from != nil || to != nil else { return nil }
@@ -2237,7 +2324,7 @@ struct TagsView: View {
         var counts: [String: Int] = [:]
         for b in books {
             for t in b.tags {
-                let normalized = t.trimmingCharacters(in: .whitespacesAndNewlines)
+                let normalized = normalizeTagString(t)
                 guard !normalized.isEmpty else { continue }
                 counts[normalized, default: 0] += 1
             }
@@ -2250,6 +2337,13 @@ struct TagsView: View {
             }
     }
 }
+
+private func normalizeTagString(_ s: String) -> String {
+    s
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .replacingOccurrences(of: "#", with: "")
+}
+
 
 // MARK: - Settings
 struct SettingsView: View {
@@ -2372,6 +2466,39 @@ struct TagChip: View {
         .clipShape(Capsule())
     }
 }
+
+private struct TagPickPill: View {
+    let text: String
+    let count: Int
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 6) {
+                Text("#\(text)")
+                    .font(.caption)
+                    .lineLimit(1)
+
+                Text("\(count)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(isSelected ? .thinMaterial : .ultraThinMaterial)
+            .overlay(
+                Capsule()
+                    .strokeBorder(.primary.opacity(isSelected ? 0.35 : 0.0), lineWidth: 1.5)
+            )
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Tag \(text)")
+    }
+}
+
 
 // MARK: - Library UI Bits
 
