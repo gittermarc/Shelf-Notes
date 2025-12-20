@@ -839,24 +839,23 @@ struct BookDetailView: View {
                     cover
 
                     VStack(alignment: .leading, spacing: 6) {
-                        TextField("Titel", text: $book.title)
+                        Text(book.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Ohne Titel" : book.title)
                             .font(.headline)
 
                         // Untertitel: nur zeigen, wenn vorhanden ODER wenn importiert (damit man ihn leicht ergänzen kann)
                         if shouldShowSubtitleField {
-                            TextField("Untertitel", text: Binding(
-                                get: { book.subtitle ?? "" },
-                                set: { newValue in
-                                    let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    book.subtitle = t.isEmpty ? nil : t
-                                }
-                            ))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            let s = (book.subtitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                            Text(s.isEmpty ? "—" : s)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(3)
                         }
 
-                        TextField("Autor", text: $book.author)
+                        let a = book.author.trimmingCharacters(in: .whitespacesAndNewlines)
+                        Text(a.isEmpty ? "—" : a)
                             .foregroundStyle(.secondary)
+
+
 
                         Picker("Status", selection: Binding(
                             get: { book.status },
