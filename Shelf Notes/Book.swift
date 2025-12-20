@@ -83,6 +83,49 @@ final class Book {
         set { statusRawValue = newValue.rawValue }
     }
 
+    // MARK: - Cover helpers (Google → persisted candidates → OpenLibrary fallback)
+
+    private func toHTTPS(_ urlString: String?) -> String? {
+        guard var s = urlString?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !s.isEmpty else { return nil }
+
+        if s.hasPrefix("http://") {
+            s = "https://" + s.dropFirst("http://".count)
+        } else if s.hasPrefix("http:") {
+            s = "https:" + s.dropFirst("http:".count)
+        }
+        return s
+    }
+
+    private var isbn13DigitsOnly: String? {
+        guard let raw = isbn13 else { return nil }
+        let digits = raw.filter(\.isNumber)
+        return digits.count == 13 ? digits : nil
+    }
+
+    /// Open Library Covers API candidates (best-first). `default=false` avoids placeholder images.
+    var openLibraryCoverURLCandidates: [String] {
+        guard let isbn = isbn13DigitsOnly else { return [] }
+        return [
+            "https://covers.openlibrary.org/b/isbn/\(isbn)-L.jpg?default=false",
+            "https://covers.openlibrary.org/b/isbn/\(isbn)-M.jpg?default=false"
+        ]
+    }
+
+    /// Best cover URL for UI:
+    /// - 1) thumbnailURL (if present)
+    /// - 2) persisted coverURLCandidates
+    /// - 3) OpenLibrary fallback (if ISBN available)
+    var bestCoverURLString: String? {
+        if let primary = toHTTPS(thumbnailURL) { return primary }
+
+        for c in coverURLCandidates {
+            if let https = toHTTPS(c) { return https }
+        }
+
+        return openLibraryCoverURLCandidates.first
+    }
+
     // Komfort: nil wie leeres Array behandeln
     var collectionsSafe: [BookCollection] {
         get { collections ?? [] }

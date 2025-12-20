@@ -117,6 +117,21 @@ extension GoogleBookVolume {
         return nil
     }
 
+    private var isbn13DigitsOnly: String? {
+        guard let raw = isbn13 else { return nil }
+        let digits = raw.filter(\.isNumber)
+        return digits.count == 13 ? digits : nil
+    }
+
+    /// Open Library Covers API candidates (best-first). `default=false` avoids placeholder images.
+    private var openLibraryCoverURLCandidates: [String] {
+        guard let isbn = isbn13DigitsOnly else { return [] }
+        return [
+            "https://covers.openlibrary.org/b/isbn/\(isbn)-L.jpg?default=false",
+            "https://covers.openlibrary.org/b/isbn/\(isbn)-M.jpg?default=false"
+        ]
+    }
+
     // New: subtitle
     var bestSubtitle: String? {
         let s = volumeInfo.subtitle?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -161,7 +176,7 @@ extension GoogleBookVolume {
     var isEbook: Bool { saleInfo?.isEbook ?? false }
 
     // Helper (kept, but now reused for more fields)
-    fileprivate func toHTTPS(_ urlString: String?) -> String? {
+    private func toHTTPS(_ urlString: String?) -> String? {
         guard var s = urlString?.trimmingCharacters(in: .whitespacesAndNewlines),
               !s.isEmpty else { return nil }
 
@@ -182,15 +197,16 @@ extension GoogleBookVolume {
 
     /// New: more cover variants — returns ALL candidates, best-first
     var coverURLCandidates: [String] {
-        guard let links = volumeInfo.imageLinks else { return [] }
+        // 1) Google imageLinks candidates (if any)
+        let googleLinks = volumeInfo.imageLinks
 
         let rawCandidates: [String?] = [
-            links.extraLarge,
-            links.large,
-            links.medium,
-            links.small,
-            links.thumbnail,
-            links.smallThumbnail
+            googleLinks?.extraLarge,
+            googleLinks?.large,
+            googleLinks?.medium,
+            googleLinks?.small,
+            googleLinks?.thumbnail,
+            googleLinks?.smallThumbnail
         ]
 
         // normalize + dedupe while keeping order
@@ -202,6 +218,13 @@ extension GoogleBookVolume {
             if seen.contains(https) { continue }
             seen.insert(https)
             out.append(https)
+        }
+
+        // 2) OpenLibrary fallback candidates (only if we have an ISBN)
+        for ol in openLibraryCoverURLCandidates {
+            if seen.contains(ol) { continue }
+            seen.insert(ol)
+            out.append(ol)
         }
 
         return out

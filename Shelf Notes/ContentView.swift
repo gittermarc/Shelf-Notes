@@ -798,15 +798,16 @@ struct BookRowView: View {
 
     @ViewBuilder
     private var cover: some View {
-        if let urlString = book.thumbnailURL, let url = URL(string: urlString) {
+        if let urlString = book.bestCoverURLString, let url = URL(string: urlString) {
             AsyncImage(url: url) { image in
                 image.resizable().scaledToFit()
             } placeholder: {
-                ProgressView()
+                RoundedRectangle(cornerRadius: 8)
+                    .opacity(0.15)
+                    .overlay(Image(systemName: "book").opacity(0.6))
             }
             .frame(width: 44, height: 66)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-        } else {
+            .clipShape(RoundedRectangle(cornerRadius: 8))} else {
             RoundedRectangle(cornerRadius: 8)
                 .frame(width: 44, height: 66)
                 .opacity(0.15)
@@ -1212,7 +1213,7 @@ struct BookDetailView: View {
 
     @ViewBuilder
     private var cover: some View {
-        if let urlString = book.thumbnailURL, let url = URL(string: urlString) {
+        if let urlString = book.bestCoverURLString, let url = URL(string: urlString) {
             AsyncImage(url: url) { image in
                 image.resizable().scaledToFit()
             } placeholder: { ProgressView() }
@@ -1402,12 +1403,13 @@ private struct CoverThumb: View {
             if let url = URL(string: urlString) {
                 AsyncImage(url: url) { image in
                     image.resizable().scaledToFill()
-                } placeholder: {
-                    ProgressView()
-                }
+            } placeholder: {
+                RoundedRectangle(cornerRadius: 10)
+                    .opacity(0.15)
+                    .overlay(Image(systemName: "book").opacity(0.6))
+            }
                 .clipped()
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            } else {
+                .clipShape(RoundedRectangle(cornerRadius: 10))} else {
                 Image(systemName: "book")
                     .opacity(0.45)
             }
@@ -1960,7 +1962,7 @@ struct GoalsView: View {
                     NavigationLink {
                         BookDetailView(book: book)
                     } label: {
-                        GoalSlotView(thumbnailURL: book.thumbnailURL, isFilled: true)
+                        GoalSlotView(thumbnailURL: book.bestCoverURLString, isFilled: true)
                     }
                     .buttonStyle(.plain)
                 } else {
@@ -2327,11 +2329,12 @@ private struct LibraryCoverThumb: View {
             if let urlString, let url = URL(string: urlString) {
                 AsyncImage(url: url) { image in
                     image.resizable().scaledToFill()
-                } placeholder: {
-                    ProgressView()
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            } else {
+            } placeholder: {
+                RoundedRectangle(cornerRadius: 10)
+                    .opacity(0.15)
+                    .overlay(Image(systemName: "book").opacity(0.6))
+            }
+                .clipShape(RoundedRectangle(cornerRadius: 10))} else {
                 Image(systemName: "book")
                     .opacity(0.45)
             }
