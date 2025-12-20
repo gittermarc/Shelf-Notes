@@ -23,6 +23,7 @@ struct LibraryView: View {
 
     @State private var showingAddSheet = false
 
+    @State private var headerExpanded: Bool = false
     @State private var searchText: String = ""
     @State private var selectedStatus: ReadingStatus? = nil
     @State private var selectedTag: String? = nil
@@ -203,6 +204,9 @@ struct LibraryView: View {
                     .accessibilityLabel("Buch hinzufügen")
                 }
             }
+            .onAppear {
+                if books.isEmpty { headerExpanded = true }
+            }
             .sheet(isPresented: $showingAddSheet) {
                 AddBookView()
             }
@@ -219,21 +223,35 @@ struct LibraryView: View {
     }
 
     private var filterBar: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: headerExpanded ? 10 : 8) {
+            headerTopRow
 
-            // Hero + quick action
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Meine Bücher")
-                        .font(.title3.weight(.semibold))
+            if headerExpanded {
+                expandedHeaderContent
+            } else {
+                collapsedHeaderContent
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+    }
 
-                    Text(heroSubtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+    private var headerTopRow: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Meine Bücher")
+                    .font(.title3.weight(.semibold))
 
-                Spacer(minLength: 0)
+                Text(heroSubtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(headerExpanded ? 2 : 1)
+            }
 
+            Spacer(minLength: 0)
+
+            HStack(spacing: 10) {
                 Button {
                     showingAddSheet = true
                 } label: {
@@ -242,7 +260,43 @@ struct LibraryView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Buch hinzufügen")
+
+                Button {
+                    toggleHeaderExpanded()
+                } label: {
+                    Image(systemName: headerExpanded ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(headerExpanded ? "Header einklappen" : "Header ausklappen")
             }
+        }
+    }
+
+    private var collapsedHeaderContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Count line (always visible)
+            countLine
+
+            if shouldShowQuickSortSegment {
+                Picker("", selection: quickSortModeBinding) {
+                    Text(QuickSortMode.added.rawValue).tag(QuickSortMode.added)
+                    Text(QuickSortMode.read.rawValue).tag(QuickSortMode.read)
+                }
+                .pickerStyle(.segmented)
+            }
+
+            activeFilterChips
+
+            if shouldShowAlphaIndexHint {
+                alphaIndexHint
+            }
+        }
+    }
+
+    private var expandedHeaderContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
 
             // Status overview (tap = quick filter)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -283,66 +337,12 @@ struct LibraryView: View {
                 .padding(.horizontal, 2)
             }
 
-            // Active filters (chips)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    if let selectedStatus {
-                        TagChip(text: selectedStatus.rawValue, systemImage: "flag.fill") {
-                            withAnimation { self.selectedStatus = nil }
-                        }
-                    }
+            activeFilterChips
 
-                    if let selectedTag {
-                        TagChip(text: "#\(selectedTag)", systemImage: "tag.fill") {
-                            withAnimation { self.selectedTag = nil }
-                        }
-                    }
+            countLine
 
-                    if onlyWithNotes {
-                        TagChip(text: "mit Notizen", systemImage: "note.text") {
-                            withAnimation { self.onlyWithNotes = false }
-                        }
-                    }
-
-                    if (selectedStatus == nil && selectedTag == nil && !onlyWithNotes) {
-                        Text("Filter: keine (noch 😄)")
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 6)
-                    }
-
-                    if selectedStatus != nil || selectedTag != nil || onlyWithNotes || !searchText.isEmpty {
-                        Button("Zurücksetzen") {
-                            withAnimation {
-                                selectedTag = nil
-                                selectedStatus = nil
-                                onlyWithNotes = false
-                                searchText = ""
-                            }
-                        }
-                        .font(.caption)
-                        .buttonStyle(.borderless)
-                    }
-                }
-                .padding(.horizontal, 2)
-            }
-
-            // Count line (always visible)
-            HStack(spacing: 10) {
-                Image(systemName: "number")
-                    .foregroundStyle(.secondary)
-
-                Text("Bücher in deiner Liste: \(displayedBooks.count)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Spacer(minLength: 0)
-
-                if displayedBooks.count > 0 {
-                    Text("von \(books.count)")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
+            if shouldShowAlphaIndexHint {
+                alphaIndexHint
             }
 
             if shouldShowQuickSortSegment {
@@ -370,9 +370,84 @@ struct LibraryView: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
+    }
+
+    private var activeFilterChips: some View {
+        // Active filters (chips)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                if let selectedStatus {
+                    TagChip(text: selectedStatus.rawValue, systemImage: "flag.fill") {
+                        withAnimation { self.selectedStatus = nil }
+                    }
+                }
+
+                if let selectedTag {
+                    TagChip(text: "#\(selectedTag)", systemImage: "tag.fill") {
+                        withAnimation { self.selectedTag = nil }
+                    }
+                }
+
+                if onlyWithNotes {
+                    TagChip(text: "mit Notizen", systemImage: "note.text") {
+                        withAnimation { self.onlyWithNotes = false }
+                    }
+                }
+
+                // When collapsed and there are no active filters, keep it tiny.
+                if (selectedStatus == nil && selectedTag == nil && !onlyWithNotes) {
+                    Text(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Filter: keine (noch 😄)" : "Filter aktiv")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(.thinMaterial)
+                        .clipShape(Capsule())
+                }
+
+                if selectedStatus != nil || selectedTag != nil || onlyWithNotes || !searchText.isEmpty {
+                    Button("Zurücksetzen") {
+                        withAnimation {
+                            selectedTag = nil
+                            selectedStatus = nil
+                            onlyWithNotes = false
+                            searchText = ""
+                        }
+                    }
+                    .font(.caption)
+                    .buttonStyle(.borderless)
+                }
+            }
+            .padding(.horizontal, 2)
+        }
+    }
+
+    private var countLine: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "number")
+                .foregroundStyle(.secondary)
+
+            Text("Bücher in deiner Liste: \(displayedBooks.count)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Spacer(minLength: 0)
+
+            if shouldShowAlphaIndexHint {
+                Text("A–Z")
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.thinMaterial)
+                    .clipShape(Capsule())
+            }
+        }
+    }
+
+    private func toggleHeaderExpanded() {
+        withAnimation(.easeInOut(duration: 0.22)) {
+            headerExpanded.toggle()
+        }
     }
 
     private var alphaIndexHint: some View {
