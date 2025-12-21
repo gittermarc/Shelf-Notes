@@ -10,6 +10,14 @@ import SwiftData
 import StoreKit
 import Combine
 
+#if canImport(PhotosUI)
+import PhotosUI
+#endif
+
+#if canImport(UIKit)
+import UIKit
+#endif
+
 struct ContentView: View {
     var body: some View {
         RootView()
@@ -835,6 +843,13 @@ struct BookDetailView: View {
     @State private var tagsText: String = ""
     @State private var tagDraft: String = ""
 
+    // Cover upload (user photo)
+    #if canImport(PhotosUI)
+    @State private var pickedCoverItem: PhotosPickerItem?
+    #endif
+    @State private var isUploadingCover: Bool = false
+    @State private var coverUploadError: String? = nil
+
     // ✅ Collections: Auswahl direkt in den Buchdetails
     @Query(sort: \BookCollection.name, order: .forward)
     private var allCollections: [BookCollection]
@@ -909,6 +924,37 @@ struct BookDetailView: View {
                     }
                     .padding(.top, 6)
                 }
+            }
+
+            // MARK: - Cover (Upload/Fallback)
+            Section("Cover") {
+                #if canImport(PhotosUI)
+                PhotosPicker(selection: $pickedCoverItem, matching: .images) {
+                    Label(isUploadingCover ? "Lade …" : "Cover aus Fotos wählen", systemImage: "photo")
+                }
+                .disabled(isUploadingCover)
+                #else
+                Text("Cover-Upload ist auf dieser Plattform nicht verfügbar.")
+                    .foregroundStyle(.secondary)
+                #endif
+
+                if book.userCoverFileName != nil {
+                    Button(role: .destructive) {
+                        removeUserCover()
+                    } label: {
+                        Label("Benutzer-Cover entfernen", systemImage: "trash")
+                    }
+                }
+
+                if let coverUploadError {
+                    Text(coverUploadError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+
+                Text("Tipp: Wenn Google Books und OpenLibrary kein Cover liefern, kannst du hier eins aus deinen Fotos wählen.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             // MARK: - Read range
@@ -1202,6 +1248,11 @@ struct BookDetailView: View {
             })
         }
         .onAppear { tagsText = book.tags.joined(separator: ", "); tagDraft = "" }
+        #if canImport(PhotosUI)
+        .onChange(of: pickedCoverItem) { _, newValue in
+            handlePickedCoverItem(newValue)
+        }
+        #endif
         .onDisappear { try? modelContext.save() }
     }
 
@@ -1272,6 +1323,68 @@ struct BookDetailView: View {
     private var hasAnyBibliophileInfo: Bool {
         hasAnyLinks || hasAnyAvailability || hasRating || !book.coverURLCandidates.isEmpty
     }
+
+    // MARK: - Cover upload helpers
+
+    #if canImport(PhotosUI)
+    private func handlePickedCoverItem(_ item: PhotosPickerItem?) {
+        guard let item else { return }
+
+        isUploadingCover = true
+        coverUploadError = nil
+
+        Task {
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self) else {
+                    throw NSError(domain: "CoverUpload", code: 1, userInfo: [NSLocalizedDescriptionKey: "Konnte Bilddaten nicht laden."])
+                }
+
+                #if canImport(UIKit)
+                // Re-encode to JPEG so we have a predictable format + reasonable size.
+                let jpegData: Data
+                if let ui = UIImage(data: data), let jpg = ui.jpegData(compressionQuality: 0.85) {
+                    jpegData = jpg
+                } else {
+                    // Fallback: store original data if JPEG re-encode fails.
+                    jpegData = data
+                }
+                #else
+                let jpegData = data
+                #endif
+
+                // Remove previous user cover (avoid orphaned files)
+                if let old = book.userCoverFileName {
+                    UserCoverStore.delete(filename: old)
+                }
+
+                let filename = try UserCoverStore.saveJPEGData(jpegData)
+
+                await MainActor.run {
+                    book.userCoverFileName = filename
+                    try? modelContext.save()
+                }
+            } catch {
+                await MainActor.run {
+                    coverUploadError = error.localizedDescription
+                }
+            }
+
+            await MainActor.run {
+                isUploadingCover = false
+                pickedCoverItem = nil
+            }
+        }
+    }
+    #endif
+
+    private func removeUserCover() {
+        if let old = book.userCoverFileName {
+            UserCoverStore.delete(filename: old)
+        }
+        book.userCoverFileName = nil
+        try? modelContext.save()
+    }
+
 
     // MARK: - Existing helpers
 

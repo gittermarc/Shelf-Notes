@@ -42,6 +42,9 @@ final class Book {
     var googleVolumeID: String?
     var isbn13: String?
     var thumbnailURL: String?
+
+    // User-selected cover (local file, optional)
+    var userCoverFileName: String?
     var publisher: String?
     var publishedDate: String?
     var pageCount: Int?
@@ -102,12 +105,21 @@ final class Book {
     /// - 2) persisted coverURLCandidates
     /// - 3) OpenLibrary fallback (if ISBN available)
     var bestCoverURLString: String? {
+        // 0) user-selected local cover (highest priority)
+        if let name = userCoverFileName,
+           let fileURL = UserCoverStore.fileURL(for: name) {
+            return fileURL.absoluteString
+        }
+
+        // 1) persisted remote thumbnail
         if let primary = toHTTPS(thumbnailURL) { return primary }
 
+        // 2) persisted remote candidates
         for c in coverURLCandidates {
             if let https = toHTTPS(c) { return https }
         }
 
+        // 3) OpenLibrary fallback (if ISBN)
         return openLibraryCoverURLCandidates.first
     }
 
@@ -184,6 +196,12 @@ extension Book {
             if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
                 out.append(t)
             }
+        }
+
+        // User-selected cover (local file) first
+        if let name = userCoverFileName,
+           let fileURL = UserCoverStore.fileURL(for: name) {
+            add(fileURL.absoluteString)
         }
 
         add(thumbnailURL)

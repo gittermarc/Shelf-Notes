@@ -79,6 +79,46 @@ final class ImageDiskCache {
     }
 }
 
+
+
+// MARK: - User cover store (local-only user uploads)
+
+/// Stores user-selected cover images locally on disk.
+/// We only persist the *file name* in SwiftData/CloudKit (Book.userCoverFileName),
+/// so this is safe to evolve later (e.g. to CloudKit assets) without breaking the model.
+final class UserCoverStore {
+    private static let fm = FileManager.default
+
+    private static var folderURL: URL {
+        // Application Support is the right place for user data that the app manages.
+        let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = base.appendingPathComponent("user-covers", isDirectory: true)
+        if !fm.fileExists(atPath: dir.path) {
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: nil)
+        }
+        return dir
+    }
+
+    static func fileURL(for filename: String) -> URL? {
+        let t = filename.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return nil }
+        return folderURL.appendingPathComponent(t, isDirectory: false)
+    }
+
+    /// Saves JPEG data and returns the generated file name.
+    static func saveJPEGData(_ data: Data) throws -> String {
+        let name = UUID().uuidString + ".jpg"
+        let url = folderURL.appendingPathComponent(name, isDirectory: false)
+        try data.write(to: url, options: [.atomic])
+        return name
+    }
+
+    static func delete(filename: String) {
+        guard let url = fileURL(for: filename) else { return }
+        try? fm.removeItem(at: url)
+    }
+}
+
 // MARK: - CachedAsyncImage
 
 struct CachedAsyncImage<Content: View, Placeholder: View>: View {
@@ -135,6 +175,23 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
     private func loadIfNeeded() async {
         guard !isLoading else { return }
         guard let url else { return }
+
+        // Special case: local file URLs (user uploaded covers)
+        if url.isFileURL {
+            do {
+                let data = try Data(contentsOf: url)
+                if let img = UIImage(data: data) {
+                    ImageMemoryCache.shared.setImage(img, for: url)
+                    uiImage = img
+                    onLoadResult?(true)
+                } else {
+                    onLoadResult?(false)
+                }
+            } catch {
+                onLoadResult?(false)
+            }
+            return
+        }
 
         // 1) Memory cache
         if let cached = ImageMemoryCache.shared.image(for: url) {
