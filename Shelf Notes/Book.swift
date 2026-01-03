@@ -119,7 +119,29 @@ final class Book {
 
     var status: ReadingStatus {
         get { ReadingStatus(rawValue: statusRawValue) ?? .toRead }
-        set { statusRawValue = newValue.rawValue }
+        set {
+            statusRawValue = newValue.rawValue
+
+            // Enforce rule: user ratings (and read range) only make sense for finished books.
+            if newValue != .finished {
+                readFrom = nil
+                readTo = nil
+                clearUserRatings()
+            }
+        }
+    }
+
+    /// True only when the book is marked as finished ("Gelesen").
+    var canUserRate: Bool { status == .finished }
+
+    /// Resets all user rating fields back to 0 (= nicht bewertet).
+    func clearUserRatings() {
+        userRatingPlot = 0
+        userRatingCharacters = 0
+        userRatingWritingStyle = 0
+        userRatingAtmosphere = 0
+        userRatingGenreFit = 0
+        userRatingPresentation = 0
     }
 
     // MARK: - Cover helpers (Google → persisted candidates → OpenLibrary fallback)

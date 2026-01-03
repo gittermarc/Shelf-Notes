@@ -41,6 +41,7 @@ struct LibraryView: View {
     private enum SortField: String, CaseIterable, Identifiable {
         case createdAt = "Hinzugefügt"
         case readDate = "Gelesen"
+        case rating = "Bewertung"
         case title = "Titel"
         case author = "Autor"
 
@@ -214,6 +215,7 @@ struct LibraryView: View {
             }
             .onAppear {
                 if books.isEmpty { headerExpanded = true }
+                enforceRatingRuleIfNeeded()
             }
             .sheet(isPresented: $showingAddSheet) {
                 AddBookView()
@@ -225,6 +227,8 @@ struct LibraryView: View {
         switch sortField {
         case .createdAt, .readDate:
             return sortAscending ? "Alt → Neu" : "Neu → Alt"
+        case .rating:
+            return sortAscending ? "Niedrig → Hoch" : "Hoch → Niedrig"
         case .title, .author:
             return sortAscending ? "A → Z" : "Z → A"
         }
@@ -546,7 +550,36 @@ struct LibraryView: View {
                 return a.id.uuidString < b.id.uuidString
             }
 
-        case .title:
+        
+        case .rating:
+            // User rating (only for finished books). Unrated books sink to the bottom.
+            return input.sorted { a, b in
+                let ar: Double? = (a.status == .finished) ? a.userRatingAverage1 : nil
+                let br: Double? = (b.status == .finished) ? b.userRatingAverage1 : nil
+
+                let aHas = ar != nil
+                let bHas = br != nil
+
+                if aHas != bHas {
+                    // Prefer rated books first so sorting is meaningful.
+                    return aHas && !bHas
+                }
+
+                let ra = ar ?? -1
+                let rb = br ?? -1
+
+                if ra != rb {
+                    return sortAscending ? (ra < rb) : (ra > rb)
+                }
+
+                // Tie-breakers
+                let da = readKeyDate(a) ?? a.createdAt
+                let db = readKeyDate(b) ?? b.createdAt
+                if da != db { return da > db }
+                return a.id.uuidString < b.id.uuidString
+            }
+
+case .title:
             return input.sorted { a, b in
                 let ta = bestTitle(a)
                 let tb = bestTitle(b)
@@ -738,6 +771,25 @@ struct LibraryView: View {
         .padding(.top, 26)
     }
 
+    // MARK: - Data integrity
+
+    private func enforceRatingRuleIfNeeded() {
+        // Ratings are only allowed for finished books.
+        // If older app versions left ratings on non-finished books, clean them up.
+        let invalid = books.filter { b in
+            b.status != .finished && b.userRatingValues.contains(where: { $0 > 0 })
+        }
+
+        guard !invalid.isEmpty else { return }
+
+        for b in invalid {
+            b.clearUserRatings()
+        }
+
+        try? modelContext.save()
+    }
+
+
     // MARK: - Delete
 
     private func deleteBooks(at offsets: IndexSet) {
@@ -786,6 +838,19 @@ struct BookRowView: View {
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
                     }
+
+                    if let avg = rowUserRating {
+                        Text("•")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        StarsView(rating: avg)
+
+                        Text(String(format: "%.1f", avg))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
                 }
 
                 // Tags eine Zeile tiefer
@@ -804,6 +869,12 @@ struct BookRowView: View {
         guard let d = book.readTo ?? book.readFrom else { return nil }
         return d.formatted(.dateTime.month(.abbreviated).year())
     }
+
+    private var rowUserRating: Double? {
+        guard book.status == .finished else { return nil }
+        return book.userRatingAverage1
+    }
+
 
     @ViewBuilder
     private var cover: some View {
@@ -894,10 +965,7 @@ struct BookDetailView: View {
                             set: { newStatus in
                                 book.status = newStatus
 
-                                if newStatus != .finished {
-                                    book.readFrom = nil
-                                    book.readTo = nil
-                                } else {
+                                if newStatus == .finished {
                                     if book.readFrom == nil { book.readFrom = Date() }
                                     if book.readTo == nil { book.readTo = book.readFrom }
                                 }
@@ -935,80 +1003,92 @@ struct BookDetailView: View {
                     .padding(.top, 6)
                 }
 
-                // ✅ Deine Bewertung (direkt unter „Überblick“)
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("Deine Bewertung")
-                            .font(.subheadline.weight(.semibold))
+                // ✅ Deine Bewertung (nur möglich wenn Status = „Gelesen“)
+                if book.status == .finished {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("Deine Bewertung")
+                                .font(.subheadline.weight(.semibold))
 
-                        Spacer()
+                            Spacer()
 
-                        if hasAnyUserRatingValue {
-                            Button("Zurücksetzen") {
-                                resetUserRating()
+                            if hasAnyUserRatingValue {
+                                Button("Zurücksetzen") {
+                                    resetUserRating()
+                                }
+                                .font(.caption)
                             }
-                            .font(.caption)
+                        }
+
+                        UserRatingRow(
+                            title: "Handlung",
+                            subtitle: "Originell, logisch, Tempo, Wendungen",
+                            rating: $book.userRatingPlot
+                        ) { try? modelContext.save() }
+
+                        UserRatingRow(
+                            title: "Charaktere",
+                            subtitle: "Glaubwürdig & identifizierbar",
+                            rating: $book.userRatingCharacters
+                        ) { try? modelContext.save() }
+
+                        UserRatingRow(
+                            title: "Schreibstil",
+                            subtitle: "Sprache, Rhythmus, Flow",
+                            rating: $book.userRatingWritingStyle
+                        ) { try? modelContext.save() }
+
+                        UserRatingRow(
+                            title: "Atmosphäre",
+                            subtitle: "Welt & emotionale Wirkung",
+                            rating: $book.userRatingAtmosphere
+                        ) { try? modelContext.save() }
+
+                        UserRatingRow(
+                            title: "Genre-Fit",
+                            subtitle: "Erwartungen ans Genre erfüllt?",
+                            rating: $book.userRatingGenreFit
+                        ) { try? modelContext.save() }
+
+                        UserRatingRow(
+                            title: "Aufmachung",
+                            subtitle: "Cover/Design/Optik",
+                            rating: $book.userRatingPresentation
+                        ) { try? modelContext.save() }
+
+                        HStack(spacing: 10) {
+                            Text("Gesamt")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+
+                            Spacer()
+
+                            if let avg = book.userRatingAverage1 {
+                                StarsView(rating: avg)
+
+                                Text(String(format: "%.1f", avg) + " / 5")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            } else {
+                                Text("Noch nicht bewertet")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
-
-                    UserRatingRow(
-                        title: "Handlung",
-                        subtitle: "Originell, logisch, Tempo, Wendungen",
-                        rating: $book.userRatingPlot
-                    ) { try? modelContext.save() }
-
-                    UserRatingRow(
-                        title: "Charaktere",
-                        subtitle: "Glaubwürdig & identifizierbar",
-                        rating: $book.userRatingCharacters
-                    ) { try? modelContext.save() }
-
-                    UserRatingRow(
-                        title: "Schreibstil",
-                        subtitle: "Sprache, Rhythmus, Flow",
-                        rating: $book.userRatingWritingStyle
-                    ) { try? modelContext.save() }
-
-                    UserRatingRow(
-                        title: "Atmosphäre",
-                        subtitle: "Welt & emotionale Wirkung",
-                        rating: $book.userRatingAtmosphere
-                    ) { try? modelContext.save() }
-
-                    UserRatingRow(
-                        title: "Genre-Fit",
-                        subtitle: "Erwartungen ans Genre erfüllt?",
-                        rating: $book.userRatingGenreFit
-                    ) { try? modelContext.save() }
-
-                    UserRatingRow(
-                        title: "Aufmachung",
-                        subtitle: "Cover/Design/Optik",
-                        rating: $book.userRatingPresentation
-                    ) { try? modelContext.save() }
-
+                    .padding(.top, 6)
+                } else {
                     HStack(spacing: 10) {
-                        Text("Gesamt")
-                            .font(.caption.weight(.semibold))
+                        Image(systemName: "checkmark.seal")
                             .foregroundStyle(.secondary)
-
+                        Text("Bewertungen sind erst möglich, wenn der Status auf „Gelesen“ steht.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         Spacer()
-
-                        if let avg = book.userRatingAverage1 {
-                            StarsView(rating: avg)
-
-                            Text(String(format: "%.1f", avg) + " / 5")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        } else {
-                            Text("Noch nicht bewertet")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
                     }
+                    .padding(.top, 6)
                 }
-                .padding(.top, 6)
             }
 
             // MARK: - Cover (Upload/Fallback)
