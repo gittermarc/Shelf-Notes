@@ -910,20 +910,105 @@ struct BookDetailView: View {
                     }
                 }
 
-                // Bewertung kompakt direkt im Überblick
-                if hasRating {
+                // Bewertung: bevorzugt deine Bewertung, sonst Google (falls vorhanden)
+                if let overall = displayedOverallRating {
                     HStack(spacing: 10) {
-                        StarsView(rating: book.averageRating ?? 0)
+                        StarsView(rating: overall)
 
-                        Text(ratingText)
+                        Text(displayedOverallRatingText)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
+
+                        if hasUserRating {
+                            Text("deins")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(.thinMaterial)
+                                .clipShape(Capsule())
+                        }
 
                         Spacer()
                     }
                     .padding(.top, 6)
                 }
+
+                // ✅ Deine Bewertung (direkt unter „Überblick“)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Deine Bewertung")
+                            .font(.subheadline.weight(.semibold))
+
+                        Spacer()
+
+                        if hasAnyUserRatingValue {
+                            Button("Zurücksetzen") {
+                                resetUserRating()
+                            }
+                            .font(.caption)
+                        }
+                    }
+
+                    UserRatingRow(
+                        title: "Handlung",
+                        subtitle: "Originell, logisch, Tempo, Wendungen",
+                        rating: $book.userRatingPlot
+                    ) { try? modelContext.save() }
+
+                    UserRatingRow(
+                        title: "Charaktere",
+                        subtitle: "Glaubwürdig & identifizierbar",
+                        rating: $book.userRatingCharacters
+                    ) { try? modelContext.save() }
+
+                    UserRatingRow(
+                        title: "Schreibstil",
+                        subtitle: "Sprache, Rhythmus, Flow",
+                        rating: $book.userRatingWritingStyle
+                    ) { try? modelContext.save() }
+
+                    UserRatingRow(
+                        title: "Atmosphäre",
+                        subtitle: "Welt & emotionale Wirkung",
+                        rating: $book.userRatingAtmosphere
+                    ) { try? modelContext.save() }
+
+                    UserRatingRow(
+                        title: "Genre-Fit",
+                        subtitle: "Erwartungen ans Genre erfüllt?",
+                        rating: $book.userRatingGenreFit
+                    ) { try? modelContext.save() }
+
+                    UserRatingRow(
+                        title: "Aufmachung",
+                        subtitle: "Cover/Design/Optik",
+                        rating: $book.userRatingPresentation
+                    ) { try? modelContext.save() }
+
+                    HStack(spacing: 10) {
+                        Text("Gesamt")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+
+                        if let avg = book.userRatingAverage1 {
+                            StarsView(rating: avg)
+
+                            Text(String(format: "%.1f", avg) + " / 5")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        } else {
+                            Text("Noch nicht bewertet")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.top, 6)
             }
 
             // MARK: - Cover (Upload/Fallback)
@@ -1292,6 +1377,38 @@ struct BookDetailView: View {
             return String(format: "%.1f", avg) + " (\(count))"
         }
         return String(format: "%.1f", avg)
+    }
+
+
+    private var hasUserRating: Bool {
+        book.userRatingAverage != nil
+    }
+
+    private var hasAnyUserRatingValue: Bool {
+        book.userRatingValues.contains(where: { $0 > 0 })
+    }
+
+    private var displayedOverallRating: Double? {
+        if let u = book.userRatingAverage1 { return u }
+        if let g = book.averageRating, g > 0 { return g }
+        return nil
+    }
+
+    private var displayedOverallRatingText: String {
+        if let u = book.userRatingAverage1 {
+            return String(format: "%.1f", u) + " / 5"
+        }
+        return ratingText
+    }
+
+    private func resetUserRating() {
+        book.userRatingPlot = 0
+        book.userRatingCharacters = 0
+        book.userRatingWritingStyle = 0
+        book.userRatingAtmosphere = 0
+        book.userRatingGenreFit = 0
+        book.userRatingPresentation = 0
+        try? modelContext.save()
     }
 
     private var prettyViewability: String? {
@@ -1697,6 +1814,63 @@ private struct StarsView: View {
         .accessibilityLabel("Bewertung \(String(format: "%.1f", clamped)) von 5")
     }
 }
+
+private struct StarRatingPicker: View {
+    @Binding var rating: Int
+    var onChange: (() -> Void)? = nil
+
+    private let maxStars: Int = 5
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(1...maxStars, id: \.self) { i in
+                Button {
+                    // Tap same star again -> clear (0)
+                    if rating == i {
+                        rating = 0
+                    } else {
+                        rating = i
+                    }
+                    onChange?()
+                } label: {
+                    Image(systemName: i <= rating ? "star.fill" : "star")
+                        .font(.caption)
+                        .foregroundStyle(i <= rating ? .yellow : .secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Bewertung \(i) von \(maxStars)")
+            }
+        }
+    }
+}
+
+private struct UserRatingRow: View {
+    let title: String
+    let subtitle: String
+    @Binding var rating: Int
+    let onChange: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline)
+
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 12)
+
+            StarRatingPicker(rating: $rating, onChange: onChange)
+                .accessibilityLabel(title)
+        }
+        .contentShape(Rectangle())
+    }
+}
+
 
 private struct CoverThumb: View {
     let urlString: String

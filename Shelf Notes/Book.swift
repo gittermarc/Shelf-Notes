@@ -81,6 +81,42 @@ final class Book {
     var saleability: String?
     var isEbook: Bool = false
 
+
+    // MARK: - User rating (1–5 each, 0 = nicht bewertet)
+
+    var userRatingPlot: Int = 0                 // Handlung
+    var userRatingCharacters: Int = 0           // Charaktere
+    var userRatingWritingStyle: Int = 0         // Schreibstil
+    var userRatingAtmosphere: Int = 0           // Atmosphäre/Stimmung
+    var userRatingGenreFit: Int = 0             // Genre-Gerechtigkeit
+    var userRatingPresentation: Int = 0         // Aufmachung (Cover/Layout)
+
+    /// All rating fields in one place (0 = not rated)
+    var userRatingValues: [Int] {
+        [
+            userRatingPlot,
+            userRatingCharacters,
+            userRatingWritingStyle,
+            userRatingAtmosphere,
+            userRatingGenreFit,
+            userRatingPresentation
+        ]
+    }
+
+    /// Average of all set criteria (ignores zeros). Returns nil if nothing was rated yet.
+    var userRatingAverage: Double? {
+        let vals = userRatingValues.filter { $0 > 0 }
+        guard !vals.isEmpty else { return nil }
+        let sum = vals.reduce(0, +)
+        return Double(sum) / Double(vals.count)
+    }
+
+    /// Convenience: average rounded to 1 decimal (e.g. 4.2)
+    var userRatingAverage1: Double? {
+        guard let avg = userRatingAverage else { return nil }
+        return (avg * 10).rounded() / 10
+    }
+
     var status: ReadingStatus {
         get { ReadingStatus(rawValue: statusRawValue) ?? .toRead }
         set { statusRawValue = newValue.rawValue }

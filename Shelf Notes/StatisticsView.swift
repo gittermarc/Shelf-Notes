@@ -1163,13 +1163,15 @@ struct StatisticsView: View {
     private func highestRatedBook(_ input: [Book]) -> NerdPick? {
         var best: NerdPick?
         for b in input {
-            let r = b.averageRating ?? 0
+            let r = b.userRatingAverage1 ?? 0
             guard r > 0 else { continue }
+
             let title = b.title.trimmingCharacters(in: .whitespacesAndNewlines)
             let name = title.isEmpty ? "Ohne Titel" : title
-            let cnt = b.ratingsCount ?? 0
-            let label = "\(name) • \(String(format: "%.1f", r)) (\(formatInt(cnt)))"
+
+            let label = "\(name) • \(String(format: "%.1f", r)) / 5"
             let pick = NerdPick(label: label, sortKey: Int((r * 10).rounded()))
+
             if best == nil || pick.sortKey > (best?.sortKey ?? 0) {
                 best = pick
             }
