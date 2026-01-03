@@ -27,6 +27,12 @@ struct RootView: View {
                     Label("Ziele", systemImage: "target")
                 }
 
+            // ✅ Neu: Dashboard / Statistiken
+            StatisticsView()
+                .tabItem {
+                    Label("Statistiken", systemImage: "chart.bar.xaxis")
+                }
+
             TagsView()
                 .tabItem {
                     Label("Tags", systemImage: "tag")
