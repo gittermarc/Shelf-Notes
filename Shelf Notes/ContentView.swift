@@ -2786,6 +2786,7 @@ struct SettingsView: View {
 
     @State private var confirmClearCoverCache = false
     @State private var cacheInfoText: String? = nil
+    @State private var coverCacheSizeText: String = "…"
 
     var body: some View {
         NavigationStack {
@@ -2810,6 +2811,14 @@ struct SettingsView: View {
                     Text("Löscht lokal gespeicherte Cover auf diesem Gerät. Beim nächsten Anzeigen werden sie bei Bedarf neu geladen.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    HStack {
+                        Text("Aktuell belegt")
+                        Spacer()
+                        Text(coverCacheSizeText)
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption)
 
                     if let cacheInfoText {
                         Text(cacheInfoText)
@@ -2856,6 +2865,7 @@ struct SettingsView: View {
                     ImageDiskCache.shared.clearAll()
                     ImageMemoryCache.shared.clear()
                     cacheInfoText = "Cache gelöscht: \(Date().formatted(date: .numeric, time: .shortened))"
+                    Task { await refreshCoverCacheSize() }
                 }
                 Button("Abbrechen", role: .cancel) { }
             } message: {
@@ -2867,8 +2877,18 @@ struct SettingsView: View {
             .task {
                 await pro.refreshEntitlements()
                 await pro.loadProductIfNeeded()
+                await refreshCoverCacheSize()
             }
         }
+    }
+
+    @MainActor
+    private func refreshCoverCacheSize() async {
+        let text = await Task.detached(priority: .utility) {
+            ImageDiskCache.shared.diskUsageString()
+        }.value
+
+        coverCacheSizeText = text
     }
 }
 

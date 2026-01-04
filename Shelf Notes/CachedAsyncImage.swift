@@ -77,6 +77,41 @@ final class ImageDiskCache {
         try? fm.removeItem(at: folderURL)
         try? fm.createDirectory(at: folderURL, withIntermediateDirectories: true, attributes: nil)
     }
+
+    /// Returns the currently used disk space in **bytes** for the cover-cache folder.
+    ///
+    /// Note: This only measures the *local disk cache* used by `CachedAsyncImage`.
+    /// (It does not include the in-memory cache, nor iOS URLCache.)
+    func diskUsageBytes() -> Int64 {
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .fileSizeKey]
+        guard let enumerator = fm.enumerator(
+            at: folderURL,
+            includingPropertiesForKeys: Array(keys),
+            options: [.skipsHiddenFiles],
+            errorHandler: nil
+        ) else {
+            return 0
+        }
+
+        var total: Int64 = 0
+        for case let fileURL as URL in enumerator {
+            do {
+                let values = try fileURL.resourceValues(forKeys: keys)
+                guard values.isRegularFile == true else { continue }
+                total += Int64(values.fileSize ?? 0)
+            } catch {
+                // ignore single file errors; best-effort measurement
+                continue
+            }
+        }
+        return total
+    }
+
+    /// Returns a human readable string like "12,3 MB" for the current cache size.
+    func diskUsageString() -> String {
+        let bytes = diskUsageBytes()
+        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
 }
 
 
