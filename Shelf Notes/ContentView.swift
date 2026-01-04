@@ -878,31 +878,11 @@ struct BookRowView: View {
 
     @ViewBuilder
     private var cover: some View {
-        let candidates = book.coverCandidatesAll
-
-        if !candidates.isEmpty {
-            CoverCandidatesImage(
-                urlStrings: candidates,
-                preferredURLString: book.thumbnailURL,
-                contentMode: .fit,
-                onResolvedURL: { resolvedURL in
-                    // Persist the working hit so next time it's instant.
-                    book.persistResolvedCoverURL(resolvedURL)
-                    try? modelContext.save()
-                }
-            ) { image in
-                image.resizable().scaledToFit()
-            } placeholder: {
-                ProgressView()
-            }
-            .frame(width: 44, height: 66)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-        } else {
-            RoundedRectangle(cornerRadius: 8)
-                .frame(width: 44, height: 66)
-                .opacity(0.15)
-                .overlay(Image(systemName: "book").opacity(0.6))
-        }
+        BookCoverThumbnailView(
+            book: book,
+            size: CGSize(width: 44, height: 66),
+            cornerRadius: 8
+        )
     }
 }
 
@@ -1244,9 +1224,11 @@ struct BookDetailView: View {
                                         Button {
                                             let current = (book.thumbnailURL ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                                             let isSame = current.caseInsensitiveCompare(s) == .orderedSame
-                                            if !isSame {
-                                                book.thumbnailURL = s
-                                                try? modelContext.save()
+                                            guard !isSame else { return }
+
+                                            // User intent here is: "use this online cover".
+                                            Task { @MainActor in
+                                                await CoverThumbnailer.applyRemoteCover(urlString: s, to: book, modelContext: modelContext)
                                             }
                                         } label: {
                                             CoverThumb(
@@ -1536,30 +1518,8 @@ struct BookDetailView: View {
                     throw NSError(domain: "CoverUpload", code: 1, userInfo: [NSLocalizedDescriptionKey: "Konnte Bilddaten nicht laden."])
                 }
 
-                #if canImport(UIKit)
-                // Re-encode to JPEG so we have a predictable format + reasonable size.
-                let jpegData: Data
-                if let ui = UIImage(data: data), let jpg = ui.jpegData(compressionQuality: 0.85) {
-                    jpegData = jpg
-                } else {
-                    // Fallback: store original data if JPEG re-encode fails.
-                    jpegData = data
-                }
-                #else
-                let jpegData = data
-                #endif
-
-                // Remove previous user cover (avoid orphaned files)
-                if let old = book.userCoverFileName {
-                    UserCoverStore.delete(filename: old)
-                }
-
-                let filename = try UserCoverStore.saveJPEGData(jpegData)
-
-                await MainActor.run {
-                    book.userCoverFileName = filename
-                    try? modelContext.save()
-                }
+                // Saves full-res locally + sets synced thumbnail (`book.userCoverData`).
+                try await CoverThumbnailer.applyUserPickedCover(imageData: data, to: book, modelContext: modelContext)
             } catch {
                 await MainActor.run {
                     coverUploadError = error.localizedDescription
@@ -1579,7 +1539,13 @@ struct BookDetailView: View {
             UserCoverStore.delete(filename: old)
         }
         book.userCoverFileName = nil
+        book.userCoverData = nil
         try? modelContext.save()
+
+        // Re-populate from remote candidates if available (so the cover doesn't turn blank).
+        Task { @MainActor in
+            await CoverThumbnailer.backfillThumbnailIfNeeded(for: book, modelContext: modelContext)
+        }
     }
 
 
@@ -1587,30 +1553,11 @@ struct BookDetailView: View {
 
     @ViewBuilder
     private var cover: some View {
-        let candidates = book.coverCandidatesAll
-
-        if !candidates.isEmpty {
-            CoverCandidatesImage(
-                urlStrings: candidates,
-                preferredURLString: book.thumbnailURL,
-                contentMode: .fit,
-                onResolvedURL: { resolvedURL in
-                    book.persistResolvedCoverURL(resolvedURL)
-                    try? modelContext.save()
-                }
-            ) { image in
-                image.resizable().scaledToFit()
-            } placeholder: {
-                ProgressView()
-            }
-            .frame(width: 70, height: 105)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-        } else {
-            RoundedRectangle(cornerRadius: 10)
-                .frame(width: 70, height: 105)
-                .opacity(0.15)
-                .overlay(Image(systemName: "book").opacity(0.6))
-        }
+        BookCoverThumbnailView(
+            book: book,
+            size: CGSize(width: 70, height: 105),
+            cornerRadius: 10
+        )
     }
     
     private var topTagCounts30: [(tag: String, count: Int)] {
@@ -1966,7 +1913,7 @@ private struct CoverThumb: View {
                 CachedAsyncImage(url: url) { image in
                     image.resizable().scaledToFill()
                 } placeholder: {
-                    ProgressView()
+                    BookCoverPlaceholder(cornerRadius: 10)
                 }
                 .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -2486,6 +2433,11 @@ struct AddBookView: View {
 
         modelContext.insert(newBook)
         try? modelContext.save()
+
+        // Generate and sync thumbnail cover if we have any cover candidates.
+        Task { @MainActor in
+            await CoverThumbnailer.backfillThumbnailIfNeeded(for: newBook, modelContext: modelContext)
+        }
     }
 }
 
@@ -2752,26 +2704,13 @@ private struct GoalSlotView: View {
                 .opacity(isFilled ? 0.18 : 0.12)
 
             if let book {
-                let candidates = book.coverCandidatesAll
-
-                if !candidates.isEmpty {
-                    CoverCandidatesImage(
-                        urlStrings: candidates,
-                        preferredURLString: book.thumbnailURL,
-                        contentMode: .fill,
-                        onResolvedURL: { resolvedURL in
-                            book.persistResolvedCoverURL(resolvedURL)
-                            try? modelContext.save()
-                        }
-                    ) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        ProgressView()
-                    }
-                    .clipped()
-                } else {
-                    Image(systemName: "book")
-                        .opacity(0.45)
+                GeometryReader { geo in
+                    BookCoverThumbnailView(
+                        book: book,
+                        size: geo.size,
+                        cornerRadius: 12,
+                        contentMode: .fill
+                    )
                 }
             } else {
                 Image(systemName: "book")
@@ -3063,38 +3002,15 @@ private struct LibraryStatCard: View {
 }
 
 private struct LibraryCoverThumb: View {
-    @Environment(\.modelContext) private var modelContext
     let book: Book
 
     var body: some View {
-        let candidates = book.coverCandidatesAll
-
-        return ZStack {
-            RoundedRectangle(cornerRadius: 10)
-                .opacity(0.10)
-
-            if !candidates.isEmpty {
-                CoverCandidatesImage(
-                    urlStrings: candidates,
-                    preferredURLString: book.thumbnailURL,
-                    contentMode: .fill,
-                    onResolvedURL: { resolvedURL in
-                        book.persistResolvedCoverURL(resolvedURL)
-                        try? modelContext.save()
-                    }
-                ) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    ProgressView()
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            } else {
-                Image(systemName: "book")
-                    .opacity(0.45)
-            }
-        }
-        .frame(width: 44, height: 66)
-        .clipped()
+        BookCoverThumbnailView(
+            book: book,
+            size: CGSize(width: 44, height: 66),
+            cornerRadius: 10,
+            contentMode: .fill
+        )
     }
 }
 

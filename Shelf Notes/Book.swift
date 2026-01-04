@@ -43,6 +43,16 @@ final class Book {
     var isbn13: String?
     var thumbnailURL: String?
 
+    /// Synced thumbnail cover (small JPEG).
+    ///
+    /// This is the single source of truth for cover rendering in the UI:
+    /// - **User photo covers:** thumbnail is synced, full-res stays local on disk.
+    /// - **Remote covers (Google/OpenLibrary):** thumbnail is generated on first load/import and then synced.
+    ///
+    /// Stored with external storage so SwiftData can keep the main store slim.
+    @Attribute(.externalStorage)
+    var userCoverData: Data?
+
     // User-selected cover (local file, optional)
     var userCoverFileName: String?
     var publisher: String?
@@ -163,8 +173,10 @@ final class Book {
     /// - 2) persisted coverURLCandidates
     /// - 3) OpenLibrary fallback (if ISBN available)
     var bestCoverURLString: String? {
-        // 0) user-selected local cover (highest priority)
-        if let name = userCoverFileName,
+        // 0) user-selected local cover (highest priority) – legacy/fallback only.
+        // The UI should primarily render `userCoverData`.
+        if userCoverData == nil,
+           let name = userCoverFileName,
            let fileURL = UserCoverStore.fileURL(for: name) {
             return fileURL.absoluteString
         }
@@ -262,8 +274,8 @@ extension Book {
             add(fileURL.absoluteString)
         }
 
-        add(thumbnailURL)
-        for s in coverURLCandidates { add(s) }
+        add(toHTTPS(thumbnailURL))
+        for s in coverURLCandidates { add(toHTTPS(s)) }
         for s in openLibraryCoverURLCandidates { add(s) }
 
         return out
@@ -274,15 +286,22 @@ extension Book {
         let t = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
 
+        // Never persist local file URLs into CloudKit-synced string fields.
+        // Those paths are device-local and would break cover rendering on other devices.
+        if let u = URL(string: t), u.isFileURL { return }
+
+        // Normalize to HTTPS when possible.
+        let normalized = toHTTPS(t) ?? t
+
         // Persist as primary
-        if thumbnailURL?.caseInsensitiveCompare(t) != .orderedSame {
-            thumbnailURL = t
+        if thumbnailURL?.caseInsensitiveCompare(normalized) != .orderedSame {
+            thumbnailURL = normalized
         }
 
         // Keep candidates list deduped + best-first
         var arr = coverURLCandidates
-        arr.removeAll { $0.caseInsensitiveCompare(t) == .orderedSame }
-        arr.insert(t, at: 0)
+        arr.removeAll { $0.caseInsensitiveCompare(normalized) == .orderedSame }
+        arr.insert(normalized, at: 0)
         coverURLCandidates = arr
     }
 }

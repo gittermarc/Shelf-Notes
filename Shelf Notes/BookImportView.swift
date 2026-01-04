@@ -459,6 +459,11 @@ struct BookImportView: View {
         modelContext.insert(newBook)
         try? modelContext.save()
 
+        // Generate a synced thumbnail (so covers work offline + across devices).
+        Task { @MainActor in
+            await CoverThumbnailer.backfillThumbnailIfNeeded(for: newBook, modelContext: modelContext)
+        }
+
         _ = withAnimation(.snappy) {
             addedVolumeIDs.insert(volume.id)
         }

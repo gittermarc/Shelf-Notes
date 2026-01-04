@@ -6,9 +6,12 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct RootView: View {
+    @Environment(\.modelContext) private var modelContext
     @StateObject private var pro = ProManager()
+    @State private var didRunCoverBackfill = false
 
     var body: some View {
         TabView {
@@ -44,5 +47,11 @@ struct RootView: View {
                 }
         }
         .environmentObject(pro)
+        .task {
+            // One-time: make sure existing books get synced thumbnails
+            guard !didRunCoverBackfill else { return }
+            didRunCoverBackfill = true
+            await CoverThumbnailer.backfillAllBooksIfNeeded(modelContext: modelContext)
+        }
     }
 }

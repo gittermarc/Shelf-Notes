@@ -83,9 +83,14 @@ final class ImageDiskCache {
 
 // MARK: - User cover store (local-only user uploads)
 
-/// Stores user-selected cover images locally on disk.
-/// We only persist the *file name* in SwiftData/CloudKit (Book.userCoverFileName),
-/// so this is safe to evolve later (e.g. to CloudKit assets) without breaking the model.
+/// Stores **full-resolution** user-selected cover images locally on disk.
+///
+/// CloudKit/SwiftData syncs only the *thumbnail* (Book.userCoverData), not these files.
+/// We persist just the file name (Book.userCoverFileName) to be able to re-open the local full-res image.
+///
+/// Why:
+/// - Full-res images can be big.
+/// - Thumbnails are tiny and sync reliably across devices.
 final class UserCoverStore {
     private static let fm = FileManager.default
 
