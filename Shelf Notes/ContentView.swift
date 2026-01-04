@@ -2791,7 +2791,13 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Export") {
+                Section("Import / Export") {
+                    NavigationLink {
+                        CSVImportExportView(showExportSection: true, showDoneButton: false)
+                    } label: {
+                        Label("CSV Import/Export", systemImage: "tablecells")
+                    }
+
                     Text("PDF-Export (kommt)")
                     Text("Markdown-Export (kommt)")
                 }
