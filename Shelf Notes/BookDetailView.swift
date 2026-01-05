@@ -4,6 +4,7 @@
 //
 //  Created by Marc Fechner on 11.12.25.
 //  Split from ContentView.swift on 05.01.26.
+//  Apple-Books-ish redesign on 05.01.26.
 //
 
 import SwiftUI
@@ -34,19 +35,25 @@ struct BookDetailView: View {
     @State private var isUploadingCover: Bool = false
     @State private var coverUploadError: String? = nil
 
-    // ✅ Collections: Auswahl direkt in den Buchdetails
+    // ✅ Collections
     @Query(sort: \BookCollection.name, order: .forward)
     private var allCollections: [BookCollection]
-    
+
     // ✅ Für Top-Tags: alle Bücher laden
     @Query private var allBooks: [Book]
-
 
     @State private var showingNewCollectionSheet = false
     @State private var showingPaywall = false
 
-    @EnvironmentObject private var pro: ProManager
+    // New: Sheets for Apple-Books-ish UX
+    @State private var showingNotesSheet = false
+    @State private var showingCollectionsSheet = false
+    @State private var showingRatingSheet = false
 
+    @State private var isDescriptionExpanded = false
+    @State private var isMoreInfoExpanded = false
+
+    @EnvironmentObject private var pro: ProManager
 
     // MARK: - Bindings (Compiler-friendly)
 
@@ -60,6 +67,7 @@ struct BookDetailView: View {
                     if book.readFrom == nil { book.readFrom = Date() }
                     if book.readTo == nil { book.readTo = book.readFrom }
                 }
+                try? modelContext.save()
             }
         )
     }
@@ -73,12 +81,66 @@ struct BookDetailView: View {
         )
     }
 
+    // MARK: - Body
+
     var body: some View {
-        Form {
-            formContent
+        ScrollView {
+            VStack(spacing: 14) {
+                heroHeader
+
+                QuickChipsRow(
+                    overallRating: displayedOverallRating,
+                    overallText: displayedOverallRatingText,
+                    showsUserBadge: hasUserRating,
+                    pageCount: book.pageCount,
+                    publishedDate: book.publishedDate,
+                    language: book.language
+                )
+
+                statusCard
+
+                if book.status == .finished {
+                    readRangeCard
+                    ratingSummaryCard
+                } else {
+                    ratingLockedCard
+                }
+
+                notesPreviewCard
+                tagsCard
+                collectionsPreviewCard
+
+                moreInfoCard
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 10)
+            .padding(.bottom, 18) // breathing room above bottom bar
         }
-        .navigationTitle(book.title.isEmpty ? "Buchdetails" : book.title)
+        .background(appBackground)
+        .navigationTitle("Details")
         .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) {
+            bottomActionBar
+        }
+        .sheet(isPresented: $showingNotesSheet) {
+            NotesEditorSheet(notes: $book.notes) {
+                try? modelContext.save()
+            }
+        }
+        .sheet(isPresented: $showingCollectionsSheet) {
+            CollectionsPickerSheet(
+                allCollections: allCollections,
+                membershipBinding: membershipBinding(for:),
+                onCreateNew: { requestNewCollection() }
+            )
+        }
+        .sheet(isPresented: $showingRatingSheet) {
+            RatingEditorSheet(
+                book: book,
+                onReset: { resetUserRating() },
+                onSave: { try? modelContext.save() }
+            )
+        }
         .sheet(isPresented: $showingNewCollectionSheet) {
             InlineNewCollectionSheet { name in
                 createAndAttachCollection(named: name)
@@ -89,174 +151,54 @@ struct BookDetailView: View {
                 showingNewCollectionSheet = true
             })
         }
-        .onAppear { tagsText = book.tags.joined(separator: ", "); tagDraft = "" }
+        .onAppear {
+            tagsText = book.tags.joined(separator: ", ")
+            tagDraft = ""
+        }
         #if canImport(PhotosUI)
         .onChange(of: pickedCoverItem) { _, newValue in
             handlePickedCoverItem(newValue)
         }
         #endif
-        .onDisappear { try? modelContext.save() }
+        .onDisappear {
+            try? modelContext.save()
+        }
     }
 
-    // MARK: - Form content (extracted to help the compiler)
+    // MARK: - Background
 
-    @ViewBuilder
-    private var formContent: some View {
-        // MARK: - Overview
-        Section("Überblick") {
-            HStack(alignment: .top, spacing: 12) {
-                cover
+    private var appBackground: some View {
+        #if canImport(UIKit)
+        return Color(uiColor: .systemGroupedBackground)
+        #else
+        return Color(.systemBackground)
+        #endif
+    }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(book.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Ohne Titel" : book.title)
-                        .font(.headline)
+    // MARK: - Hero
 
-                    // Untertitel: nur zeigen, wenn vorhanden ODER wenn importiert (damit man ihn leicht ergänzen kann)
-                    if shouldShowSubtitleField {
-                        let s = (book.subtitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                        Text(s.isEmpty ? "—" : s)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(3)
-                    }
-
-                    let a = book.author.trimmingCharacters(in: .whitespacesAndNewlines)
-                    Text(a.isEmpty ? "—" : a)
-                        .foregroundStyle(.secondary)
-
-
-
-                    Picker("Status", selection: statusBinding) {
-                        ForEach(ReadingStatus.allCases) { status in
-                            Text(status.rawValue).tag(status)
-                        }
-                    }
-                }
-            }
-
-            // Bewertung: bevorzugt deine Bewertung, sonst Google (falls vorhanden)
-            if let overall = displayedOverallRating {
-                HStack(spacing: 10) {
-                    StarsView(rating: overall)
-
-                    Text(displayedOverallRatingText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-
-                    if hasUserRating {
-                        Text("deins")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.thinMaterial)
-                            .clipShape(Capsule())
-                    }
-
-                    Spacer()
-                }
-                .padding(.top, 6)
-            }
-
-            // ✅ Deine Bewertung (nur möglich wenn Status = „Gelesen“)
-            if book.status == .finished {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("Deine Bewertung")
-                            .font(.subheadline.weight(.semibold))
-
-                        Spacer()
-
-                        if hasAnyUserRatingValue {
-                            Button("Zurücksetzen") {
-                                resetUserRating()
-                            }
-                            .font(.caption)
-                        }
-                    }
-
-                    UserRatingRow(
-                        title: "Handlung",
-                        subtitle: "Originell, logisch, Tempo, Wendungen",
-                        rating: $book.userRatingPlot
-                    ) { try? modelContext.save() }
-
-                    UserRatingRow(
-                        title: "Charaktere",
-                        subtitle: "Glaubwürdig & identifizierbar",
-                        rating: $book.userRatingCharacters
-                    ) { try? modelContext.save() }
-
-                    UserRatingRow(
-                        title: "Schreibstil",
-                        subtitle: "Sprache, Rhythmus, Flow",
-                        rating: $book.userRatingWritingStyle
-                    ) { try? modelContext.save() }
-
-                    UserRatingRow(
-                        title: "Atmosphäre",
-                        subtitle: "Welt & emotionale Wirkung",
-                        rating: $book.userRatingAtmosphere
-                    ) { try? modelContext.save() }
-
-                    UserRatingRow(
-                        title: "Genre-Fit",
-                        subtitle: "Erwartungen ans Genre erfüllt?",
-                        rating: $book.userRatingGenreFit
-                    ) { try? modelContext.save() }
-
-                    UserRatingRow(
-                        title: "Aufmachung",
-                        subtitle: "Cover/Design/Optik",
-                        rating: $book.userRatingPresentation
-                    ) { try? modelContext.save() }
-
-                    HStack(spacing: 10) {
-                        Text("Gesamt")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-
-                        Spacer()
-
-                        if let avg = book.userRatingAverage1 {
-                            StarsView(rating: avg)
-
-                            Text(String(format: "%.1f", avg) + " / 5")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        } else {
-                            Text("Noch nicht bewertet")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .padding(.top, 6)
-            } else {
-                HStack(spacing: 10) {
-                    Image(systemName: "checkmark.seal")
-                        .foregroundStyle(.secondary)
-                    Text("Bewertungen sind erst möglich, wenn der Status auf „Gelesen“ steht.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
-                .padding(.top, 6)
-            }
+    private var heroHeader: some View {
+        BookHeroHeader(
+            book: book,
+            hasUserRating: hasUserRating,
+            displayedOverallRating: displayedOverallRating,
+            displayedOverallText: displayedOverallRatingText
+        )
+        .overlay(alignment: .topTrailing) {
+            heroCoverActions
+                .padding(10)
         }
+    }
 
-        // MARK: - Cover (Upload/Fallback)
-        Section("Cover") {
+    private var heroCoverActions: some View {
+        Menu {
             #if canImport(PhotosUI)
             PhotosPicker(selection: $pickedCoverItem, matching: .images) {
                 Label(isUploadingCover ? "Lade …" : "Cover aus Fotos wählen", systemImage: "photo")
             }
             .disabled(isUploadingCover)
             #else
-            Text("Cover-Upload ist auf dieser Plattform nicht verfügbar.")
-                .foregroundStyle(.secondary)
+            Label("Cover-Upload nicht verfügbar", systemImage: "exclamationmark.triangle")
             #endif
 
             if book.userCoverFileName != nil {
@@ -267,22 +209,63 @@ struct BookDetailView: View {
                 }
             }
 
-            if let coverUploadError {
-                Text(coverUploadError)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+            if !book.coverURLCandidates.isEmpty {
+                Button {
+                    // Jump user to the More-Info disclosure where cover selection lives.
+                    withAnimation(.snappy) { isMoreInfoExpanded = true }
+                } label: {
+                    Label("Online-Cover auswählen", systemImage: "photo.on.rectangle")
+                }
             }
-
-            Text("Tipp: Wenn Google Books und OpenLibrary kein Cover liefern, kannst du hier eins aus deinen Fotos wählen.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.title3)
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.primary)
+                .padding(10)
+                .background(.thinMaterial)
+                .clipShape(Circle())
         }
+        .accessibilityLabel("Aktionen")
+    }
 
-        // MARK: - Read range
-        if book.status == .finished {
-            Section("Gelesen") {
+    // MARK: - Cards
+
+    private var statusCard: some View {
+        DetailCard(title: "Status") {
+            VStack(alignment: .leading, spacing: 10) {
+                Picker("Status", selection: statusBinding) {
+                    ForEach(ReadingStatus.allCases) { status in
+                        Text(status.rawValue).tag(status)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                if let err = coverUploadError {
+                    Text(err)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+
+                if isUploadingCover {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Cover wird verarbeitet …")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                }
+            }
+        }
+    }
+
+    private var readRangeCard: some View {
+        DetailCard(title: "Gelesen") {
+            VStack(alignment: .leading, spacing: 12) {
                 if let readLine = formattedReadRangeLine(from: book.readFrom, to: book.readTo) {
                     Text(readLine)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
@@ -292,9 +275,8 @@ struct BookDetailView: View {
                         get: { book.readFrom ?? Date() },
                         set: { newValue in
                             book.readFrom = newValue
-                            if let to = book.readTo, to < newValue {
-                                book.readTo = newValue
-                            }
+                            if let to = book.readTo, to < newValue { book.readTo = newValue }
+                            try? modelContext.save()
                         }
                     ),
                     displayedComponents: [.date]
@@ -306,9 +288,8 @@ struct BookDetailView: View {
                         get: { book.readTo ?? (book.readFrom ?? Date()) },
                         set: { newValue in
                             book.readTo = newValue
-                            if let from = book.readFrom, from > newValue {
-                                book.readFrom = newValue
-                            }
+                            if let from = book.readFrom, from > newValue { book.readFrom = newValue }
+                            try? modelContext.save()
                         }
                     ),
                     in: (book.readFrom ?? Date.distantPast)...Date(),
@@ -316,13 +297,201 @@ struct BookDetailView: View {
                 )
             }
         }
+    }
 
-        // MARK: - Bibliophile block (human-friendly)
-        if hasAnyBibliophileInfo {
-            Section("Bibliophile Infos") {
-                // Online
-                if hasAnyLinks {
-                    DisclosureGroup {
+    private var ratingSummaryCard: some View {
+        DetailCard(title: "Deine Bewertung") {
+            Button {
+                showingRatingSheet = true
+            } label: {
+                HStack(spacing: 12) {
+                    if let avg = book.userRatingAverage1 {
+                        StarsView(rating: avg)
+                        Text(String(format: "%.1f", avg) + " / 5")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    } else {
+                        Image(systemName: "star")
+                            .foregroundStyle(.secondary)
+                        Text("Noch nicht bewertet")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Text("Tippe, um Handlung/Charaktere/Schreibstil & Co. zu bewerten.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.top, 6)
+        }
+    }
+
+    private var ratingLockedCard: some View {
+        DetailCard(title: "Bewertung") {
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark.seal")
+                    .foregroundStyle(.secondary)
+                Text("Bewertungen sind erst möglich, wenn der Status auf „Gelesen“ steht.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+        }
+    }
+
+    private var notesPreviewCard: some View {
+        DetailCard(title: "Notizen") {
+            Button {
+                showingNotesSheet = true
+            } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    if book.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("Tippe, um eine Notiz zu schreiben …")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text(book.notes)
+                            .foregroundStyle(.primary)
+                            .lineLimit(4)
+                    }
+
+                    HStack {
+                        Spacer()
+                        Text("Bearbeiten")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "square.and.pencil")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var tagsCard: some View {
+        DetailCard(title: "Tags") {
+            VStack(alignment: .leading, spacing: 10) {
+                if !book.tags.isEmpty {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
+                        spacing: 8
+                    ) {
+                        ForEach(book.tags, id: \.self) { t in
+                            SelectedTagPill(text: t) { removeTag(t) }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+
+                TextField("Tag hinzufügen …", text: $tagDraft)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .onSubmit { addTagsFromDraft() }
+                    .onChange(of: tagDraft) { _, newValue in
+                        if newValue.contains(",") {
+                            addTagsFromDraft()
+                        }
+                    }
+
+                if !topTagCounts30.isEmpty {
+                    Divider().opacity(0.5)
+
+                    Text("Häufige Tags (Tippen = hinzufügen/entfernen)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
+                        spacing: 8
+                    ) {
+                        ForEach(topTagCounts30, id: \.tag) { entry in
+                            TagPickPill(
+                                text: entry.tag,
+                                count: entry.count,
+                                isSelected: isTagSelected(entry.tag),
+                                onTap: { toggleTag(entry.tag) }
+                            )
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
+    private var collectionsPreviewCard: some View {
+        DetailCard(title: "Listen") {
+            Button {
+                showingCollectionsSheet = true
+            } label: {
+                VStack(alignment: .leading, spacing: 10) {
+                    let names = book.collectionsSafe.map { $0.name }.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                    if names.isEmpty {
+                        Text("Noch in keiner Liste")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        WrapChipsView(
+                            chips: names,
+                            maxVisible: 6
+                        )
+                    }
+
+                    HStack {
+                        Spacer()
+                        Text("Bearbeiten")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var moreInfoCard: some View {
+        DetailCard(title: "Mehr") {
+            DisclosureGroup(isExpanded: $isMoreInfoExpanded) {
+                VStack(alignment: .leading, spacing: 14) {
+                    // Bibliophile infos (links, availability, google rating, cover candidates)
+                    if hasAnyBibliophileInfo {
+                        bibliophileBlock
+                    }
+
+                    metadataBlock
+                    descriptionBlock
+                }
+                .padding(.top, 8)
+            } label: {
+                HStack {
+                    Text("Infos, Metadaten & Beschreibung")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Image(systemName: "info.circle")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var bibliophileBlock: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if hasAnyLinks {
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 10) {
                         if let url = urlFromString(book.previewLink) {
                             PrettyLinkRow(title: "Leseprobe / Vorschau", url: url, systemImage: "book.pages")
                         }
@@ -332,14 +501,15 @@ struct BookDetailView: View {
                         if let url = urlFromString(book.canonicalVolumeLink) {
                             PrettyLinkRow(title: "Original bei Google Books", url: url, systemImage: "link")
                         }
-                    } label: {
-                        Label("Online ansehen", systemImage: "safari")
                     }
+                } label: {
+                    Label("Online ansehen", systemImage: "safari")
                 }
+            }
 
-                // Formate & Verfügbarkeit
-                if hasAnyAvailability {
-                    DisclosureGroup {
+            if hasAnyAvailability {
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 10) {
                         if let viewability = prettyViewability {
                             LabeledContent("Vorschauumfang", value: viewability)
                         }
@@ -351,25 +521,18 @@ struct BookDetailView: View {
                             LabeledContent("Kaufstatus", value: sale)
                         }
 
-                        LabeledContent("E-Book") {
-                            boolLabel(book.isEbook, trueText: "Ja", falseText: "Nein")
-                        }
-
-                        LabeledContent("Einbettbar") {
-                            boolIcon(book.isEmbeddable)
-                        }
-
-                        LabeledContent("Public Domain") {
-                            boolIcon(book.isPublicDomain)
-                        }
-                    } label: {
-                        Label("Formate & Verfügbarkeit", systemImage: "doc.on.doc")
+                        LabeledContent("E-Book") { boolLabel(book.isEbook, trueText: "Ja", falseText: "Nein") }
+                        LabeledContent("Einbettbar") { boolIcon(book.isEmbeddable) }
+                        LabeledContent("Public Domain") { boolIcon(book.isPublicDomain) }
                     }
+                } label: {
+                    Label("Formate & Verfügbarkeit", systemImage: "doc.on.doc")
                 }
+            }
 
-                // Bewertung
-                if hasRating {
-                    DisclosureGroup {
+            if hasRating {
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 10) {
                             StarsView(rating: book.averageRating ?? 0)
                             Text(ratingText)
@@ -382,14 +545,15 @@ struct BookDetailView: View {
                         Text("Hinweis: Bewertungen können je nach Buch/Edition stark variieren.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                    } label: {
-                        Label("Bewertungen", systemImage: "star.bubble")
                     }
+                } label: {
+                    Label("Google-Bewertungen", systemImage: "star.bubble")
                 }
+            }
 
-                // Cover-Auswahl
-                if !book.coverURLCandidates.isEmpty {
-                    DisclosureGroup {
+            if !book.coverURLCandidates.isEmpty {
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 10) {
                         Text("Tippe ein Cover an, um es als Standardcover zu setzen.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -402,7 +566,6 @@ struct BookDetailView: View {
                                         let isSame = current.caseInsensitiveCompare(s) == .orderedSame
                                         guard !isSame else { return }
 
-                                        // User intent here is: "use this online cover".
                                         Task { @MainActor in
                                             await CoverThumbnailer.applyRemoteCover(urlString: s, to: book, modelContext: modelContext)
                                         }
@@ -417,45 +580,19 @@ struct BookDetailView: View {
                             }
                             .padding(.vertical, 4)
                         }
-                    } label: {
-                        Label("Cover auswählen", systemImage: "photo.on.rectangle")
                     }
-                }
-            }
-        }
-
-        // MARK: - Classic metadata
-
-        Section("Listen") {
-            if allCollections.isEmpty {
-                HStack {
-                    Text("Noch keine Listen")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Anlegen") { requestNewCollection() }
-                }
-            } else {
-                ForEach(allCollections) { col in
-                    Toggle(isOn: membershipBinding(for: col)) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(col.name.isEmpty ? "Ohne Namen" : col.name)
-                            Text("\(col.booksSafe.count) Bücher")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        }
-                    }
-                }
-
-                Button {
-                    requestNewCollection()
                 } label: {
-                    Label("Neue Liste …", systemImage: "plus")
+                    Label("Cover auswählen", systemImage: "photo.on.rectangle")
                 }
             }
         }
+    }
 
-        Section("Metadaten") {
+    private var metadataBlock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Metadaten")
+                .font(.subheadline.weight(.semibold))
+
             if let isbn = book.isbn13, !isbn.isEmpty {
                 LabeledContent("ISBN 13", value: isbn)
             }
@@ -479,90 +616,42 @@ struct BookDetailView: View {
 
             if !book.categories.isEmpty {
                 Text("Kategorien: \(book.categories.joined(separator: ", "))")
-                    .foregroundStyle(.secondary)
-            }
-        }
-
-        // MARK: - Tags + Notes
-        Section("Tags") {
-            VStack(alignment: .leading, spacing: 10) {
-                // Selected tags show up as pills (instead of plain comma text).
-                if !book.tags.isEmpty {
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
-                        spacing: 8
-                    ) {
-                        ForEach(book.tags, id: \.self) { t in
-                            SelectedTagPill(text: t) {
-                                removeTag(t)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-
-                TextField("Tag hinzufügen …", text: $tagDraft)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.done)
-                    .onSubmit { addTagsFromDraft() }
-                    .onChange(of: tagDraft) { _, newValue in
-                        // If user types commas, treat it as "commit".
-                        if newValue.contains(",") {
-                            addTagsFromDraft()
-                        }
-                    }
-
-                Text("Tipp: Tippe unten auf ein häufiges Tag – oder schreibe ein neues und bestätige mit Return oder Komma.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-
-            if !topTagCounts30.isEmpty {
-                Text("Häufige Tags (Tippen = hinzufügen/entfernen)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
-                    spacing: 8
-                ) {
-                    ForEach(topTagCounts30, id: \.tag) { entry in
-                        TagPickPill(
-                            text: entry.tag,
-                            count: entry.count,
-                            isSelected: isTagSelected(entry.tag),
-                            onTap: { toggleTag(entry.tag) }
-                        )
-                    }
-                }
-                .padding(.vertical, 4)
-            }
         }
-
-
-        Section("Notizen") {
-            TextEditor(text: $book.notes)
-                .frame(minHeight: 120)
-        }
-
-        if !book.bookDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            Section("Beschreibung") {
-                Text(book.bookDescription)
-                    .foregroundStyle(.secondary)
-            }
-        }
-
     }
 
+    private var descriptionBlock: some View {
+        let desc = book.bookDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        return VStack(alignment: .leading, spacing: 10) {
+            if !desc.isEmpty {
+                Text("Beschreibung")
+                    .font(.subheadline.weight(.semibold))
+
+                Text(desc)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(isDescriptionExpanded ? nil : 6)
+
+                Button(isDescriptionExpanded ? "Weniger" : "Mehr anzeigen") {
+                    withAnimation(.snappy) { isDescriptionExpanded.toggle() }
+                }
+                .font(.caption.weight(.semibold))
+            }
+        }
+    }
+
+    // MARK: - Bottom bar (3 actions)
+
+    private var bottomActionBar: some View {
+        BottomActionBar(
+            status: statusBinding,
+            onNote: { showingNotesSheet = true },
+            onCollections: { showingCollectionsSheet = true }
+        )
+    }
 
     // MARK: - Bibliophile computed properties
-
-    private var shouldShowSubtitleField: Bool {
-        if let s = book.subtitle?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty { return true }
-        if let id = book.googleVolumeID, !id.isEmpty { return true }
-        return false
-    }
 
     private var hasAnyLinks: Bool {
         (book.previewLink?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
@@ -593,7 +682,6 @@ struct BookDetailView: View {
         }
         return String(format: "%.1f", avg)
     }
-
 
     private var hasUserRating: Bool {
         book.userRatingAverage != nil
@@ -695,24 +783,13 @@ struct BookDetailView: View {
         book.userCoverData = nil
         try? modelContext.save()
 
-        // Re-populate from remote candidates if available (so the cover doesn't turn blank).
         Task { @MainActor in
             await CoverThumbnailer.backfillThumbnailIfNeeded(for: book, modelContext: modelContext)
         }
     }
 
+    // MARK: - Tags
 
-    // MARK: - Existing helpers
-
-    @ViewBuilder
-    private var cover: some View {
-        BookCoverThumbnailView(
-            book: book,
-            size: CGSize(width: 70, height: 105),
-            cornerRadius: 10
-        )
-    }
-    
     private var topTagCounts30: [(tag: String, count: Int)] {
         var counts: [String: Int] = [:]
 
@@ -764,64 +841,59 @@ struct BookDetailView: View {
         try? modelContext.save()
     }
 
-private func addTagsFromDraft() {
-    // Allows typing: "thriller, nyc" + return/comma
-    let parts = tagDraft
-        .split(separator: ",")
-        .map { normalizeTagString(String($0)) }
-        .filter { !$0.isEmpty }
+    private func addTagsFromDraft() {
+        let parts = tagDraft
+            .split(separator: ",")
+            .map { normalizeTagString(String($0)) }
+            .filter { !$0.isEmpty }
 
-    // Also allow "single tag + return" without comma
-    let single = normalizeTagString(tagDraft)
-    let candidates = parts.isEmpty ? ([single].filter { !$0.isEmpty }) : parts
+        let single = normalizeTagString(tagDraft)
+        let candidates = parts.isEmpty ? ([single].filter { !$0.isEmpty }) : parts
 
-    guard !candidates.isEmpty else {
+        guard !candidates.isEmpty else {
+            tagDraft = ""
+            return
+        }
+
+        var current = book.tags.map(normalizeTagString).filter { !$0.isEmpty }
+
+        for p in candidates {
+            if !current.contains(where: { $0.caseInsensitiveCompare(p) == .orderedSame }) {
+                current.append(p)
+            }
+        }
+
+        var out: [String] = []
+        for t in current {
+            if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
+                out.append(t)
+            }
+        }
+
+        book.tags = out
+        tagsText = out.joined(separator: ", ")
         tagDraft = ""
-        return
+        try? modelContext.save()
     }
 
-    var current = book.tags.map(normalizeTagString).filter { !$0.isEmpty }
+    private func removeTag(_ tag: String) {
+        let n = normalizeTagString(tag)
+        guard !n.isEmpty else { return }
 
-    for p in candidates {
-        if !current.contains(where: { $0.caseInsensitiveCompare(p) == .orderedSame }) {
-            current.append(p)
+        var current = book.tags.map(normalizeTagString).filter { !$0.isEmpty }
+        current.removeAll { $0.caseInsensitiveCompare(n) == .orderedSame }
+
+        var out: [String] = []
+        for t in current {
+            if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
+                out.append(t)
+            }
         }
+
+        book.tags = out
+        tagsText = out.joined(separator: ", ")
+        try? modelContext.save()
     }
-
-    // Dedup case-insensitive, preserve order
-    var out: [String] = []
-    for t in current {
-        if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
-            out.append(t)
-        }
-    }
-
-    book.tags = out
-    tagsText = out.joined(separator: ", ")
-    tagDraft = ""
-    try? modelContext.save()
-}
-
-private func removeTag(_ tag: String) {
-    let n = normalizeTagString(tag)
-    guard !n.isEmpty else { return }
-
-    var current = book.tags.map(normalizeTagString).filter { !$0.isEmpty }
-    current.removeAll { $0.caseInsensitiveCompare(n) == .orderedSame }
-
-    // Dedup case-insensitive, preserve order
-    var out: [String] = []
-    for t in current {
-        if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
-            out.append(t)
-        }
-    }
-
-    book.tags = out
-    tagsText = out.joined(separator: ", ")
-    try? modelContext.save()
-}
-
 
     private func parseTags(_ input: String) -> [String] {
         let raw = input
@@ -838,6 +910,7 @@ private func removeTag(_ tag: String) {
         return out
     }
 
+    // MARK: - Read range
 
     private func formattedReadRangeLine(from: Date?, to: Date?) -> String? {
         guard from != nil || to != nil else { return nil }
@@ -855,8 +928,7 @@ private func removeTag(_ tag: String) {
         return nil
     }
 
-
-    // MARK: - Collections (Phase 1) helpers
+    // MARK: - Collections helpers
 
     private func requestNewCollection() {
         let count = allCollections.count
@@ -867,9 +939,7 @@ private func removeTag(_ tag: String) {
         }
     }
 
-
     private func setMembership(_ isMember: Bool, for collection: BookCollection) {
-        // Keep both sides in sync (book <-> collection)
         var cols = book.collectionsSafe
         var books = collection.booksSafe
 
@@ -892,7 +962,6 @@ private func removeTag(_ tag: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        // If same name exists already, just attach.
         if let existing = allCollections.first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
             setMembership(true, for: existing)
             return
@@ -929,7 +998,437 @@ private func removeTag(_ tag: String) {
     }
 }
 
-// MARK: - Small UI Components
+// MARK: - Apple-Books-ish UI Components
+
+private struct BookHeroHeader: View {
+    @Bindable var book: Book
+    let hasUserRating: Bool
+    let displayedOverallRating: Double?
+    let displayedOverallText: String
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+
+            ZStack(alignment: .bottomLeading) {
+                // Background: big cover + blur + gradient
+                BookCoverThumbnailView(
+                    book: book,
+                    size: CGSize(width: w, height: 240),
+                    cornerRadius: 22
+                )
+                .scaledToFill()
+                .frame(width: w, height: 240)
+                .clipped()
+                .blur(radius: 18)
+                .overlay(
+                    LinearGradient(
+                        colors: [
+                            .black.opacity(0.35),
+                            .black.opacity(0.10),
+                            .black.opacity(0.55)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+
+                HStack(alignment: .bottom, spacing: 14) {
+                    BookCoverThumbnailView(
+                        book: book,
+                        size: CGSize(width: 120, height: 180),
+                        cornerRadius: 16
+                    )
+                    .shadow(radius: 12, y: 6)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(book.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Ohne Titel" : book.title)
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(3)
+
+                        let a = book.author.trimmingCharacters(in: .whitespacesAndNewlines)
+                        Text(a.isEmpty ? "—" : a)
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.85))
+                            .lineLimit(2)
+
+                        if let overall = displayedOverallRating {
+                            HStack(spacing: 10) {
+                                StarsView(rating: overall)
+
+                                Text(displayedOverallText)
+                                    .font(.caption)
+                                    .foregroundStyle(.white.opacity(0.85))
+                                    .monospacedDigit()
+
+                                if hasUserRating {
+                                    Text("deins")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.white.opacity(0.9))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(.white.opacity(0.12))
+                                        .clipShape(Capsule())
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(14)
+            }
+        }
+        .frame(height: 240)
+    }
+}
+
+private struct DetailCard<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+
+            content
+        }
+        .padding(14)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(.primary.opacity(0.06), lineWidth: 1)
+        )
+    }
+}
+
+private struct BottomActionBar: View {
+    @Binding var status: ReadingStatus
+    let onNote: () -> Void
+    let onCollections: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Menu {
+                Picker("Status", selection: $status) {
+                    ForEach(ReadingStatus.allCases) { s in
+                        Text(s.rawValue).tag(s)
+                    }
+                }
+            } label: {
+                Label("Status", systemImage: "bookmark")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(.thinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
+            Button(action: onNote) {
+                Label("Notiz", systemImage: "square.and.pencil")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(.thinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
+            Button(action: onCollections) {
+                Label("Liste", systemImage: "text.badge.plus")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(.thinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, 10)
+        .background(.ultraThinMaterial)
+        .overlay(
+            Rectangle()
+                .frame(height: 1)
+                .foregroundStyle(.primary.opacity(0.06)),
+            alignment: .top
+        )
+    }
+}
+
+private struct QuickChipsRow: View {
+    let overallRating: Double?
+    let overallText: String
+    let showsUserBadge: Bool
+
+    let pageCount: Int?
+    let publishedDate: String?
+    let language: String?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let r = overallRating {
+                Chip(text: overallText, systemImage: "star.fill")
+            }
+
+            if let pc = pageCount {
+                Chip(text: "\(pc) S.", systemImage: "doc.plaintext")
+            }
+
+            if let y = publishedYear(publishedDate) {
+                Chip(text: y, systemImage: "calendar")
+            }
+
+            if let lang = language?.trimmingCharacters(in: .whitespacesAndNewlines), !lang.isEmpty {
+                Chip(text: lang.uppercased(), systemImage: "globe")
+            }
+
+            Spacer()
+        }
+    }
+
+    private func publishedYear(_ s: String?) -> String? {
+        guard let s = s?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return nil }
+        // Accept "YYYY" or "YYYY-MM-DD"
+        if s.count >= 4 {
+            let y = String(s.prefix(4))
+            if Int(y) != nil { return y }
+        }
+        return nil
+    }
+}
+
+private struct Chip: View {
+    let text: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(text)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.thinMaterial)
+        .clipShape(Capsule())
+    }
+}
+
+private struct WrapChipsView: View {
+    let chips: [String]
+    var maxVisible: Int = 6
+
+    var body: some View {
+        let visible = Array(chips.prefix(maxVisible))
+        let remaining = max(0, chips.count - visible.count)
+
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) {
+            ForEach(visible, id: \.self) { c in
+                Text(c)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.thinMaterial)
+                    .clipShape(Capsule())
+            }
+
+            if remaining > 0 {
+                Text("+\(remaining)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.thinMaterial)
+                    .clipShape(Capsule())
+            }
+        }
+    }
+}
+
+private struct NotesEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var notes: String
+    let onSave: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                TextEditor(text: $notes)
+                    .padding(12)
+            }
+            .navigationTitle("Notiz")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Fertig") {
+                        onSave()
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+}
+
+private struct CollectionsPickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let allCollections: [BookCollection]
+    let membershipBinding: (BookCollection) -> Binding<Bool>
+    let onCreateNew: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if allCollections.isEmpty {
+                    Text("Noch keine Listen.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(allCollections) { col in
+                        Toggle(isOn: membershipBinding(col)) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(col.name.isEmpty ? "Ohne Namen" : col.name)
+                                Text("\(col.booksSafe.count) Bücher")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            }
+                        }
+                    }
+                }
+
+                Section {
+                    Button {
+                        onCreateNew()
+                    } label: {
+                        Label("Neue Liste …", systemImage: "plus")
+                    }
+                }
+            }
+            .navigationTitle("Listen")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Fertig") {
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+}
+
+private struct RatingEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var book: Book
+    let onReset: () -> Void
+    let onSave: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if book.status != .finished {
+                    Section {
+                        Text("Bewertungen sind erst möglich, wenn der Status auf „Gelesen“ steht.")
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Section {
+                        if hasAnyUserRatingValue {
+                            Button(role: .destructive) {
+                                onReset()
+                            } label: {
+                                Label("Bewertung zurücksetzen", systemImage: "trash")
+                            }
+                        }
+                    }
+
+                    Section("Kriterien") {
+                        UserRatingRow(
+                            title: "Handlung",
+                            subtitle: "Originell, logisch, Tempo, Wendungen",
+                            rating: $book.userRatingPlot
+                        ) { onSave() }
+
+                        UserRatingRow(
+                            title: "Charaktere",
+                            subtitle: "Glaubwürdig & identifizierbar",
+                            rating: $book.userRatingCharacters
+                        ) { onSave() }
+
+                        UserRatingRow(
+                            title: "Schreibstil",
+                            subtitle: "Sprache, Rhythmus, Flow",
+                            rating: $book.userRatingWritingStyle
+                        ) { onSave() }
+
+                        UserRatingRow(
+                            title: "Atmosphäre",
+                            subtitle: "Welt & emotionale Wirkung",
+                            rating: $book.userRatingAtmosphere
+                        ) { onSave() }
+
+                        UserRatingRow(
+                            title: "Genre-Fit",
+                            subtitle: "Erwartungen ans Genre erfüllt?",
+                            rating: $book.userRatingGenreFit
+                        ) { onSave() }
+
+                        UserRatingRow(
+                            title: "Aufmachung",
+                            subtitle: "Cover/Design/Optik",
+                            rating: $book.userRatingPresentation
+                        ) { onSave() }
+                    }
+
+                    Section("Gesamt") {
+                        if let avg = book.userRatingAverage1 {
+                            HStack(spacing: 10) {
+                                StarsView(rating: avg)
+                                Text(String(format: "%.1f", avg) + " / 5")
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                                Spacer()
+                            }
+                        } else {
+                            Text("Noch nicht bewertet")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Bewerten")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Fertig") {
+                        onSave()
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+
+    private var hasAnyUserRatingValue: Bool {
+        book.userRatingValues.contains(where: { $0 > 0 })
+    }
+}
+
+// MARK: - Small UI Components (existing)
 
 private struct PrettyLinkRow: View {
     let title: String
@@ -965,8 +1464,6 @@ private struct PrettyLinkRow: View {
     }
 }
 
-
-
 private struct StarRatingPicker: View {
     @Binding var rating: Int
     var onChange: (() -> Void)? = nil
@@ -977,12 +1474,7 @@ private struct StarRatingPicker: View {
         HStack(spacing: 3) {
             ForEach(1...maxStars, id: \.self) { i in
                 Button {
-                    // Tap same star again -> clear (0)
-                    if rating == i {
-                        rating = 0
-                    } else {
-                        rating = i
-                    }
+                    if rating == i { rating = 0 } else { rating = i }
                     onChange?()
                 } label: {
                     Image(systemName: i <= rating ? "star.fill" : "star")
@@ -1022,7 +1514,6 @@ private struct UserRatingRow: View {
         .contentShape(Rectangle())
     }
 }
-
 
 private struct CoverThumb: View {
     let urlString: String
