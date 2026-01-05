@@ -27,7 +27,10 @@ enum CoverThumbnailer {
     #if canImport(UIKit)
 
     static func makeThumbnailData(from image: UIImage) async -> Data? {
-        await Task.detached(priority: .utility) {
+        let maxPixel = thumbnailMaxPixel
+        let quality = thumbnailJPEGQuality
+
+        return await MainActor.run {
             let normalized = image.normalizedOrientation()
 
             let w = normalized.size.width
@@ -35,8 +38,7 @@ enum CoverThumbnailer {
             guard w > 0, h > 0 else { return nil }
 
             let maxSide = max(w, h)
-            let scale = (maxSide > thumbnailMaxPixel) ? (thumbnailMaxPixel / maxSide) : 1
-
+            let scale = (maxSide > maxPixel) ? (maxPixel / maxSide) : 1
             let targetSize = CGSize(width: max(1, floor(w * scale)), height: max(1, floor(h * scale)))
 
             let renderer = UIGraphicsImageRenderer(size: targetSize)
@@ -44,8 +46,8 @@ enum CoverThumbnailer {
                 normalized.draw(in: CGRect(origin: .zero, size: targetSize))
             }
 
-            return scaled.jpegData(compressionQuality: thumbnailJPEGQuality)
-        }.value
+            return scaled.jpegData(compressionQuality: quality)
+        }
     }
 
     static func makeThumbnailData(from imageData: Data) async -> Data? {

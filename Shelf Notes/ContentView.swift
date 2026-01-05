@@ -2891,7 +2891,7 @@ struct SettingsView: View {
     @MainActor
     private func refreshCoverCacheSize() async {
         let text = await Task.detached(priority: .utility) {
-            ImageDiskCache.shared.diskUsageString()
+            await ImageDiskCache.shared.diskUsageString()
         }.value
 
         coverCacheSizeText = text

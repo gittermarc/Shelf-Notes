@@ -499,7 +499,7 @@ struct BookImportView: View {
             thumbnailURL: book.thumbnailURL
         )
 
-        _ = withAnimation(.snappy) {
+        withAnimation(.snappy) {
             undoPayload = payload
         }
 
@@ -507,7 +507,7 @@ struct BookImportView: View {
             try? await Task.sleep(nanoseconds: 4_500_000_000)
             await MainActor.run {
                 guard undoPayload?.id == payload.id else { return }
-                _ = withAnimation(.snappy) {
+                withAnimation(.snappy) {
                     undoPayload = nil
                 }
             }
@@ -518,7 +518,7 @@ struct BookImportView: View {
     private func hideUndo() {
         undoHideTask?.cancel()
         undoHideTask = nil
-        _ = withAnimation(.snappy) {
+        withAnimation(.snappy) {
             undoPayload = nil
         }
     }
@@ -528,7 +528,7 @@ struct BookImportView: View {
         undoHideTask?.cancel()
         undoHideTask = nil
 
-        _ = withAnimation(.snappy) {
+        withAnimation(.snappy) {
             undoPayload = nil
         }
 
