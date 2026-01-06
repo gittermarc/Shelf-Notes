@@ -63,7 +63,7 @@ struct BookImportView: View {
     // ✅ Neu: Vorbelegung der Suche (z.B. ISBN aus Barcode-Scan)
     var initialQuery: String? = nil
     var autoSearchOnAppear: Bool = true
-    
+
     /// Legacy: einmalig beim ersten Quick-Add (kannst du weiter nutzen)
     var onQuickAddHappened: (() -> Void)? = nil
 
@@ -75,12 +75,39 @@ struct BookImportView: View {
 
     @State private var queryText: String = ""
     @State private var isLoading = false
+    @State private var isLoadingMore = false
     @State private var errorMessage: String?
+
+    // We keep fetched unfiltered results, and derive displayed results via local quality filters.
+    @State private var fetchedVolumes: [GoogleBookVolume] = []
     @State private var results: [GoogleBookVolume] = []
+
+    // Pagination / "mehr Ergebnisse" (Google Books: max 40 pro Request)
+    @State private var activeQuery: String = ""
+    @State private var totalItems: Int = 0
+    @State private var nextStartIndex: Int = 0
+    @State private var didReachEnd: Bool = false
+
+    // Prevent repeated infinite-scroll triggers for the same bottom item
+    @State private var lastInfiniteTriggerID: String?
 
     @FocusState private var searchFocused: Bool
 
     private let maxHistoryItems = 10
+    private let pageSize = 40
+
+    // Filter / Qualität
+    @State private var showFilters: Bool = false
+
+    // API-side filters
+    @State private var language: LanguageOption = .any
+    @State private var orderBy: GoogleBooksOrderBy = .relevance
+    @State private var apiFilter: GoogleBooksFilter = .none
+
+    // Local "quality" filters
+    @State private var onlyWithCover: Bool = false
+    @State private var onlyWithISBN: Bool = false
+    @State private var hideAlreadyInLibrary: Bool = false
 
     // Local UI: what was added during this session (fast feedback)
     @State private var addedVolumeIDs: Set<String> = []
@@ -120,6 +147,10 @@ struct BookImportView: View {
                             emptyState
                                 .padding(.top, 8)
                         } else {
+                            if !results.isEmpty {
+                                resultsMeta
+                                    .padding(.top, 6)
+                            }
                             resultsList
                                 .padding(.top, 4)
                         }
@@ -171,10 +202,26 @@ struct BookImportView: View {
                     }
                 }
             }
-
             .onDisappear {
                 undoHideTask?.cancel()
                 undoHideTask = nil
+            }
+            // Re-apply local filters immediately (no new API call required)
+            .onChange(of: onlyWithCover) { _, _ in applyLocalFilters() }
+            .onChange(of: onlyWithISBN) { _, _ in applyLocalFilters() }
+            .onChange(of: hideAlreadyInLibrary) { _, _ in applyLocalFilters() }
+            // API-side filters: new search (because server-side results should change)
+            .onChange(of: language) { _, _ in
+                guard !activeQuery.isEmpty else { return }
+                Task { await search() }
+            }
+            .onChange(of: orderBy) { _, _ in
+                guard !activeQuery.isEmpty else { return }
+                Task { await search() }
+            }
+            .onChange(of: apiFilter) { _, _ in
+                guard !activeQuery.isEmpty else { return }
+                Task { await search() }
             }
         }
     }
@@ -188,6 +235,8 @@ struct BookImportView: View {
                 .foregroundStyle(.secondary)
 
             searchBar
+
+            filtersSection
 
             if !history.isEmpty {
                 historyChips
@@ -216,7 +265,18 @@ struct BookImportView: View {
                     Button {
                         queryText = ""
                         errorMessage = nil
+
+                        fetchedVolumes = []
                         results = []
+
+                        // Reset paging
+                        activeQuery = ""
+                        totalItems = 0
+                        nextStartIndex = 0
+                        didReachEnd = false
+                        isLoadingMore = false
+                        lastInfiniteTriggerID = nil
+
                         searchFocused = true
                     } label: {
                         Image(systemName: "xmark.circle.fill")
@@ -237,9 +297,79 @@ struct BookImportView: View {
                 Image(systemName: "arrow.right.circle.fill")
                     .font(.title3)
             }
-            .disabled(queryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
+            .disabled(queryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading || isLoadingMore)
             .buttonStyle(.plain)
             .accessibilityLabel("Suchen")
+        }
+    }
+
+    private var filtersSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.snappy) { showFilters.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "line.3.horizontal.decrease.circle")
+                    Text("Filter & Qualität")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Image(systemName: showFilters ? "chevron.up" : "chevron.down")
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 6)
+            }
+            .buttonStyle(.plain)
+
+            if showFilters {
+                VStack(alignment: .leading, spacing: 12) {
+                    // API filters
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Filter (Google)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        HStack(spacing: 10) {
+                            Picker("Sprache", selection: $language) {
+                                ForEach(LanguageOption.allCases) { opt in
+                                    Text(opt.title).tag(opt)
+                                }
+                            }
+                            .pickerStyle(.menu)
+
+                            Picker("Sortierung", selection: $orderBy) {
+                                ForEach(GoogleBooksOrderBy.allCases) { opt in
+                                    Text(opt.title).tag(opt)
+                                }
+                            }
+                            .pickerStyle(.menu)
+
+                            Picker("Typ", selection: $apiFilter) {
+                                ForEach(GoogleBooksFilter.allCases) { opt in
+                                    Text(opt.title).tag(opt)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                        }
+                    }
+
+                    Divider()
+
+                    // Local quality filters
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Qualität (lokal)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Toggle("Nur mit Cover", isOn: $onlyWithCover)
+                        Toggle("Nur mit ISBN", isOn: $onlyWithISBN)
+                        Toggle("Bereits in Bibliothek ausblenden", isOn: $hideAlreadyInLibrary)
+                    }
+                    .font(.subheadline)
+                }
+                .padding(12)
+                .background(.ultraThinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
         }
     }
 
@@ -293,8 +423,79 @@ struct BookImportView: View {
                         Task { await quickAdd(volume, status: status) }
                     }
                 )
+                .onAppear {
+                    // ✅ Robust Infinite Scroll: trigger when the last *visible* item appears.
+                    guard errorMessage == nil else { return }
+                    guard shouldShowLoadMore else { return }
+                    guard !isLoading, !isLoadingMore else { return }
+
+                    guard let lastID = results.last?.id else { return }
+                    guard volume.id == lastID else { return }
+
+                    // prevent duplicate triggers for same last item
+                    if lastInfiniteTriggerID == lastID { return }
+                    lastInfiniteTriggerID = lastID
+
+                    Task { await loadMore() }
+                }
+            }
+
+            if shouldShowLoadMore {
+                loadMoreRow
+                    .padding(.top, 6)
             }
         }
+    }
+
+    private var resultsMeta: some View {
+        HStack(spacing: 8) {
+            let totalText = totalItems > 0 ? " von \(totalItems)" : ""
+            Text("Zeige \(results.count)\(totalText) Ergebnisse")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var shouldShowLoadMore: Bool {
+        guard !isLoading else { return false }
+        guard !didReachEnd else { return false }
+        guard !activeQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+
+        if totalItems > 0 {
+            // Next page exists if nextStartIndex is still before total.
+            return nextStartIndex < totalItems
+        }
+
+        // If totalItems unknown, continue until API returns empty page and sets didReachEnd.
+        return true
+    }
+
+    private var loadMoreRow: some View {
+        HStack {
+            Spacer()
+            if isLoadingMore {
+                ProgressView()
+                    .padding(.vertical, 10)
+            } else {
+                Button {
+                    Task { await loadMore() }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus.circle")
+                        Text("Mehr laden")
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                }
+                .buttonStyle(.bordered)
+            }
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 2)
     }
 
     private var emptyState: some View {
@@ -339,6 +540,35 @@ struct BookImportView: View {
 
     // MARK: - Search
 
+    private enum LanguageOption: String, CaseIterable, Identifiable {
+        case any
+        case de
+        case en
+        case fr
+        case es
+        case it
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .any: return "Alle Sprachen"
+            case .de: return "Deutsch"
+            case .en: return "Englisch"
+            case .fr: return "Französisch"
+            case .es: return "Spanisch"
+            case .it: return "Italienisch"
+            }
+        }
+
+        var apiValue: String? {
+            switch self {
+            case .any: return nil
+            default: return rawValue
+            }
+        }
+    }
+
     private func normalizedQuery(_ input: String) -> String {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         let digits = trimmed.filter(\.isNumber)
@@ -354,28 +584,125 @@ struct BookImportView: View {
 
         addToHistory(trimmed)
 
+        // Freeze query for paging (user may edit the text field while results are on screen)
+        let normalized = normalizedQuery(trimmed)
+
         await MainActor.run {
             errorMessage = nil
+            fetchedVolumes = []
             results = []
             isLoading = true
+
+            // Reset paging
+            activeQuery = normalized
+            totalItems = 0
+            nextStartIndex = 0
+            didReachEnd = false
+            isLoadingMore = false
+            lastInfiniteTriggerID = nil
         }
 
+        await fetchPage(startIndex: 0, append: false)
+    }
+
+    private func loadMore() async {
+        guard shouldShowLoadMore else { return }
+        guard !isLoadingMore, !isLoading else { return }
+
+        await MainActor.run {
+            isLoadingMore = true
+            errorMessage = nil
+        }
+
+        await fetchPage(startIndex: nextStartIndex, append: true)
+
+        await MainActor.run {
+            isLoadingMore = false
+        }
+    }
+
+    private func currentQueryOptions() -> GoogleBooksQueryOptions {
+        var opt = GoogleBooksQueryOptions.default
+        opt.langRestrict = language.apiValue
+        opt.orderBy = orderBy
+        opt.filter = apiFilter
+        opt.projection = .lite
+        return opt
+    }
+
+    private func fetchPage(startIndex: Int, append: Bool) async {
         do {
             let res = try await GoogleBooksClient.shared.searchVolumesWithDebug(
-                query: normalizedQuery(trimmed),
-                maxResults: 20
+                query: activeQuery,
+                startIndex: startIndex,
+                maxResults: pageSize,
+                options: currentQueryOptions()
             )
 
             await MainActor.run {
-                results = res.volumes
+                totalItems = res.totalItems
+
+                // Merge fetched (defensive against duplicates across pages)
+                if append {
+                    var existing = Set(fetchedVolumes.map { $0.id })
+                    let newOnes = res.volumes.filter { existing.insert($0.id).inserted }
+                    fetchedVolumes.append(contentsOf: newOnes)
+                } else {
+                    fetchedVolumes = res.volumes
+                }
+
+                applyLocalFilters()
+
+                // ✅ IMPORTANT: advance based on what the API actually returned.
+                // This prevents skipping and avoids falsely concluding "end reached"
+                let returnedCount = res.volumes.count
+                nextStartIndex = startIndex + returnedCount
+
+                // ✅ Robust end-of-list detection:
+                // - if API returns empty page -> end
+                // - if totalItems known and we've reached/overrun it -> end
+                if returnedCount == 0 {
+                    didReachEnd = true
+                } else if res.totalItems > 0, nextStartIndex >= res.totalItems {
+                    didReachEnd = true
+                } else {
+                    didReachEnd = false
+                }
+
                 isLoading = false
             }
         } catch {
             await MainActor.run {
                 errorMessage = error.localizedDescription
                 isLoading = false
+                // If the *first* page fails, we stop. If a later page fails, allow manual retry.
+                if !append { didReachEnd = true }
             }
         }
+    }
+
+    private func applyLocalFilters() {
+        var filtered = fetchedVolumes
+
+        if onlyWithCover {
+            filtered = filtered.filter { vol in
+                let cover = vol.bestCoverURLString ?? vol.bestThumbnailURLString
+                return (cover?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+            }
+        }
+
+        if onlyWithISBN {
+            filtered = filtered.filter { vol in
+                let isbn = vol.isbn13?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return !isbn.isEmpty
+            }
+        }
+
+        if hideAlreadyInLibrary {
+            filtered = filtered.filter { !isAlreadyAdded($0) }
+        }
+
+        results = filtered
     }
 
     // MARK: - Add

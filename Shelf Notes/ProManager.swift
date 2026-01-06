@@ -25,7 +25,7 @@ import UIKit
 final class ProManager: ObservableObject {
     /// ⚠️ TODO: Setze hier später genau die Product ID aus App Store Connect ein.
     static let productID = "001"
-    static let maxFreeCollections = 2
+    static let maxFreeCollections = 5
 
     @Published private(set) var hasPro: Bool = false
     @Published private(set) var product: Product?
