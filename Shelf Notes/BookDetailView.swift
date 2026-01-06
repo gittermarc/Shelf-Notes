@@ -5,6 +5,7 @@
 //  Created by Marc Fechner on 11.12.25.
 //  Split from ContentView.swift on 05.01.26.
 //  Apple-Books-ish redesign on 05.01.26.
+//  Parallax header + Apple-style toolbar on 05.01.26.
 //
 
 import SwiftUI
@@ -23,6 +24,7 @@ import UIKit
 // MARK: - Detail
 struct BookDetailView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @Bindable var book: Book
 
     @State private var tagsText: String = ""
@@ -31,9 +33,16 @@ struct BookDetailView: View {
     // Cover upload (user photo)
     #if canImport(PhotosUI)
     @State private var pickedCoverItem: PhotosPickerItem?
+    @State private var showingPhotoPicker: Bool = false
     #endif
     @State private var isUploadingCover: Bool = false
     @State private var coverUploadError: String? = nil
+
+    // Online cover picker
+    @State private var showingOnlineCoverPicker: Bool = false
+
+    // NavBar title reveal after header scroll
+    @State private var showCompactNavTitle: Bool = false
 
     // ✅ Collections
     @Query(sort: \BookCollection.name, order: .forward)
@@ -45,13 +54,20 @@ struct BookDetailView: View {
     @State private var showingNewCollectionSheet = false
     @State private var showingPaywall = false
 
-    // New: Sheets for Apple-Books-ish UX
+    // Apple-Books-ish UX sheets
     @State private var showingNotesSheet = false
     @State private var showingCollectionsSheet = false
     @State private var showingRatingSheet = false
 
     @State private var isDescriptionExpanded = false
     @State private var isMoreInfoExpanded = false
+
+    // Toolbar actions
+    @State private var showingDeleteConfirm = false
+    #if canImport(UIKit)
+    @State private var showingShareSheet = false
+    @State private var shareItems: [Any] = []
+    #endif
 
     @EnvironmentObject private var pro: ProManager
 
@@ -86,7 +102,7 @@ struct BookDetailView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
-                heroHeader
+                heroHeaderParallax
 
                 QuickChipsRow(
                     overallRating: displayedOverallRating,
@@ -116,9 +132,34 @@ struct BookDetailView: View {
             .padding(.top, 10)
             .padding(.bottom, 18) // breathing room above bottom bar
         }
+        .coordinateSpace(name: "BookDetailScroll")
         .background(appBackground)
-        .navigationTitle("Details")
+        .navigationTitle(showCompactNavTitle ? "" : "Details")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            toolbarContent
+        }
+        .onPreferenceChange(HeaderMinYPreferenceKey.self) { minY in
+            let threshold: CGFloat = -160
+            let shouldShow = minY < threshold
+            if shouldShow != showCompactNavTitle {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    showCompactNavTitle = shouldShow
+                }
+            }
+        }
+        .confirmationDialog(
+            "Buch wirklich löschen?",
+            isPresented: $showingDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Löschen", role: .destructive) {
+                deleteBook()
+            }
+            Button("Abbrechen", role: .cancel) { }
+        } message: {
+            Text("Diese Aktion kann nicht rückgängig gemacht werden.")
+        }
         .safeAreaInset(edge: .bottom) {
             bottomActionBar
         }
@@ -151,6 +192,26 @@ struct BookDetailView: View {
                 showingNewCollectionSheet = true
             })
         }
+        #if canImport(UIKit)
+        .sheet(isPresented: $showingShareSheet) {
+            ActivityView(activityItems: shareItems)
+        }
+        #endif
+        .sheet(isPresented: $showingOnlineCoverPicker) {
+            OnlineCoverPickerSheet(
+                candidates: book.coverURLCandidates,
+                selectedURLString: book.thumbnailURL,
+                onSelect: { s in
+                    Task { @MainActor in
+                        await CoverThumbnailer.applyRemoteCover(urlString: s, to: book, modelContext: modelContext)
+                    }
+                }
+            )
+        }
+        #if canImport(PhotosUI)
+        .modifier(PhotoPickerPresenter(isPresented: $showingPhotoPicker, selection: $pickedCoverItem))
+        #endif
+
         .onAppear {
             tagsText = book.tags.joined(separator: ", ")
             tagDraft = ""
@@ -165,6 +226,149 @@ struct BookDetailView: View {
         }
     }
 
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            if showCompactNavTitle {
+                VStack(spacing: 0) {
+                    Text(compactNavTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+
+                    if !compactNavSubtitle.isEmpty {
+                        Text(compactNavSubtitle)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            // Share
+            if let shareURL = shareURLCandidate {
+                if #available(iOS 16.0, *) {
+                    ShareLink(item: shareURL, subject: Text(shareSubject), message: Text(shareMessage)) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                } else {
+                    Button {
+                        presentShare(items: [shareURL])
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                }
+            } else {
+                if #available(iOS 16.0, *) {
+                    ShareLink(item: shareMessage, subject: Text(shareSubject)) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                } else {
+                    Button {
+                        presentShare(items: [shareMessage])
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                }
+            }
+
+            // Apple-style actions menu (Cover ändern / Löschen)
+            Menu {
+                Section {
+                    coverChangeMenuItems
+                }
+
+                Section {
+                    Button(role: .destructive) {
+                        showingDeleteConfirm = true
+                    } label: {
+                        Label("Löschen", systemImage: "trash")
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .accessibilityLabel("Aktionen")
+        }
+    }
+
+    @ViewBuilder
+    private var coverChangeMenuItems: some View {
+        #if canImport(PhotosUI)
+        Button {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { showingPhotoPicker = true }
+        } label: {
+            Label(isUploadingCover ? "Lade …" : "Cover aus Fotos wählen", systemImage: "photo")
+        }
+        .disabled(isUploadingCover)
+        #else
+        Label("Cover-Upload nicht verfügbar", systemImage: "exclamationmark.triangle")
+        #endif
+
+        if book.userCoverFileName != nil {
+            Button(role: .destructive) {
+                removeUserCover()
+            } label: {
+                Label("Benutzer-Cover entfernen", systemImage: "trash")
+            }
+        }
+
+        if !book.coverURLCandidates.isEmpty {
+            Button {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { showingOnlineCoverPicker = true }
+            } label: {
+                Label("Online-Cover auswählen", systemImage: "photo.on.rectangle")
+            }
+        }
+    }
+
+    private var compactNavTitle: String {
+        let t = book.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? "Ohne Titel" : t
+    }
+
+    private var compactNavSubtitle: String {
+        book.author.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var shareSubject: String {
+        let t = book.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? "Buch" : t
+    }
+
+    private var shareMessage: String {
+        let t = book.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let a = book.author.trimmingCharacters(in: .whitespacesAndNewlines)
+        var parts: [String] = []
+        if !t.isEmpty { parts.append("„\(t)“") }
+        if !a.isEmpty { parts.append("von \(a)") }
+
+        let base = parts.isEmpty ? "Buch" : parts.joined(separator: " ")
+        if let url = shareURLCandidate?.absoluteString {
+            return base + "\n" + url
+        }
+        return base
+    }
+
+    private var shareURLCandidate: URL? {
+        // Prefer canonical/info/preview links if available
+        if let u = urlFromString(book.canonicalVolumeLink) { return u }
+        if let u = urlFromString(book.infoLink) { return u }
+        if let u = urlFromString(book.previewLink) { return u }
+        return nil
+    }
+
+    private func presentShare(items: [Any]) {
+        #if canImport(UIKit)
+        shareItems = items
+        showingShareSheet = true
+        #endif
+    }
+
     // MARK: - Background
 
     private var appBackground: some View {
@@ -175,58 +379,25 @@ struct BookDetailView: View {
         #endif
     }
 
-    // MARK: - Hero
+    // MARK: - Hero (Parallax)
 
-    private var heroHeader: some View {
-        BookHeroHeader(
+    private var heroHeaderParallax: some View {
+        BookHeroHeaderParallax(
             book: book,
             hasUserRating: hasUserRating,
             displayedOverallRating: displayedOverallRating,
-            displayedOverallText: displayedOverallRatingText
+            displayedOverallText: displayedOverallRatingText,
+            baseHeight: 240,
+            coordinateSpaceName: "BookDetailScroll"
         )
-        .overlay(alignment: .topTrailing) {
-            heroCoverActions
-                .padding(10)
-        }
-    }
-
-    private var heroCoverActions: some View {
-        Menu {
-            #if canImport(PhotosUI)
-            PhotosPicker(selection: $pickedCoverItem, matching: .images) {
-                Label(isUploadingCover ? "Lade …" : "Cover aus Fotos wählen", systemImage: "photo")
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: HeaderMinYPreferenceKey.self,
+                    value: geo.frame(in: .named("BookDetailScroll")).minY
+                )
             }
-            .disabled(isUploadingCover)
-            #else
-            Label("Cover-Upload nicht verfügbar", systemImage: "exclamationmark.triangle")
-            #endif
-
-            if book.userCoverFileName != nil {
-                Button(role: .destructive) {
-                    removeUserCover()
-                } label: {
-                    Label("Benutzer-Cover entfernen", systemImage: "trash")
-                }
-            }
-
-            if !book.coverURLCandidates.isEmpty {
-                Button {
-                    // Jump user to the More-Info disclosure where cover selection lives.
-                    withAnimation(.snappy) { isMoreInfoExpanded = true }
-                } label: {
-                    Label("Online-Cover auswählen", systemImage: "photo.on.rectangle")
-                }
-            }
-        } label: {
-            Image(systemName: "ellipsis.circle")
-                .font(.title3)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.primary)
-                .padding(10)
-                .background(.thinMaterial)
-                .clipShape(Circle())
-        }
-        .accessibilityLabel("Aktionen")
+        )
     }
 
     // MARK: - Cards
@@ -788,6 +959,19 @@ struct BookDetailView: View {
         }
     }
 
+    // MARK: - Delete
+
+    private func deleteBook() {
+        // Clean up local user cover file if any
+        if let old = book.userCoverFileName {
+            UserCoverStore.delete(filename: old)
+        }
+
+        modelContext.delete(book)
+        try? modelContext.save()
+        dismiss()
+    }
+
     // MARK: - Tags
 
     private var topTagCounts30: [(tag: String, count: Int)] {
@@ -998,29 +1182,129 @@ struct BookDetailView: View {
     }
 }
 
+// MARK: - Scroll / NavBar Helpers
+
+private struct HeaderMinYPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+#if canImport(PhotosUI)
+private struct PhotoPickerPresenter: ViewModifier {
+    @Binding var isPresented: Bool
+    @Binding var selection: PhotosPickerItem?
+
+    func body(content: Content) -> some View {
+        if #available(iOS 16.0, *) {
+            content
+                .photosPicker(isPresented: $isPresented, selection: $selection, matching: .images)
+        } else {
+            // Fallback: PhotosPicker in a sheet for older iOS versions
+            content
+                .sheet(isPresented: $isPresented) {
+                    PhotosPicker(selection: $selection, matching: .images) {
+                        VStack(spacing: 12) {
+                            Image(systemName: "photo")
+                                .font(.largeTitle)
+                            Text("Fotos auswählen")
+                                .font(.headline)
+                        }
+                        .padding(24)
+                    }
+                    .padding()
+                }
+        }
+    }
+}
+#endif
+
+private struct OnlineCoverPickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let candidates: [String]
+    let selectedURLString: String?
+    let onSelect: (String) -> Void
+
+    private var selectedNormalized: String {
+        (selectedURLString ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Tippe ein Cover an, um es zu setzen.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 14)
+                        .padding(.top, 10)
+
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 80), spacing: 10)],
+                        spacing: 10
+                    ) {
+                        ForEach(candidates, id: \.self) { s in
+                            Button {
+                                onSelect(s)
+                                dismiss()
+                            } label: {
+                                CoverThumb(
+                                    urlString: s,
+                                    isSelected: selectedNormalized == s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 18)
+                }
+            }
+            .navigationTitle("Online-Cover")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Fertig") { dismiss() }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+}
+
+
+
 // MARK: - Apple-Books-ish UI Components
 
-private struct BookHeroHeader: View {
+private struct BookHeroHeaderParallax: View {
     @Bindable var book: Book
     let hasUserRating: Bool
     let displayedOverallRating: Double?
     let displayedOverallText: String
 
+    let baseHeight: CGFloat
+    let coordinateSpaceName: String
+
     var body: some View {
         GeometryReader { geo in
-            let w = geo.size.width
+            let minY = geo.frame(in: .named(coordinateSpaceName)).minY
+            let stretch = max(minY, 0)
+            let height = baseHeight + stretch
 
             ZStack(alignment: .bottomLeading) {
                 // Background: big cover + blur + gradient
                 BookCoverThumbnailView(
                     book: book,
-                    size: CGSize(width: w, height: 240),
+                    size: CGSize(width: geo.size.width, height: height),
                     cornerRadius: 22
                 )
                 .scaledToFill()
-                .frame(width: w, height: 240)
+                .frame(width: geo.size.width, height: height)
                 .clipped()
                 .blur(radius: 18)
+                .scaleEffect(stretch > 0 ? (1.0 + (stretch / 700.0)) : 1.0)
                 .overlay(
                     LinearGradient(
                         colors: [
@@ -1033,7 +1317,9 @@ private struct BookHeroHeader: View {
                     )
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .offset(y: stretch > 0 ? -stretch : 0) // keep top anchored while stretching
 
+                // Foreground content
                 HStack(alignment: .bottom, spacing: 14) {
                     BookCoverThumbnailView(
                         book: book,
@@ -1041,6 +1327,7 @@ private struct BookHeroHeader: View {
                         cornerRadius: 16
                     )
                     .shadow(radius: 12, y: 6)
+                    .offset(y: stretch > 0 ? (-stretch * 0.15) : 0) // subtle parallax
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text(book.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Ohne Titel" : book.title)
@@ -1079,9 +1366,10 @@ private struct BookHeroHeader: View {
                     Spacer(minLength: 0)
                 }
                 .padding(14)
+                .offset(y: stretch > 0 ? (-stretch * 0.10) : (minY < 0 ? (minY * 0.08) : 0)) // gentle parallax
             }
         }
-        .frame(height: 240)
+        .frame(height: baseHeight)
     }
 }
 
@@ -1548,3 +1836,15 @@ private struct CoverThumb: View {
         .clipped()
     }
 }
+
+#if canImport(UIKit)
+private struct ActivityView: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) { }
+}
+#endif
