@@ -13,6 +13,7 @@ struct Shelf_NotesApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Book.self,
+            ReadingSession.self,
             ReadingGoal.self,
             BookCollection.self
         ])

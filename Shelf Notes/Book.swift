@@ -38,6 +38,11 @@ final class Book {
     // -> kein @Relationship-Macro nötig (und bei dir zuletzt problematisch)
     var collections: [BookCollection]?
 
+    // ✅ Reading sessions (one-to-many)
+    // CloudKit requires an inverse relationship.
+    @Relationship(deleteRule: .cascade, inverse: \ReadingSession.book)
+    var readingSessions: [ReadingSession]?
+
     // Imported metadata (bisher)
     var googleVolumeID: String?
     var isbn13: String?
@@ -197,6 +202,12 @@ final class Book {
     var collectionsSafe: [BookCollection] {
         get { collections ?? [] }
         set { collections = newValue }
+    }
+
+    // Komfort: nil wie leeres Array behandeln
+    var readingSessionsSafe: [ReadingSession] {
+        get { readingSessions ?? [] }
+        set { readingSessions = newValue }
     }
 
     init(
