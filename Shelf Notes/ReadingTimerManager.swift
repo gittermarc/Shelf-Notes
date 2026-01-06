@@ -21,6 +21,8 @@ final class ReadingTimerManager: ObservableObject {
 
     // ✅ Fix for Swift 6 / Combine synthesis edge cases:
     // Provide objectWillChange explicitly so ObservableObject conformance is rock-solid.
+    // IMPORTANT: With some toolchains, @Published won't reliably trigger UI updates when objectWillChange
+    // is provided manually. So we explicitly send objectWillChange in mutating API calls.
     let objectWillChange = ObservableObjectPublisher()
 
     // MARK: - Types
@@ -97,6 +99,9 @@ final class ReadingTimerManager: ObservableObject {
     /// Starts a timer session. Returns an error message if start is not possible.
     @discardableResult
     func start(bookID: UUID, bookTitle: String, startedAt: Date = Date()) -> String? {
+        // Ensure UI updates immediately (BookDetail timer label + Root sheet triggers later).
+        objectWillChange.send()
+
         if pendingCompletion != nil {
             return "Du hast noch eine offene Session (Stop → Sheet). Speichere oder brich sie ab, bevor du eine neue startest."
         }
@@ -117,12 +122,18 @@ final class ReadingTimerManager: ObservableObject {
         )
         backgroundEnteredAt = nil
         persistActive()
+
+        // Redundant but harmless — guarantees immediate refresh even if @Published doesn't fire reliably.
+        objectWillChange.send()
         return nil
     }
 
     /// Stops the running timer and creates a pending completion.
     func stop(endedAt: Date = Date(), wasAutoStopped: Bool = false, autoStopMinutes: Int? = nil) {
         guard let active = active else { return }
+
+        // Ensure sheet opens immediately (no “only after switching tabs”).
+        objectWillChange.send()
 
         let end = max(endedAt, active.startedAt)
 
@@ -138,18 +149,24 @@ final class ReadingTimerManager: ObservableObject {
         self.active = nil
         backgroundEnteredAt = nil
         clearPersistedActive()
+
+        objectWillChange.send()
     }
 
     /// Drops the running timer immediately (no pending completion, nothing saved).
     func abortActiveSession() {
+        objectWillChange.send()
         active = nil
         backgroundEnteredAt = nil
         clearPersistedActive()
+        objectWillChange.send()
     }
 
     /// Drops the pending completion (no save).
     func discardPendingCompletion() {
+        objectWillChange.send()
         pendingCompletion = nil
+        objectWillChange.send()
     }
 
     /// Elapsed seconds for the active timer.
@@ -242,6 +259,9 @@ final class ReadingTimerManager: ObservableObject {
         do {
             let decoded = try JSONDecoder().decode(ActiveState.self, from: data)
             self.active = decoded
+
+            // Ensure any views (e.g. BookDetail) show the running state immediately.
+            objectWillChange.send()
         } catch {
             clearPersistedActive()
         }

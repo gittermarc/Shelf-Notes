@@ -111,6 +111,13 @@ struct TimerSessionCompletionSheet: View {
                 }
             }
         }
+        .onDisappear {
+            // If the user dismisses the sheet interactively (swipe down),
+            // treat it like "Abbruch" (i.e. nothing saved).
+            if timer.pendingCompletion?.id == pending.id {
+                timer.discardPendingCompletion()
+            }
+        }
     }
 
     private var safeBookTitle: String {

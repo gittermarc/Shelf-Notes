@@ -77,10 +77,24 @@ struct RootView: View {
         }
         .sheet(item: $timer.pendingCompletion) { pending in
             TimerSessionCompletionSheet(
-                book: books.first(where: { $0.id == pending.bookID }),
+                book: bookForPending(pending),
                 pending: pending
             )
             .environmentObject(timer)
         }
+    }
+
+    private func bookForPending(_ pending: ReadingTimerManager.PendingCompletion) -> Book? {
+        // Fast path: use already queried list if possible
+        if let match = books.first(where: { $0.id == pending.bookID }) {
+            return match
+        }
+
+        // Fallback: fetch directly from SwiftData (avoids any “Query hasn’t refreshed yet” edge cases)
+        let bookID = pending.bookID
+        let descriptor = FetchDescriptor<Book>(
+            predicate: #Predicate<Book> { $0.id == bookID }
+        )
+        return (try? modelContext.fetch(descriptor))?.first
     }
 }
