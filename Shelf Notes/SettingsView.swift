@@ -28,6 +28,10 @@ struct SettingsView: View {
     @State private var cacheInfoText: String? = nil
     @State private var coverCacheSizeText: String = "…"
 
+    // ✅ Lesesessions: Auto-Stop nach Inaktivität (verhindert 6h-Schlaf-Sessions 😄)
+    @AppStorage("session_autostop_enabled_v1") private var autoStopEnabled: Bool = true
+    @AppStorage("session_autostop_minutes_v1") private var autoStopMinutes: Int = 45
+
     var body: some View {
         NavigationStack {
             List {
@@ -44,6 +48,27 @@ struct SettingsView: View {
 
                 Section("Sync") {
                     Text("iCloud-Sync ist aktiv (CloudKit).")
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("Lesesessions") {
+                    Toggle(isOn: $autoStopEnabled) {
+                        Label("Auto-Stop nach Inaktivität", systemImage: "moon.zzz")
+                    }
+
+                    Stepper(value: $autoStopMinutes, in: 5...240, step: 5) {
+                        HStack {
+                            Text("Inaktivität")
+                            Spacer()
+                            Text("\(autoStopMinutes) Min.")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
+                    .disabled(!autoStopEnabled)
+
+                    Text("Wenn du die App verlässt und länger inaktiv bist, wird eine laufende Timer-Session automatisch beendet. Sonst wird aus „kurz lesen“ schnell „6 Stunden“ – Klassiker 😄")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
