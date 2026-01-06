@@ -1940,14 +1940,21 @@ private struct SessionsCard: View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
                 if let active = timer.active, active.bookID == book.id {
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        Text("Läuft gerade · " + timer.elapsedString(now: context.date))
+                    if active.isPaused {
+                        Text("Pausiert · " + ReadingTimerManager.formatDuration(timer.elapsedSeconds()))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
+                    } else {
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            Text("Läuft gerade · " + timer.elapsedString(now: context.date))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
                     }
                 } else if let active = timer.active, active.bookID != book.id {
-                    Text("Läuft gerade: \(active.bookTitle)")
+                    Text((active.isPaused ? "Pausiert: " : "Läuft gerade: ") + active.bookTitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -1964,74 +1971,78 @@ private struct SessionsCard: View {
 
             Spacer(minLength: 8)
 
-            HStack(spacing: 8) {
-                // ✅ Timer-Session: 1-Tap Start/Stop
-                if let active = timer.active, active.bookID == book.id {
-                    Button {
-                        timer.stop()
-                    } label: {
-                        TimelineView(.periodic(from: .now, by: 1)) { context in
-                            HStack(spacing: 8) {
-                                Image(systemName: "stop.fill")
-                                Text("Stop")
-                                Text(timer.elapsedString(now: context.date))
-                                    .monospacedDigit()
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .font(.subheadline.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.ultraThinMaterial)
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Session stoppen")
-                } else if timer.active != nil {
-                    // Another book is currently running → allow stop from here.
-                    Button {
-                        timer.stop()
-                    } label: {
-                        Label("Stop", systemImage: "stop.fill")
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(.ultraThinMaterial)
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Aktive Session stoppen")
-                } else {
-                    Button {
-                        let title = safeTitle(book)
-                        lastError = timer.start(bookID: book.id, bookTitle: title)
-                    } label: {
-                        Label("Start", systemImage: "play.fill")
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(.ultraThinMaterial)
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Session starten")
-                }
+            HStack(spacing: 10) {
+                timerControls
 
                 // Quick-Log bleibt zusätzlich (für manuelle Nachträge)
                 Button {
                     showingQuickLogSheet = true
                 } label: {
-                    Label("+ Session", systemImage: "plus")
-                        .font(.subheadline.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.ultraThinMaterial)
-                        .clipShape(Capsule())
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title3.weight(.semibold))
+                        Text("Session")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Session hinzufügen")
             }
         }
+    }
+
+    @ViewBuilder
+    private var timerControls: some View {
+        // ✅ Timer-Session: Icons statt “Start/Stop” (+ Pause)
+        if let active = timer.active, active.bookID == book.id {
+            if active.isPaused {
+                iconCircleButton(systemName: "play.fill", tint: .green, accessibilityLabel: "Session fortsetzen") {
+                    timer.resume()
+                }
+                iconCircleButton(systemName: "stop.fill", tint: .red, accessibilityLabel: "Session stoppen") {
+                    timer.stop()
+                }
+            } else {
+                iconCircleButton(systemName: "pause.fill", tint: .orange, accessibilityLabel: "Session pausieren") {
+                    timer.pause()
+                }
+                iconCircleButton(systemName: "stop.fill", tint: .red, accessibilityLabel: "Session stoppen") {
+                    timer.stop()
+                }
+            }
+        } else if timer.active != nil {
+            // Another book is currently running/paused → allow stop from here.
+            iconCircleButton(systemName: "stop.fill", tint: .red, accessibilityLabel: "Aktive Session stoppen") {
+                timer.stop()
+            }
+        } else {
+            iconCircleButton(systemName: "play.fill", tint: .green, accessibilityLabel: "Session starten") {
+                let title = safeTitle(book)
+                lastError = timer.start(bookID: book.id, bookTitle: title)
+            }
+        }
+    }
+
+    private func iconCircleButton(
+        systemName: String,
+        tint: Color,
+        accessibilityLabel: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(tint)
+                .frame(width: 38, height: 38)
+                .background(.ultraThinMaterial)
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
     }
 
     private var emptyState: some View {
@@ -2042,7 +2053,7 @@ private struct SessionsCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Noch keine Sessions")
                     .font(.subheadline)
-                Text("Tippe auf „Start“ (Timer) oder „+ Session“ (manuell).")
+                Text("Tippe auf ▶︎ (Timer) oder „+ Session“ (manuell).")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -2141,19 +2152,22 @@ private struct SessionRow: View {
 
             Spacer(minLength: 10)
 
-            Image(systemName: "ellipsis")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.top, 2)
+            Menu {
+                Button(role: .destructive) {
+                    onDelete()
+                } label: {
+                    Label("Löschen", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 1)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Session Aktionen")
         }
         .contentShape(Rectangle())
-        .contextMenu {
-            Button(role: .destructive) {
-                onDelete()
-            } label: {
-                Label("Löschen", systemImage: "trash")
-            }
-        }
         .accessibilityElement(children: .combine)
     }
 

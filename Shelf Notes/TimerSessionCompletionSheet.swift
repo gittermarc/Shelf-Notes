@@ -142,10 +142,12 @@ struct TimerSessionCompletionSheet: View {
             book.status = .reading
         }
 
+        let effectiveStart = pending.endedAt.addingTimeInterval(-TimeInterval(max(0, pending.durationSeconds)))
+
         let session = ReadingSession(
             book: book,
-            startedAt: pending.startedAt,
-            endedAt: pending.endedAt,
+            startAt: effectiveStart,
+            durationSeconds: pending.durationSeconds,
             pagesRead: pages,
             note: trimmedNote
         )

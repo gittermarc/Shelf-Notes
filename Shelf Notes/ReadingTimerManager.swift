@@ -13,6 +13,7 @@ import Combine
 ///
 /// Behavior:
 /// - Start: one tap. Keeps running across view changes and even if the app is backgrounded.
+/// - Pause/Resume: pauses counting time without discarding the session.
 /// - Stop: creates a pending completion state and triggers a sheet (pages + note).
 /// - Abort/dismiss: nothing is saved.
 /// - Nice-to-have early: auto-stop after X minutes in background/inactive (prevents 6-hour sessions 😄).
@@ -30,15 +31,79 @@ final class ReadingTimerManager: ObservableObject {
     struct ActiveState: Codable, Equatable {
         var bookID: UUID
         var bookTitle: String
+
+        /// The moment the user first started the session (for display).
         var startedAt: Date
+
+        /// The moment the timer was last resumed (only meaningful when not paused).
+        var lastResumedAt: Date
+
+        /// Accumulated seconds across previous run segments.
+        var accumulatedSeconds: Int
+
+        /// True when the session is currently paused.
+        var isPaused: Bool
+
+        /// Timestamp when the user paused (for display). Optional.
+        var pausedAt: Date?
+
+        init(
+            bookID: UUID,
+            bookTitle: String,
+            startedAt: Date,
+            lastResumedAt: Date,
+            accumulatedSeconds: Int,
+            isPaused: Bool,
+            pausedAt: Date?
+        ) {
+            self.bookID = bookID
+            self.bookTitle = bookTitle
+            self.startedAt = startedAt
+            self.lastResumedAt = lastResumedAt
+            self.accumulatedSeconds = accumulatedSeconds
+            self.isPaused = isPaused
+            self.pausedAt = pausedAt
+        }
+
+        // Backward compatibility with earlier stored blobs (v1).
+        enum CodingKeys: String, CodingKey {
+            case bookID, bookTitle, startedAt, lastResumedAt, accumulatedSeconds, isPaused, pausedAt
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+
+            self.bookID = try c.decode(UUID.self, forKey: .bookID)
+            self.bookTitle = (try? c.decode(String.self, forKey: .bookTitle)) ?? "Buch"
+
+            let started = (try? c.decode(Date.self, forKey: .startedAt)) ?? Date()
+            self.startedAt = started
+
+            // If older blobs don't have these fields, default to “running since startedAt”.
+            self.lastResumedAt = (try? c.decode(Date.self, forKey: .lastResumedAt)) ?? started
+            self.accumulatedSeconds = (try? c.decode(Int.self, forKey: .accumulatedSeconds)) ?? 0
+            self.isPaused = (try? c.decode(Bool.self, forKey: .isPaused)) ?? false
+            self.pausedAt = try? c.decode(Date.self, forKey: .pausedAt)
+
+            // Sanity: if paused but pausedAt missing, set it.
+            if isPaused && pausedAt == nil {
+                pausedAt = Date()
+            }
+        }
     }
 
     struct PendingCompletion: Identifiable, Equatable {
         let id: UUID
         var bookID: UUID
         var bookTitle: String
+
+        /// Display times (not used for duration calculation).
         var startedAt: Date
         var endedAt: Date
+
+        /// Actual counted reading duration in seconds (supports pauses).
+        var durationSeconds: Int
+
         var wasAutoStopped: Bool
         var autoStopMinutes: Int?
 
@@ -47,6 +112,7 @@ final class ReadingTimerManager: ObservableObject {
             bookTitle: String,
             startedAt: Date,
             endedAt: Date,
+            durationSeconds: Int,
             wasAutoStopped: Bool,
             autoStopMinutes: Int?
         ) {
@@ -55,12 +121,9 @@ final class ReadingTimerManager: ObservableObject {
             self.bookTitle = bookTitle
             self.startedAt = startedAt
             self.endedAt = endedAt
+            self.durationSeconds = max(0, durationSeconds)
             self.wasAutoStopped = wasAutoStopped
             self.autoStopMinutes = autoStopMinutes
-        }
-
-        var durationSeconds: Int {
-            max(0, Int(endedAt.timeIntervalSince(startedAt).rounded()))
         }
     }
 
@@ -90,7 +153,12 @@ final class ReadingTimerManager: ObservableObject {
 
     // MARK: - Public API
 
-    var isRunning: Bool { active != nil }
+    var isRunning: Bool {
+        guard let a = active else { return false }
+        return !a.isPaused
+    }
+
+    var isPaused: Bool { active?.isPaused ?? false }
 
     var activeBookID: UUID? { active?.bookID }
     var activeBookTitle: String? { active?.bookTitle }
@@ -108,18 +176,25 @@ final class ReadingTimerManager: ObservableObject {
 
         if let active = active {
             if active.bookID == bookID {
-                // Already running for this book — treat as success/no-op.
+                // Already running/paused for this book — treat as success/no-op.
                 return nil
             }
             return "Es läuft bereits eine Session („\(active.bookTitle)“). Stoppe sie zuerst."
         }
 
         let safeTitle = bookTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = safeTitle.isEmpty ? "Buch" : safeTitle
+
         self.active = ActiveState(
             bookID: bookID,
-            bookTitle: safeTitle.isEmpty ? "Buch" : safeTitle,
-            startedAt: startedAt
+            bookTitle: title,
+            startedAt: startedAt,
+            lastResumedAt: startedAt,
+            accumulatedSeconds: 0,
+            isPaused: false,
+            pausedAt: nil
         )
+
         backgroundEnteredAt = nil
         persistActive()
 
@@ -128,20 +203,62 @@ final class ReadingTimerManager: ObservableObject {
         return nil
     }
 
-    /// Stops the running timer and creates a pending completion.
+    /// Pauses the current session (keeps it active, but stops counting time).
+    func pause(pausedAt: Date = Date()) {
+        guard var a = active, !a.isPaused else { return }
+
+        objectWillChange.send()
+
+        let now = pausedAt
+        let segment = max(0, Int(now.timeIntervalSince(a.lastResumedAt).rounded()))
+        a.accumulatedSeconds = max(0, a.accumulatedSeconds + segment)
+        a.isPaused = true
+        a.pausedAt = now
+        active = a
+
+        backgroundEnteredAt = nil
+        persistActive()
+        objectWillChange.send()
+    }
+
+    /// Resumes a paused session.
+    func resume(resumedAt: Date = Date()) {
+        guard var a = active, a.isPaused else { return }
+
+        objectWillChange.send()
+
+        a.isPaused = false
+        a.pausedAt = nil
+        a.lastResumedAt = resumedAt
+        active = a
+
+        backgroundEnteredAt = nil
+        persistActive()
+        objectWillChange.send()
+    }
+
+    /// Stops the running/paused timer and creates a pending completion.
     func stop(endedAt: Date = Date(), wasAutoStopped: Bool = false, autoStopMinutes: Int? = nil) {
-        guard let active = active else { return }
+        guard let a = active else { return }
 
         // Ensure sheet opens immediately (no “only after switching tabs”).
         objectWillChange.send()
 
-        let end = max(endedAt, active.startedAt)
+        let end: Date
+        if a.isPaused {
+            end = a.pausedAt ?? endedAt
+        } else {
+            end = endedAt
+        }
+
+        let duration = totalElapsedSeconds(now: end, active: a)
 
         pendingCompletion = PendingCompletion(
-            bookID: active.bookID,
-            bookTitle: active.bookTitle,
-            startedAt: active.startedAt,
+            bookID: a.bookID,
+            bookTitle: a.bookTitle,
+            startedAt: a.startedAt,
             endedAt: end,
+            durationSeconds: duration,
             wasAutoStopped: wasAutoStopped,
             autoStopMinutes: autoStopMinutes
         )
@@ -169,10 +286,10 @@ final class ReadingTimerManager: ObservableObject {
         objectWillChange.send()
     }
 
-    /// Elapsed seconds for the active timer.
+    /// Elapsed seconds for the active timer (supports pause/resume).
     func elapsedSeconds(now: Date = Date()) -> Int {
-        guard let start = active?.startedAt else { return 0 }
-        return max(0, Int(now.timeIntervalSince(start).rounded()))
+        guard let a = active else { return 0 }
+        return totalElapsedSeconds(now: now, active: a)
     }
 
     func elapsedString(now: Date = Date()) -> String {
@@ -182,7 +299,8 @@ final class ReadingTimerManager: ObservableObject {
     // MARK: - Auto-stop (background/inactive)
 
     func handleScenePhaseChange(_ phase: ScenePhase) {
-        guard active != nil else {
+        // Auto-stop only applies to an actually running timer.
+        guard let a = active, !a.isPaused else {
             backgroundEnteredAt = nil
             return
         }
@@ -225,6 +343,17 @@ final class ReadingTimerManager: ObservableObject {
         return String(format: "%02d:%02d", m, sec)
     }
 
+    // MARK: - Helpers
+
+    private func totalElapsedSeconds(now: Date, active a: ActiveState) -> Int {
+        let base = max(0, a.accumulatedSeconds)
+        if a.isPaused {
+            return base
+        }
+        let segment = max(0, Int(now.timeIntervalSince(a.lastResumedAt).rounded()))
+        return max(0, base + segment)
+    }
+
     // MARK: - Persistence
 
     private func registerDefaultsIfNeeded() {
@@ -260,7 +389,7 @@ final class ReadingTimerManager: ObservableObject {
             let decoded = try JSONDecoder().decode(ActiveState.self, from: data)
             self.active = decoded
 
-            // Ensure any views (e.g. BookDetail) show the running state immediately.
+            // Ensure any views (e.g. BookDetail) show the running/paused state immediately.
             objectWillChange.send()
         } catch {
             clearPersistedActive()
