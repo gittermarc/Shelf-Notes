@@ -38,6 +38,8 @@ struct SessionsCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 header
 
+                ReadingProgressView(book: book, sessions: sessions)
+
                 if let err = lastError {
                     Text(err)
                         .font(.caption)
@@ -441,6 +443,12 @@ struct AllSessionsListSheet: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    ReadingProgressView(book: book, sessions: sessions)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowBackground(Color.clear)
+                }
+
                 if let err = lastError {
                     Section {
                         Text(err)
@@ -545,5 +553,99 @@ private struct DetailCard<Content: View>: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(.primary.opacity(0.06), lineWidth: 1)
         )
+    }
+}
+
+
+// MARK: - Reading progress UI
+
+struct ReadingProgressView: View {
+    let book: Book
+    let sessions: [ReadingSession]
+
+    private var totalPages: Int? {
+        guard let t = book.pageCount, t > 0 else { return nil }
+        return t
+    }
+
+    private var pagesRead: Int {
+        sessions
+            .compactMap { $0.pagesReadNormalized }
+            .reduce(0, +)
+    }
+
+    private var isFinished: Bool {
+        book.status == .finished
+    }
+
+    /// Returns nil when we can't compute progress (no pageCount) and the book isn't finished.
+    private var progressFraction: Double? {
+        if isFinished { return 1.0 }
+        guard let totalPages else { return nil }
+        return min(1.0, max(0.0, Double(pagesRead) / Double(totalPages)))
+    }
+
+    private var percentText: String {
+        if isFinished { return "100%" }
+        guard let fraction = progressFraction else { return "—" }
+        let pct = Int((fraction * 100.0).rounded())
+        return "\(pct)%"
+    }
+
+    private var detailLine: String {
+        if isFinished {
+            if let totalPages {
+                return "Gelesen · \(totalPages) Seiten"
+            } else {
+                return "Als gelesen markiert"
+            }
+        }
+
+        if let totalPages {
+            let clampedRead = min(max(0, pagesRead), totalPages)
+            let remaining = max(0, totalPages - clampedRead)
+            return "\(clampedRead)/\(totalPages) Seiten · Noch \(remaining)"
+        }
+
+        // No pageCount
+        if pagesRead > 0 {
+            return "\(pagesRead) Seiten geloggt · Gesamtseiten unbekannt"
+        }
+        return "Gesamtseiten unbekannt"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Fortschritt")
+                    .font(.subheadline.weight(.semibold))
+                Spacer(minLength: 8)
+                Text(percentText)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+
+            if let progressFraction {
+                ProgressView(value: progressFraction)
+                    .progressViewStyle(.linear)
+            } else {
+                // Unknown total pages → keep the UI stable.
+                ProgressView(value: 0)
+                    .progressViewStyle(.linear)
+                    .opacity(0.35)
+            }
+
+            Text(detailLine)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .padding(10)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Fortschritt")
+        .accessibilityValue(percentText)
     }
 }
