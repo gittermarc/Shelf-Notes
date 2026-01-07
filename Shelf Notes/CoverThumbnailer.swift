@@ -24,6 +24,39 @@ enum CoverThumbnailer {
     // For user-uploaded covers: keep a high-quality, full-resolution JPEG locally.
     static let fullResJPEGQuality: CGFloat = 0.95
 
+    enum RemoteCoverTarget {
+        case thumbnail
+        case display
+    }
+
+    /// Attempts to upgrade known remote cover URLs to a higher resolution variant.
+    /// This is best-effort and falls back to the original string if parsing fails.
+    static func upgradedRemoteURLString(_ urlString: String, target: RemoteCoverTarget) -> String {
+        let t = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return urlString }
+        guard let comps = URLComponents(string: t), let host = comps.host?.lowercased() else { return urlString }
+        // Never touch local file URLs.
+        if let u = URL(string: t), u.isFileURL { return urlString }
+
+        // Google Books cover URLs: bump `zoom=` for better quality.
+        if host.contains("books.google") || host.contains("books.googleusercontent") {
+            let targetZoom = (target == .display) ? 3 : 2
+            var c = comps
+            var items = c.queryItems ?? []
+            if let idx = items.firstIndex(where: { $0.name.lowercased() == "zoom" }) {
+                let current = Int(items[idx].value ?? "") ?? 1
+                if current < targetZoom { items[idx].value = String(targetZoom) }
+            } else {
+                items.append(URLQueryItem(name: "zoom", value: String(targetZoom)))
+            }
+            c.queryItems = items
+            return c.url?.absoluteString ?? urlString
+        }
+
+        // OpenLibrary already supports -L/-M/-S in the path; we don't rewrite here.
+        return urlString
+    }
+
     #if canImport(UIKit)
 
     static func makeThumbnailData(from image: UIImage) async -> Data? {
@@ -53,6 +86,63 @@ enum CoverThumbnailer {
     static func makeThumbnailData(from imageData: Data) async -> Data? {
         guard let ui = UIImage(data: imageData) else { return nil }
         return await makeThumbnailData(from: ui)
+    }
+
+    /// Heuristic: treat very small synced thumbnails as "low-res" (often caused by low-res remote thumbnails).
+    static func isLowResSyncedThumbnail(_ data: Data) -> Bool {
+        guard let ui = UIImage(data: data) else { return true }
+        let pxW = ui.size.width * ui.scale
+        let pxH = ui.size.height * ui.scale
+        // ~420px is enough to look crisp for a 120x180pt cover on 3x screens (360x540px).
+        return max(pxW, pxH) < 420
+    }
+
+    /// Ensures `book.userCoverData` (synced thumbnail) exists and is not low-res.
+    ///
+    /// - If a full-res user cover file exists, we derive the thumbnail from that file.
+    /// - Otherwise we try remote URLs (preferring the freshly resolved one if provided).
+    @MainActor
+    static func refreshSyncedThumbnailIfNeeded(for book: Book, resolvedURLString: String? = nil, modelContext: ModelContext) async {
+        if let data = book.userCoverData, !isLowResSyncedThumbnail(data) {
+            return
+        }
+
+        // 1) User cover file (full-res local)
+        if let fileName = book.userCoverFileName,
+           let fileURL = UserCoverStore.fileURL(for: fileName),
+           let img = UIImage(contentsOfFile: fileURL.path),
+           let data = await makeThumbnailData(from: img) {
+            book.userCoverData = data
+            try? modelContext.save()
+            return
+        }
+
+        // 2) Remote candidates (resolved first, then persisted candidates, then OpenLibrary fallback)
+        var pool: [String] = []
+        if let s = resolvedURLString?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            pool.append(s)
+        }
+        pool.append(contentsOf: book.coverCandidatesAll)
+
+        // Deduplicate + skip file URLs
+        var candidates: [String] = []
+        for s in pool {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty else { continue }
+            guard let u = URL(string: t), !u.isFileURL else { continue }
+            if !candidates.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
+                candidates.append(t)
+            }
+        }
+
+        for s in candidates {
+            if let data = await thumbnailData(forRemoteURLString: s) {
+                book.persistResolvedCoverURL(s)
+                book.userCoverData = data
+                try? modelContext.save()
+                return
+            }
+        }
     }
 
     /// Loads a UIImage for a given URL, preferring memory/disk caches.
@@ -95,7 +185,16 @@ enum CoverThumbnailer {
     /// Produces thumbnail data for a remote URL string (best effort).
     static func thumbnailData(forRemoteURLString urlString: String) async -> Data? {
         let t = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = URL(string: t), !url.isFileURL else { return nil }
+        guard !t.isEmpty else { return nil }
+
+        // Never try to thumbnail local file URLs here.
+        guard let rawURL = URL(string: t), !rawURL.isFileURL else { return nil }
+
+        // Try to fetch a higher-res variant first, then downscale to our synced thumbnail size.
+        let upgradedString = upgradedRemoteURLString(t, target: .thumbnail)
+        let url = URL(string: upgradedString) ?? rawURL
+        guard !url.isFileURL else { return nil }
+
         guard let img = await loadUIImage(for: url) else { return nil }
         return await makeThumbnailData(from: img)
     }
@@ -104,10 +203,9 @@ enum CoverThumbnailer {
     ///
     /// Rules:
     /// - If user cover file exists -> thumbnail is derived from that file.
-    /// - Else tries the best remote candidates (thumbnailURL / coverURLCandidates / OpenLibrary) and persists the working hit.
-    @MainActor
+    /// - Else try remote URLs (best-first) to derive a synced thumbnail.
     static func backfillThumbnailIfNeeded(for book: Book, modelContext: ModelContext) async {
-        if book.userCoverData != nil {
+        if let data = book.userCoverData, !isLowResSyncedThumbnail(data) {
             return
         }
 
@@ -150,14 +248,15 @@ enum CoverThumbnailer {
         do {
             let fd = FetchDescriptor<Book>()
             let books = try modelContext.fetch(fd)
-
             var processed = 0
+
             for b in books {
                 if b.userCoverData != nil { continue }
-                processed += 1
-                await backfillThumbnailIfNeeded(for: b, modelContext: modelContext)
 
-                // Light throttle to keep the UI snappy and be nice to the network.
+                await backfillThumbnailIfNeeded(for: b, modelContext: modelContext)
+                processed += 1
+
+                // Throttle a bit every few items
                 if processed % 6 == 0 {
                     try? await Task.sleep(nanoseconds: 120_000_000)
                 }
@@ -188,7 +287,7 @@ enum CoverThumbnailer {
         let filename = try UserCoverStore.saveJPEGData(fullResJPEG)
         book.userCoverFileName = filename
 
-        // Generate and set synced thumbnail
+        // Synced thumbnail
         if let ui = UIImage(data: fullResJPEG), let thumb = await makeThumbnailData(from: ui) {
             book.userCoverData = thumb
         } else {
@@ -211,13 +310,13 @@ enum CoverThumbnailer {
             book.userCoverFileName = nil
         }
 
-        // Persist the chosen URL as primary
+        // Persist the chosen remote URL
         book.persistResolvedCoverURL(t)
 
+        // Generate synced thumbnail from remote
         if let data = await thumbnailData(forRemoteURLString: t) {
             book.userCoverData = data
         } else {
-            // If we couldn't download, still keep URL for later; UI will fallback to placeholder.
             book.userCoverData = nil
         }
 
@@ -262,22 +361,19 @@ private extension UIImage {
 // MARK: - UI helpers
 
 struct BookCoverPlaceholder: View {
-    var cornerRadius: CGFloat = 10
+    var cornerRadius: CGFloat = 12
 
     var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius)
-            .fill(.secondary.opacity(0.12))
-            .overlay(
-                Image(systemName: "book")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.secondary.opacity(0.55))
-            )
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(.secondary.opacity(0.18))
+            .overlay {
+                Image(systemName: "book.closed")
+                    .font(.title3)
+                    .foregroundStyle(.secondary.opacity(0.45))
+            }
     }
 }
 
-/// Standard cover renderer used throughout the app.
-/// - Prefers synced thumbnail data (`book.userCoverData`).
-/// - Falls back to remote candidates and caches the resolved cover as thumbnail.
 struct BookCoverThumbnailView: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var book: Book
@@ -286,18 +382,22 @@ struct BookCoverThumbnailView: View {
     var cornerRadius: CGFloat
     var contentMode: ContentMode = .fit
 
+    private var prefersFullRes: Bool {
+        max(size.width, size.height) >= 110
+    }
+
     var body: some View {
         Group {
             #if canImport(UIKit)
-            if let data = book.userCoverData, let ui = UIImage(data: data) {
+            if !prefersFullRes, let data = book.userCoverData, let ui = UIImage(data: data) {
                 Image(uiImage: ui)
                     .resizable()
                     .aspectRatio(contentMode: contentMode)
             } else {
-                remoteFallback
+                remoteFallback(prefersFullRes: prefersFullRes)
             }
             #else
-            remoteFallback
+                remoteFallback(prefersFullRes: prefersFullRes)
             #endif
         }
         .frame(width: size.width, height: size.height)
@@ -306,13 +406,15 @@ struct BookCoverThumbnailView: View {
     }
 
     @ViewBuilder
-    private var remoteFallback: some View {
-        let candidates = book.coverCandidatesAll
+    private func remoteFallback(prefersFullRes: Bool) -> some View {
+        let raw = book.coverCandidatesAll
+        let candidates = prefersFullRes ? raw.map { CoverThumbnailer.upgradedRemoteURLString($0, target: .display) } : raw
+        let preferred = prefersFullRes ? book.thumbnailURL.map { CoverThumbnailer.upgradedRemoteURLString($0, target: .display) } : book.thumbnailURL
 
         if !candidates.isEmpty {
             CoverCandidatesImage(
                 urlStrings: candidates,
-                preferredURLString: book.thumbnailURL,
+                preferredURLString: preferred,
                 contentMode: contentMode,
                 onResolvedURL: { resolvedURL in
                     // Persist best URL (remote only) and generate synced thumbnail.
@@ -320,15 +422,7 @@ struct BookCoverThumbnailView: View {
 
                     #if canImport(UIKit)
                     Task { @MainActor in
-                        // If we don't have a synced thumbnail yet, try to backfill it now.
-                        // This handles both cases:
-                        // - local user photo exists (file on disk)
-                        // - remote URL succeeded
-                        if book.userCoverData == nil {
-                            await CoverThumbnailer.backfillThumbnailIfNeeded(for: book, modelContext: modelContext)
-                        } else {
-                            try? modelContext.save()
-                        }
+                        await CoverThumbnailer.refreshSyncedThumbnailIfNeeded(for: book, resolvedURLString: resolvedURL, modelContext: modelContext)
                     }
                     #else
                     try? modelContext.save()
