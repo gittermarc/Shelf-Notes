@@ -560,8 +560,14 @@ private struct DetailCard<Content: View>: View {
 // MARK: - Reading progress UI
 
 struct ReadingProgressView: View {
+    @Environment(\.modelContext) private var modelContext
+
     let book: Book
     let sessions: [ReadingSession]
+
+    @State private var showingPageCountPrompt: Bool = false
+    @State private var pageCountText: String = ""
+    @State private var inlineError: String? = nil
 
     private var totalPages: Int? {
         guard let t = book.pageCount, t > 0 else { return nil }
@@ -616,10 +622,27 @@ struct ReadingProgressView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text("Fortschritt")
                     .font(.subheadline.weight(.semibold))
+
                 Spacer(minLength: 8)
+
+                // ✏️ Seitenzahl nachtragen, wenn unbekannt
+                if totalPages == nil {
+                    Button {
+                        inlineError = nil
+                        pageCountText = ""
+                        showingPageCountPrompt = true
+                    } label: {
+                        Image(systemName: "pencil.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Seitenzahl nachtragen")
+                }
+
                 Text(percentText)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -640,6 +663,12 @@ struct ReadingProgressView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
+
+            if let err = inlineError {
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
         }
         .padding(10)
         .background(.ultraThinMaterial)
@@ -647,5 +676,35 @@ struct ReadingProgressView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Fortschritt")
         .accessibilityValue(percentText)
+        .alert("Seitenzahl nachtragen", isPresented: $showingPageCountPrompt) {
+            TextField("z.B. 384", text: $pageCountText)
+                .keyboardType(.numberPad)
+
+            Button("Speichern") {
+                savePageCount()
+            }
+
+            Button("Abbrechen", role: .cancel) { }
+        } message: {
+            Text("Ohne Gesamtseiten kann die App den Fortschritt nicht korrekt berechnen.")
+        }
+    }
+
+    private func savePageCount() {
+        inlineError = nil
+
+        let trimmed = pageCountText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let val = Int(trimmed), val > 0 else {
+            inlineError = "Bitte eine gültige Seitenzahl (> 0) eingeben."
+            return
+        }
+
+        book.pageCount = val
+
+        do {
+            try modelContext.save()
+        } catch {
+            inlineError = "Konnte Seitenzahl nicht speichern: \(error.localizedDescription)"
+        }
     }
 }
