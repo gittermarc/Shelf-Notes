@@ -389,15 +389,37 @@ struct BookCoverThumbnailView: View {
     var body: some View {
         Group {
             #if canImport(UIKit)
-            if !prefersFullRes, let data = book.userCoverData, let ui = UIImage(data: data) {
+
+            // ✅ 1) User-selected photo cover (local full-res) — always wins for large surfaces
+            if prefersFullRes,
+               let ui = localUserCoverUIImage() {
                 Image(uiImage: ui)
                     .resizable()
                     .aspectRatio(contentMode: contentMode)
+
+            // ✅ 2) Synced thumbnail (fast path), great for small cells
+            } else if !prefersFullRes,
+                      let data = book.userCoverData,
+                      let ui = UIImage(data: data) {
+                Image(uiImage: ui)
+                    .resizable()
+                    .aspectRatio(contentMode: contentMode)
+
+            // ✅ 3) Fallback: if thumb exists but we are in large mode, still show it (better than placeholder)
+            } else if prefersFullRes,
+                      let data = book.userCoverData,
+                      let ui = UIImage(data: data) {
+                Image(uiImage: ui)
+                    .resizable()
+                    .aspectRatio(contentMode: contentMode)
+
+            // ✅ 4) Remote candidates
             } else {
                 remoteFallback(prefersFullRes: prefersFullRes)
             }
+
             #else
-                remoteFallback(prefersFullRes: prefersFullRes)
+            remoteFallback(prefersFullRes: prefersFullRes)
             #endif
         }
         .frame(width: size.width, height: size.height)
@@ -405,11 +427,32 @@ struct BookCoverThumbnailView: View {
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 
+    #if canImport(UIKit)
+    private func localUserCoverUIImage() -> UIImage? {
+        guard let fileName = book.userCoverFileName,
+              let fileURL = UserCoverStore.fileURL(for: fileName) else { return nil }
+        return UIImage(contentsOfFile: fileURL.path)
+    }
+    #endif
+
     @ViewBuilder
     private func remoteFallback(prefersFullRes: Bool) -> some View {
-        let raw = book.coverCandidatesAll
-        let candidates = prefersFullRes ? raw.map { CoverThumbnailer.upgradedRemoteURLString($0, target: .display) } : raw
-        let preferred = prefersFullRes ? book.thumbnailURL.map { CoverThumbnailer.upgradedRemoteURLString($0, target: .display) } : book.thumbnailURL
+        let rawAll = book.coverCandidatesAll
+
+        // IMPORTANT: CoverCandidatesImage is remote-oriented; skip local file URLs here.
+        let raw = rawAll.filter { s in
+            guard let u = URL(string: s.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
+            return !u.isFileURL
+        }
+
+        let candidates = prefersFullRes
+        ? raw.map { CoverThumbnailer.upgradedRemoteURLString($0, target: .display) }
+        : raw
+
+        let preferredRaw = book.thumbnailURL
+        let preferred = prefersFullRes
+        ? preferredRaw.map { CoverThumbnailer.upgradedRemoteURLString($0, target: .display) }
+        : preferredRaw
 
         if !candidates.isEmpty {
             CoverCandidatesImage(
