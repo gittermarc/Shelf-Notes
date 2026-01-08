@@ -575,6 +575,19 @@ struct ReadingProgressView: View {
     @State private var pageCountText: String = ""
     @State private var inlineError: String? = nil
 
+    private var pageCountPromptTitle: String {
+        // Vorher gab es diese Option nur, wenn `pageCount` fehlte/0 war.
+        // Da die API auch falsche Werte liefern kann, darf der Nutzer die Seitenzahl immer anpassen.
+        return (totalPages == nil) ? "Seitenzahl nachtragen" : "Seitenzahl bearbeiten"
+    }
+
+    private var pageCountPromptMessage: String {
+        if totalPages == nil {
+            return "Ohne Gesamtseiten kann die App den Fortschritt nicht korrekt berechnen."
+        }
+        return "Wenn die API danebenliegt (andere Ausgabe, anderes Format), kannst du hier die Seitenzahl korrigieren."
+    }
+
     private var totalPages: Int? {
         guard let t = book.pageCount, t > 0 else { return nil }
         return t
@@ -634,20 +647,22 @@ struct ReadingProgressView: View {
 
                 Spacer(minLength: 8)
 
-                // ✏️ Seitenzahl nachtragen, wenn unbekannt
-                if totalPages == nil {
-                    Button {
-                        inlineError = nil
+                // ✏️ Seitenzahl immer bearbeitbar (auch wenn ein Wert vorhanden ist)
+                Button {
+                    inlineError = nil
+                    if let current = totalPages {
+                        pageCountText = String(current)
+                    } else {
                         pageCountText = ""
-                        showingPageCountPrompt = true
-                    } label: {
-                        Image(systemName: "pencil.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Seitenzahl nachtragen")
+                    showingPageCountPrompt = true
+                } label: {
+                    Image(systemName: "pencil.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(totalPages == nil ? "Seitenzahl nachtragen" : "Seitenzahl bearbeiten")
 
                 Text(percentText)
                     .font(.subheadline.weight(.semibold))
@@ -682,7 +697,7 @@ struct ReadingProgressView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Fortschritt")
         .accessibilityValue(percentText)
-        .alert("Seitenzahl nachtragen", isPresented: $showingPageCountPrompt) {
+        .alert(pageCountPromptTitle, isPresented: $showingPageCountPrompt) {
             TextField("z.B. 384", text: $pageCountText)
                 .keyboardType(.numberPad)
 
@@ -692,7 +707,7 @@ struct ReadingProgressView: View {
 
             Button("Abbrechen", role: .cancel) { }
         } message: {
-            Text("Ohne Gesamtseiten kann die App den Fortschritt nicht korrekt berechnen.")
+            Text(pageCountPromptMessage)
         }
     }
 
