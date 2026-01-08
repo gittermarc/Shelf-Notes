@@ -79,7 +79,7 @@ struct TimerSessionCompletionSheet: View {
                 }
 
                 Section("Optional") {
-                    TextField("Seiten gelesen", text: $pagesText)
+                    TextField(pagesFieldPlaceholder, text: $pagesText)
                         .keyboardType(.numberPad)
 
                     TextEditor(text: $noteText)
@@ -125,6 +125,19 @@ struct TimerSessionCompletionSheet: View {
         return t.isEmpty ? "Session" : t
     }
 
+    private var pagesFieldPlaceholder: String {
+        if let remainingPagesForBook {
+            return "Seiten gelesen (max. \(remainingPagesForBook))"
+        }
+        return "Seiten gelesen"
+    }
+
+    private var remainingPagesForBook: Int? {
+        guard let book, let total = book.pageCount, total > 0 else { return nil }
+        let already = book.readingSessionsSafe.compactMap { $0.pagesReadNormalized }.reduce(0, +)
+        return max(0, total - already)
+    }
+
     private func save() {
         guard let book else {
             lastError = "Buch nicht gefunden – kann nicht speichern."
@@ -137,12 +150,50 @@ struct TimerSessionCompletionSheet: View {
         let note = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedNote = note.isEmpty ? nil : note
 
+        let effectiveEnd = pending.endedAt
+        let effectiveStart = effectiveEnd.addingTimeInterval(-TimeInterval(max(0, pending.durationSeconds)))
+
+        // ✅ Validate page input: you can't log more pages than the book has remaining.
+        if let total = book.pageCount, total > 0, let p = pages {
+            let already = book.readingSessionsSafe.compactMap { $0.pagesReadNormalized }.reduce(0, +)
+            let remaining = max(0, total - already)
+
+            if remaining <= 0 {
+                lastError = "Dieses Buch hat bereits alle \(total) Seiten erreicht – du kannst keine weiteren Seiten loggen."
+                return
+            }
+
+            if p > remaining {
+                lastError = "Zu viele Seiten: Es sind nur noch \(remaining) von \(total) Seiten übrig."
+                return
+            }
+        }
+
         // Starting a session implies "reading" if the user hasn't started yet.
         if book.status == .toRead {
             book.status = .reading
         }
 
-        let effectiveStart = pending.endedAt.addingTimeInterval(-TimeInterval(max(0, pending.durationSeconds)))
+        // ✅ Auto-finish: if this session reaches the last page, mark the book as finished.
+        if let total = book.pageCount, total > 0 {
+            let already = book.readingSessionsSafe.compactMap { $0.pagesReadNormalized }.reduce(0, +)
+            let after = already + (pages ?? 0)
+            if after >= total {
+                book.status = .finished
+
+                if book.readFrom == nil {
+                    let earliestExisting = book.readingSessionsSafe.map(\.startedAt).min()
+                    let earliest = min(earliestExisting ?? effectiveStart, effectiveStart)
+                    book.readFrom = earliest
+                }
+
+                book.readTo = effectiveEnd
+
+                if let from = book.readFrom, let to = book.readTo, to < from {
+                    book.readFrom = to
+                }
+            }
+        }
 
         let session = ReadingSession(
             book: book,

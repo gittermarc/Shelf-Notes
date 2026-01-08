@@ -23,6 +23,15 @@ struct SessionsCard: View {
 
     private let previewLimit: Int = 8
 
+    /// Remaining pages until the book is finished (based on logged sessions).
+    /// Returns nil when the book has no valid total page count.
+    private var remainingPagesForBook: Int? {
+        guard let total = book.pageCount, total > 0 else { return nil }
+        let already = sessions.compactMap { $0.pagesReadNormalized }.reduce(0, +)
+        return max(0, total - already)
+    }
+
+
     init(book: Book, onShowAll: @escaping () -> Void) {
         self.book = book
         self.onShowAll = onShowAll
@@ -87,6 +96,8 @@ struct SessionsCard: View {
         .sheet(isPresented: $showingQuickLogSheet) {
             QuickSessionLogSheet(
                 bookTitle: safeTitle(book),
+                remainingPages: remainingPagesForBook,
+                totalPages: (book.pageCount ?? 0) > 0 ? book.pageCount : nil,
                 onCreate: { minutes, pages, note in
                     addSession(minutes: minutes, pages: pages, note: note)
                 }
@@ -234,7 +245,6 @@ struct SessionsCard: View {
         }
         return "\(sessions.count) Sessions · \(totalMinutes) Min. gesamt"
     }
-
     private func addSession(minutes: Int, pages: Int?, note: String?) {
         lastError = nil
 
@@ -242,11 +252,6 @@ struct SessionsCard: View {
         guard m > 0 else {
             lastError = "Bitte eine Dauer > 0 Minuten eingeben."
             return
-        }
-
-        // Logging a session implies the user has started reading.
-        if book.status == .toRead {
-            book.status = .reading
         }
 
         let seconds = m * 60
@@ -258,10 +263,51 @@ struct SessionsCard: View {
             return p
         }()
 
+        // ✅ Validate page input: you can't log more pages than the book has remaining.
+        if let total = book.pageCount, total > 0, let p = normalizedPages {
+            let already = sessions.compactMap { $0.pagesReadNormalized }.reduce(0, +)
+            let remaining = max(0, total - already)
+
+            if remaining <= 0 {
+                lastError = "Dieses Buch hat bereits alle \(total) Seiten erreicht – du kannst keine weiteren Seiten loggen."
+                return
+            }
+
+            if p > remaining {
+                lastError = "Zu viele Seiten: Es sind nur noch \(remaining) von \(total) Seiten übrig."
+                return
+            }
+        }
+
         let trimmedNote: String? = {
             guard let n = note?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty else { return nil }
             return n
         }()
+
+        // Logging a session implies the user has started reading.
+        if book.status == .toRead {
+            book.status = .reading
+        }
+
+        // ✅ Auto-finish: if this session reaches the last page, mark the book as finished.
+        if let total = book.pageCount, total > 0 {
+            let already = sessions.compactMap { $0.pagesReadNormalized }.reduce(0, +)
+            let after = already + (normalizedPages ?? 0)
+            if after >= total {
+                book.status = .finished
+
+                if book.readFrom == nil {
+                    let earliestExisting = sessions.map(\.startedAt).min()
+                    let earliest = min(earliestExisting ?? start, start)
+                    book.readFrom = earliest
+                }
+                book.readTo = end
+
+                if let from = book.readFrom, let to = book.readTo, to < from {
+                    book.readFrom = to
+                }
+            }
+        }
 
         let session = ReadingSession(
             book: book,
@@ -363,6 +409,8 @@ struct SessionRow: View {
 
 struct QuickSessionLogSheet: View {
     let bookTitle: String
+    let remainingPages: Int?
+    let totalPages: Int?
     let onCreate: (_ minutes: Int, _ pages: Int?, _ note: String?) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -370,6 +418,7 @@ struct QuickSessionLogSheet: View {
     @State private var minutes: Int = 20
     @State private var pagesText: String = ""
     @State private var noteText: String = ""
+    @State private var localError: String? = nil
 
     var body: some View {
         NavigationStack {
@@ -387,12 +436,22 @@ struct QuickSessionLogSheet: View {
                 } header: {
                     Text("Quick-Log")
                 } footer: {
-                    Text("Hier wird eine Session als „jetzt minus Dauer“ bis „jetzt“ gespeichert.")
+                    if let remainingPages, let totalPages {
+                        Text("Hier wird eine Session als „jetzt minus Dauer“ bis „jetzt“ gespeichert. Du kannst maximal \(remainingPages) von insgesamt \(totalPages) Seiten loggen.")
+                    } else {
+                        Text("Hier wird eine Session als „jetzt minus Dauer“ bis „jetzt“ gespeichert.")
+                    }
                 }
 
                 Section("Optional") {
-                    TextField("Seiten gelesen", text: $pagesText)
+                    TextField(remainingPlaceholder, text: $pagesText)
                         .keyboardType(.numberPad)
+
+                    if let err = localError {
+                        Text(err)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
                 }
 
                 Section("Notiz") {
@@ -408,15 +467,44 @@ struct QuickSessionLogSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Speichern") {
-                        let pages = parsePositiveInt(pagesText)
-                        let note = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
-                        onCreate(minutes, pages, note.isEmpty ? nil : note)
-                        dismiss()
+                        save()
                     }
                     .disabled(minutes <= 0)
                 }
             }
+            .onChange(of: pagesText) { _, _ in
+                // Clear local error while user edits.
+                if localError != nil { localError = nil }
+            }
         }
+    }
+
+    private var remainingPlaceholder: String {
+        if let remainingPages {
+            return "Seiten gelesen (max. \(remainingPages))"
+        }
+        return "Seiten gelesen"
+    }
+
+    private func save() {
+        localError = nil
+
+        let pages = parsePositiveInt(pagesText)
+
+        if let maxPages = remainingPages, let p = pages {
+            if maxPages <= 0 {
+                localError = "Dieses Buch hat keine Seiten mehr übrig (laut Log)."
+                return
+            }
+            if p > maxPages {
+                localError = "Zu viele Seiten: Maximal \(maxPages) möglich."
+                return
+            }
+        }
+
+        let note = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
+        onCreate(minutes, pages, note.isEmpty ? nil : note)
+        dismiss()
     }
 
     private func parsePositiveInt(_ s: String) -> Int? {
@@ -426,6 +514,7 @@ struct QuickSessionLogSheet: View {
         return val
     }
 }
+
 
 struct AllSessionsListSheet: View {
     @Environment(\.modelContext) private var modelContext
