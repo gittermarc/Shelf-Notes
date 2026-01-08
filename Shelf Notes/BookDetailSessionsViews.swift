@@ -132,23 +132,25 @@ struct SessionsCard: View {
             HStack(spacing: 10) {
                 timerControls
 
-                // Quick-Log bleibt zusätzlich (für manuelle Nachträge)
-                Button {
-                    showingQuickLogSheet = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title3.weight(.semibold))
-                        Text("Session")
-                            .font(.subheadline.weight(.semibold))
+                // ✅ Manuelles Hinzufügen nur, wenn gerade KEINE aktive Timer-Session läuft.
+                if timer.active == nil {
+                    Button {
+                        showingQuickLogSheet = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.title3.weight(.semibold))
+                            Text("Session")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Capsule())
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Capsule())
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Session hinzufügen")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Session hinzufügen")
             }
         }
     }
@@ -211,9 +213,13 @@ struct SessionsCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Noch keine Sessions")
                     .font(.subheadline)
-                Text("Tippe auf ▶︎ (Timer) oder „+ Session“ (manuell).")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    timer.active == nil
+                    ? "Tippe auf ▶︎ (Timer) oder „+ Session“ (manuell)."
+                    : "Es läuft gerade eine Session – stoppe sie oben, um manuell nachzutragen."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             Spacer()
