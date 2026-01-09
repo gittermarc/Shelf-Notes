@@ -26,6 +26,12 @@ struct RootView: View {
                     Label("Bibliothek", systemImage: "books.vertical")
                 }
 
+            // ✅ Neu: Visuelle Lese-Zeitleiste (gelesene Bücher als horizontaler Zeitstrahl)
+            ReadingTimelineView()
+                .tabItem {
+                    Label("Zeitleiste", systemImage: "clock")
+                }
+
             CollectionsView()
                 .tabItem {
                     Label("Listen", systemImage: "rectangle.stack")
