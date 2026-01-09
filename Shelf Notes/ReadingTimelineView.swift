@@ -10,9 +10,9 @@ import SwiftData
 
 /// A visually focused, horizontally scrollable reading timeline.
 ///
-/// - Data source: finished books (`ReadingStatus.finished`).
+/// - Data source: finished books.
 /// - Sorting key: `readTo ?? readFrom ?? createdAt`.
-/// - UI: year markers + cover tiles on a horizontal axis.
+/// - UI: year chips scrubber + year summary cards + cover tiles on a horizontal axis.
 struct ReadingTimelineView: View {
     // Only finished books.
     //
@@ -25,6 +25,11 @@ struct ReadingTimelineView: View {
     private var finishedBooks: [Book]
 
     @State private var jumpToYear: Int?
+    @State private var selectedYear: Int?
+
+    // A stable height prevents SwiftUI from collapsing the horizontal scroll view
+    // (which can lead to half-clipped cards/covers).
+    private let timelineScrollHeight: CGFloat = 380
 
     var body: some View {
         NavigationStack {
@@ -41,18 +46,37 @@ struct ReadingTimelineView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     if !years.isEmpty {
                         Menu {
-                            Button("Zum Anfang") { jumpToYear = years.first }
-                            Button("Zum Ende") { jumpToYear = years.last }
+                            Button("Zum Anfang") {
+                                if let first = years.first {
+                                    selectedYear = first
+                                    jumpToYear = first
+                                }
+                            }
+                            Button("Zum Ende") {
+                                if let last = years.last {
+                                    selectedYear = last
+                                    jumpToYear = last
+                                }
+                            }
                             Divider()
 
                             ForEach(years, id: \.self) { y in
-                                Button(String(y)) { jumpToYear = y }
+                                Button(String(y)) {
+                                    selectedYear = y
+                                    jumpToYear = y
+                                }
                             }
                         } label: {
                             Image(systemName: "calendar")
                         }
                         .accessibilityLabel("Zu Jahr springen")
                     }
+                }
+            }
+            .onAppear {
+                // Default selection: first year if available
+                if selectedYear == nil {
+                    selectedYear = years.first
                 }
             }
         }
@@ -62,16 +86,32 @@ struct ReadingTimelineView: View {
 
     private var content: some View {
         ScrollViewReader { proxy in
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
                 header
+
+                // ✅ Year Chips Scrubber (Apple Books meets Letterboxd)
+                if !years.isEmpty {
+                    YearChipsBar(
+                        years: years,
+                        selectedYear: $selectedYear
+                    ) { year in
+                        selectedYear = year
+                        jumpToYear = year
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 0)
+                }
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .bottom, spacing: 22) {
                         ForEach(timelineItems) { item in
                             switch item.kind {
-                            case .year(let y):
-                                YearMarker(year: y)
-                                    .id(scrollID(forYear: y))
+                            case .year(let y, let stats):
+                                YearSummaryMarker(
+                                    year: y,
+                                    stats: stats
+                                )
+                                .id(scrollID(forYear: y))
 
                             case .book(let book, let date):
                                 TimelineBookTile(book: book, date: date)
@@ -79,8 +119,8 @@ struct ReadingTimelineView: View {
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 14)
-                    .padding(.bottom, 20)
+                    .padding(.top, 12)
+                    .padding(.bottom, 18)
                     // The time axis line that runs behind the dots.
                     .background(alignment: .bottom) {
                         Rectangle()
@@ -90,6 +130,10 @@ struct ReadingTimelineView: View {
                             .offset(y: -8)
                     }
                 }
+                // ✅ Critical: give the horizontal scroll view a stable height so content isn't clipped.
+                .frame(height: timelineScrollHeight)
+                // ✅ Adds internal top/bottom breathing room; helps shadows & tall content.
+                .contentMargins(.vertical, 8, for: .scrollContent)
                 .scrollTargetBehavior(.viewAligned)
                 .onChange(of: jumpToYear) { _, newValue in
                     guard let y = newValue else { return }
@@ -100,7 +144,7 @@ struct ReadingTimelineView: View {
 
                 footerHint
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, 6)
         }
     }
 
@@ -109,24 +153,25 @@ struct ReadingTimelineView: View {
             Text("Deine gelesenen Bücher als Zeitstrahl")
                 .font(.headline)
 
-            Text("Links fängt’s an, rechts geht’s weiter. Wenn du beim Scrollen plötzlich 2019 wieder siehst: keine Panik – das ist Nostalgie, kein Bug.")
+            Text("Scroll nach rechts für die Zukunft. Scroll nach links für „Hä, was habe ich 2018 eigentlich gelesen?“ 😄")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 16)
-        .padding(.top, 6)
+        .padding(.top, 4)
+        .padding(.bottom, 0)
     }
 
     private var footerHint: some View {
         HStack(spacing: 8) {
             Image(systemName: "hand.draw")
                 .foregroundStyle(.secondary)
-            Text("Tipp: Tippe ein Cover an, um direkt ins Buch zu springen.")
+            Text("Tipp: Mit den Jahres-Chips oben kannst du superschnell scrubben.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 16)
-        .padding(.top, 6)
+        .padding(.top, 2)
     }
 
     private var emptyState: some View {
@@ -157,6 +202,45 @@ struct ReadingTimelineView: View {
             .sorted { $0.1 < $1.1 }
     }
 
+    private var yearStatsByYear: [Int: YearStats] {
+        var dict: [Int: [YearEntry]] = [:]
+
+        for (book, date) in timelineEntries {
+            let y = Calendar.current.component(.year, from: date)
+            dict[y, default: []].append(YearEntry(book: book, date: date))
+        }
+
+        var out: [Int: YearStats] = [:]
+        for (year, entries) in dict {
+            let count = entries.count
+
+            let ratedAverages: [Double] = entries.compactMap { $0.book.userRatingAverage }
+            let ratedCount = ratedAverages.count
+            let avgRating: Double? = ratedAverages.isEmpty
+                ? nil
+                : (ratedAverages.reduce(0, +) / Double(ratedAverages.count))
+
+            let sortedByDate = entries.sorted { $0.date < $1.date }
+            let firstDate = sortedByDate.first?.date
+            let lastDate = sortedByDate.last?.date
+
+            // For the little cover preview strip: earliest 4 of that year
+            let previewBooks = sortedByDate.prefix(4).map { $0.book }
+
+            out[year] = YearStats(
+                year: year,
+                count: count,
+                ratedCount: ratedCount,
+                averageRating: avgRating,
+                firstDate: firstDate,
+                lastDate: lastDate,
+                previewBooks: previewBooks
+            )
+        }
+
+        return out
+    }
+
     private var timelineItems: [TimelineItem] {
         guard !timelineEntries.isEmpty else { return [] }
 
@@ -165,10 +249,13 @@ struct ReadingTimelineView: View {
 
         for (book, date) in timelineEntries {
             let y = Calendar.current.component(.year, from: date)
+
             if lastYear != y {
-                items.append(TimelineItem(kind: .year(y)))
+                let stats = yearStatsByYear[y] ?? YearStats(year: y, count: 0, ratedCount: 0, averageRating: nil, firstDate: nil, lastDate: nil, previewBooks: [])
+                items.append(TimelineItem(kind: .year(y, stats)))
                 lastYear = y
             }
+
             items.append(TimelineItem(kind: .book(book, date)))
         }
 
@@ -185,11 +272,11 @@ struct ReadingTimelineView: View {
     }
 }
 
-// MARK: - Timeline items
+// MARK: - Models used by the timeline
 
 private struct TimelineItem: Identifiable {
     enum Kind {
-        case year(Int)
+        case year(Int, YearStats)
         case book(Book, Date)
     }
 
@@ -197,27 +284,182 @@ private struct TimelineItem: Identifiable {
     let kind: Kind
 }
 
+private struct YearEntry {
+    let book: Book
+    let date: Date
+}
+
+private struct YearStats {
+    let year: Int
+    let count: Int
+    let ratedCount: Int
+    let averageRating: Double?
+    let firstDate: Date?
+    let lastDate: Date?
+    let previewBooks: [Book]
+
+    var dateRangeText: String? {
+        guard let firstDate, let lastDate else { return nil }
+        let start = firstDate.formatted(.dateTime.day().month(.twoDigits))
+        let end = lastDate.formatted(.dateTime.day().month(.twoDigits))
+        return "\(start) – \(end)"
+    }
+
+    var averageRatingText: String? {
+        guard let averageRating else { return nil }
+        let rounded = (averageRating * 10).rounded() / 10
+        return String(format: "%.1f", rounded)
+    }
+}
+
 // MARK: - UI pieces
 
-private struct YearMarker: View {
+private struct YearChipsBar: View {
+    let years: [Int]
+    @Binding var selectedYear: Int?
+    let onSelect: (Int) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 10) {
+                ForEach(years, id: \.self) { y in
+                    let isSelected = (selectedYear == y)
+
+                    Button {
+                        onSelect(y)
+                    } label: {
+                        Text(String(y))
+                            .font(.subheadline.weight(.semibold))
+                            .monospacedDigit()
+                            // ✅ tighter chips
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background {
+                                Capsule(style: .continuous)
+                                    .fill(isSelected ? Color.primary : Color.secondary.opacity(0.15))
+                            }
+                            .foregroundStyle(isSelected ? Color(.systemBackground) : .primary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Jahr \(y)")
+                    .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+                }
+            }
+            // ✅ remove the “too much air” above/below the chips row
+            .padding(.vertical, 0)
+        }
+        .scrollClipDisabled()
+        .contentMargins(.vertical, 0, for: .scrollContent)
+    }
+}
+
+private struct YearSummaryMarker: View {
     let year: Int
+    let stats: YearStats
 
     var body: some View {
         VStack(spacing: 10) {
-            Text(String(year))
-                .font(.title3.weight(.semibold))
-                .monospacedDigit()
+            YearSummaryCard(year: year, stats: stats)
 
             Rectangle()
                 .fill(.secondary.opacity(0.25))
-                .frame(width: 2, height: 20)
+                .frame(width: 2, height: 18)
 
             TimelineDot()
         }
         .padding(.bottom, 2)
-        .frame(width: 84)
+        .frame(width: 270)
+        .scrollTransition(.interactive, axis: .horizontal) { content, phase in
+            content
+                .scaleEffect(phase.isIdentity ? 1.0 : 0.97)
+                .opacity(phase.isIdentity ? 1.0 : 0.9)
+        }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Jahr \(year)")
+        .accessibilityLabel("Jahr \(year), \(stats.count) Bücher")
+    }
+}
+
+private struct YearSummaryCard: View {
+    let year: Int
+    let stats: YearStats
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(String(year))
+                    .font(.title2.weight(.semibold))
+                    .monospacedDigit()
+
+                Spacer()
+
+                Text("\(stats.count) \(stats.count == 1 ? "Buch" : "Bücher")")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 12) {
+                if let avg = stats.averageRatingText {
+                    HStack(spacing: 6) {
+                        Image(systemName: "star.fill")
+                        Text("Ø \(avg)")
+                            .monospacedDigit()
+                    }
+                    .font(.subheadline.weight(.semibold))
+                } else {
+                    HStack(spacing: 6) {
+                        Image(systemName: "star")
+                        Text("Noch kein Ø-Rating")
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                }
+
+                if stats.ratedCount > 0, stats.ratedCount < stats.count {
+                    Text("(\(stats.ratedCount) bewertet)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+
+                Spacer()
+            }
+
+            if let range = stats.dateRangeText {
+                Text(range)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+
+            if !stats.previewBooks.isEmpty {
+                HStack(spacing: -10) {
+                    ForEach(Array(stats.previewBooks.prefix(4).enumerated()), id: \.offset) { _, b in
+                        BookCoverThumbnailView(
+                            book: b,
+                            size: CGSize(width: 44, height: 66),
+                            cornerRadius: 10,
+                            contentMode: .fill
+                        )
+                        .shadow(radius: 6, y: 4)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(.background.opacity(0.9), lineWidth: 2)
+                        }
+                        .accessibilityHidden(true)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .padding(14)
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.thinMaterial)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(.secondary.opacity(0.12), lineWidth: 1)
+        }
     }
 }
 
