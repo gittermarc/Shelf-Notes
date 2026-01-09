@@ -7,12 +7,13 @@
 
 import SwiftUI
 import SwiftData
+import UIKit
 
 /// A visually focused, horizontally scrollable reading timeline.
 ///
 /// - Data source: finished books.
 /// - Sorting key: `readTo ?? readFrom ?? createdAt`.
-/// - UI: year chips scrubber + year summary cards + cover tiles on a horizontal axis.
+/// - UI: year mini-map (auto-highlight) + year summary cards + cover tiles on a horizontal axis.
 struct ReadingTimelineView: View {
     // Only finished books.
     //
@@ -27,9 +28,34 @@ struct ReadingTimelineView: View {
     @State private var jumpToYear: Int?
     @State private var selectedYear: Int?
 
-    // A stable height prevents SwiftUI from collapsing the horizontal scroll view
-    // (which can lead to half-clipped cards/covers).
-    private let timelineScrollHeight: CGFloat = 380
+    // Mini-map auto highlight support
+    @State private var timelineViewportWidth: CGFloat = 0
+    @State private var yearMarkerMidXByYear: [Int: CGFloat] = [:]
+
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+
+    // MARK: - Tunables (responsive)
+
+    private var timelineScrollHeight: CGFloat {
+        // Less empty space under mini-map on iPhone; more room on iPad for larger cards/covers.
+        isPad ? 520 : 340
+    }
+
+    private var coverSize: CGSize {
+        isPad ? CGSize(width: 160, height: 236) : CGSize(width: 132, height: 194)
+    }
+
+    private var coverTileWidth: CGFloat {
+        isPad ? 176 : 150
+    }
+
+    private var yearCardWidth: CGFloat {
+        isPad ? 360 : 300
+    }
+
+    private var yearPreviewCoverSize: CGSize {
+        isPad ? CGSize(width: 54, height: 80) : CGSize(width: 48, height: 72)
+    }
 
     var body: some View {
         NavigationStack {
@@ -74,7 +100,6 @@ struct ReadingTimelineView: View {
                 }
             }
             .onAppear {
-                // Default selection: first year if available
                 if selectedYear == nil {
                     selectedYear = years.first
                 }
@@ -86,12 +111,12 @@ struct ReadingTimelineView: View {
 
     private var content: some View {
         ScrollViewReader { proxy in
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 header
 
-                // ✅ Year Chips Scrubber (Apple Books meets Letterboxd)
+                // ✅ Mini-Map (thin year bar) with auto-highlight while scrolling
                 if !years.isEmpty {
-                    YearChipsBar(
+                    YearMiniMapBar(
                         years: years,
                         selectedYear: $selectedYear
                     ) { year in
@@ -100,47 +125,71 @@ struct ReadingTimelineView: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 0)
+                    .padding(.bottom, 4)
                 }
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(alignment: .bottom, spacing: 22) {
-                        ForEach(timelineItems) { item in
-                            switch item.kind {
-                            case .year(let y, let stats):
-                                YearSummaryMarker(
-                                    year: y,
-                                    stats: stats
-                                )
-                                .id(scrollID(forYear: y))
+                GeometryReader { geo in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(alignment: .bottom, spacing: isPad ? 26 : 22) {
+                            ForEach(timelineItems) { item in
+                                switch item.kind {
+                                case .year(let y, let stats):
+                                    YearSummaryMarker(
+                                        year: y,
+                                        stats: stats,
+                                        cardWidth: yearCardWidth,
+                                        previewCoverSize: yearPreviewCoverSize
+                                    )
+                                    .id(scrollID(forYear: y))
+                                    // ✅ Track year marker positions for auto-highlight
+                                    .background(YearMarkerPositionReporter(year: y))
 
-                            case .book(let book, let date):
-                                TimelineBookTile(book: book, date: date)
+                                case .book(let book, let date):
+                                    TimelineBookTile(
+                                        book: book,
+                                        date: date,
+                                        coverSize: coverSize,
+                                        tileWidth: coverTileWidth
+                                    )
+                                }
                             }
                         }
+                        .scrollTargetLayout()
+                        .padding(.horizontal, 16)
+                        .padding(.top, 6)
+                        .padding(.bottom, 16)
+                        .background(alignment: .bottom) {
+                            Rectangle()
+                                .fill(.secondary.opacity(0.25))
+                                .frame(height: 2)
+                                .padding(.horizontal, 16)
+                                .offset(y: -8)
+                        }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 18)
-                    // The time axis line that runs behind the dots.
-                    .background(alignment: .bottom) {
-                        Rectangle()
-                            .fill(.secondary.opacity(0.25))
-                            .frame(height: 2)
-                            .padding(.horizontal, 16)
-                            .offset(y: -8)
+                    .coordinateSpace(name: "timelineScroll")
+                    // ✅ Less “air” on iPhone, bigger visuals on iPad
+                    .frame(height: timelineScrollHeight)
+                    .contentMargins(.vertical, 2, for: .scrollContent)
+                    .scrollTargetBehavior(.viewAligned)
+                    .onAppear {
+                        timelineViewportWidth = geo.size.width
+                    }
+                    .onChange(of: geo.size.width) { _, newValue in
+                        timelineViewportWidth = newValue
+                    }
+                    .onChange(of: jumpToYear) { _, newValue in
+                        guard let y = newValue else { return }
+                        withAnimation(.snappy) {
+                            proxy.scrollTo(scrollID(forYear: y), anchor: .leading)
+                        }
+                    }
+                    // ✅ Receive positions and auto-highlight the year closest to viewport center
+                    .onPreferenceChange(YearMarkerMidXPreferenceKey.self) { newValue in
+                        yearMarkerMidXByYear = newValue
+                        updateAutoHighlightedYearIfNeeded()
                     }
                 }
-                // ✅ Critical: give the horizontal scroll view a stable height so content isn't clipped.
                 .frame(height: timelineScrollHeight)
-                // ✅ Adds internal top/bottom breathing room; helps shadows & tall content.
-                .contentMargins(.vertical, 8, for: .scrollContent)
-                .scrollTargetBehavior(.viewAligned)
-                .onChange(of: jumpToYear) { _, newValue in
-                    guard let y = newValue else { return }
-                    withAnimation(.snappy) {
-                        proxy.scrollTo(scrollID(forYear: y), anchor: .leading)
-                    }
-                }
 
                 footerHint
             }
@@ -166,7 +215,7 @@ struct ReadingTimelineView: View {
         HStack(spacing: 8) {
             Image(systemName: "hand.draw")
                 .foregroundStyle(.secondary)
-            Text("Tipp: Mit den Jahres-Chips oben kannst du superschnell scrubben.")
+            Text("Tipp: In der Mini-Map oben wird beim Scrollen automatisch das aktive Jahr markiert.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -187,6 +236,32 @@ struct ReadingTimelineView: View {
             }
         }
         .padding()
+    }
+
+    // MARK: - Auto highlight logic
+
+    private func updateAutoHighlightedYearIfNeeded() {
+        guard timelineViewportWidth > 0 else { return }
+        let centerX = timelineViewportWidth / 2
+
+        // Find the year marker closest to the center of the visible area.
+        var bestYear: Int?
+        var bestDistance: CGFloat = .greatestFiniteMagnitude
+
+        for (year, midX) in yearMarkerMidXByYear {
+            let dist = abs(midX - centerX)
+            if dist < bestDistance {
+                bestDistance = dist
+                bestYear = year
+            }
+        }
+
+        guard let bestYear else { return }
+
+        // Only update if it actually changed, to avoid needless state churn.
+        if selectedYear != bestYear {
+            selectedYear = bestYear
+        }
     }
 
     // MARK: - Data preparation
@@ -224,7 +299,6 @@ struct ReadingTimelineView: View {
             let firstDate = sortedByDate.first?.date
             let lastDate = sortedByDate.last?.date
 
-            // For the little cover preview strip: earliest 4 of that year
             let previewBooks = sortedByDate.prefix(4).map { $0.book }
 
             out[year] = YearStats(
@@ -263,7 +337,6 @@ struct ReadingTimelineView: View {
     }
 
     private func completionDate(for book: Book) -> Date {
-        // For finished books, readTo is the best signal. Fall back to readFrom / createdAt.
         book.readTo ?? book.readFrom ?? book.createdAt
     }
 
@@ -312,54 +385,94 @@ private struct YearStats {
     }
 }
 
+// MARK: - Mini-map position tracking
+
+private struct YearMarkerPositionReporter: View {
+    let year: Int
+
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .preference(
+                    key: YearMarkerMidXPreferenceKey.self,
+                    value: [year: proxy.frame(in: .named("timelineScroll")).midX]
+                )
+        }
+    }
+}
+
+private struct YearMarkerMidXPreferenceKey: PreferenceKey {
+    static var defaultValue: [Int: CGFloat] = [:]
+
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        // Merge dictionaries; newest wins.
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
 // MARK: - UI pieces
 
-private struct YearChipsBar: View {
+/// Mini-Map: thin, compact year bar that highlights the current year.
+/// Tap a year to jump to it.
+private struct YearMiniMapBar: View {
     let years: [Int]
     @Binding var selectedYear: Int?
     let onSelect: (Int) -> Void
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 10) {
-                ForEach(years, id: \.self) { y in
-                    let isSelected = (selectedYear == y)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 8) {
+                    ForEach(years, id: \.self) { y in
+                        let isSelected = (selectedYear == y)
 
-                    Button {
-                        onSelect(y)
-                    } label: {
-                        Text(String(y))
-                            .font(.subheadline.weight(.semibold))
-                            .monospacedDigit()
-                            // ✅ tighter chips
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background {
-                                Capsule(style: .continuous)
-                                    .fill(isSelected ? Color.primary : Color.secondary.opacity(0.15))
-                            }
-                            .foregroundStyle(isSelected ? Color(.systemBackground) : .primary)
+                        Button {
+                            onSelect(y)
+                        } label: {
+                            Text(String(y))
+                                .font(.caption2.weight(.semibold))
+                                .monospacedDigit()
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background {
+                                    Capsule(style: .continuous)
+                                        .fill(isSelected ? Color.primary : Color.secondary.opacity(0.12))
+                                }
+                                .foregroundStyle(isSelected ? Color(.systemBackground) : .primary)
+                        }
+                        .buttonStyle(.plain)
+                        .id(y)
+                        .accessibilityLabel("Jahr \(y)")
+                        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Jahr \(y)")
-                    .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+                }
+                .padding(.vertical, 0)
+            }
+            .scrollClipDisabled()
+            .contentMargins(.vertical, 0, for: .scrollContent)
+            .onChange(of: selectedYear) { _, newValue in
+                guard let y = newValue else { return }
+                withAnimation(.snappy) {
+                    proxy.scrollTo(y, anchor: .center)
                 }
             }
-            // ✅ remove the “too much air” above/below the chips row
-            .padding(.vertical, 0)
         }
-        .scrollClipDisabled()
-        .contentMargins(.vertical, 0, for: .scrollContent)
     }
 }
 
 private struct YearSummaryMarker: View {
     let year: Int
     let stats: YearStats
+    let cardWidth: CGFloat
+    let previewCoverSize: CGSize
 
     var body: some View {
         VStack(spacing: 10) {
-            YearSummaryCard(year: year, stats: stats)
+            YearSummaryCard(
+                year: year,
+                stats: stats,
+                previewCoverSize: previewCoverSize
+            )
 
             Rectangle()
                 .fill(.secondary.opacity(0.25))
@@ -368,7 +481,7 @@ private struct YearSummaryMarker: View {
             TimelineDot()
         }
         .padding(.bottom, 2)
-        .frame(width: 270)
+        .frame(width: cardWidth)
         .scrollTransition(.interactive, axis: .horizontal) { content, phase in
             content
                 .scaleEffect(phase.isIdentity ? 1.0 : 0.97)
@@ -382,6 +495,7 @@ private struct YearSummaryMarker: View {
 private struct YearSummaryCard: View {
     let year: Int
     let stats: YearStats
+    let previewCoverSize: CGSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -436,7 +550,7 @@ private struct YearSummaryCard: View {
                     ForEach(Array(stats.previewBooks.prefix(4).enumerated()), id: \.offset) { _, b in
                         BookCoverThumbnailView(
                             book: b,
-                            size: CGSize(width: 44, height: 66),
+                            size: previewCoverSize,
                             cornerRadius: 10,
                             contentMode: .fill
                         )
@@ -466,6 +580,8 @@ private struct YearSummaryCard: View {
 private struct TimelineBookTile: View {
     @Bindable var book: Book
     let date: Date
+    let coverSize: CGSize
+    let tileWidth: CGFloat
 
     private var dateText: String {
         date.formatted(.dateTime.day().month(.twoDigits))
@@ -483,19 +599,18 @@ private struct TimelineBookTile: View {
                 VStack(spacing: 10) {
                     BookCoverThumbnailView(
                         book: book,
-                        size: CGSize(width: 120, height: 176),
-                        cornerRadius: 16,
+                        size: coverSize,
+                        cornerRadius: 18,
                         contentMode: .fill
                     )
                     .shadow(radius: 10, y: 6)
                     .overlay(alignment: .bottomLeading) {
-                        // Subtle overlay so the title is readable even on bright covers.
                         LinearGradient(
                             colors: [.black.opacity(0.0), .black.opacity(0.35)],
                             startPoint: .top,
                             endPoint: .bottom
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .allowsHitTesting(false)
                     }
                     .overlay(alignment: .bottomLeading) {
@@ -527,7 +642,7 @@ private struct TimelineBookTile: View {
 
             TimelineDot(isHighlighted: true)
         }
-        .frame(width: 140)
+        .frame(width: tileWidth)
         .scrollTransition(.interactive, axis: .horizontal) { content, phase in
             content
                 .scaleEffect(phase.isIdentity ? 1.0 : 0.94)
