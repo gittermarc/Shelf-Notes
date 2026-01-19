@@ -29,8 +29,18 @@ struct StatisticsView: View {
 
     enum ActivityMetric: String, CaseIterable, Identifiable {
         case readingDays = "Lesetage"
+        case readingMinutes = "Leseminuten"
         case completions = "Abschlüsse"
         var id: String { rawValue }
+
+        var unitSuffix: String {
+            switch self {
+            case .readingMinutes:
+                return " min"
+            case .readingDays, .completions:
+                return ""
+            }
+        }
     }
 
     var body: some View {
@@ -246,7 +256,7 @@ struct StatisticsView: View {
     private var activityHeatmapCard: some View {
         let range = heatmapRangeForSelectedYear()
         let counts = activityDailyCounts(metric: activityMetric, range: range)
-        let stats = heatmapStats(counts: counts, range: range)
+        let stats = heatmapStats(counts: counts, range: range, metric: activityMetric)
         let weeks = heatmapWeeks(counts: counts, range: range)
 
         return VStack(alignment: .leading, spacing: 12) {
@@ -267,7 +277,7 @@ struct StatisticsView: View {
             let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
             LazyVGrid(columns: cols, spacing: 10) {
                 MetricCard(title: "Aktive Tage", value: "\(stats.activeDays)", systemImage: "calendar.badge.clock")
-                MetricCard(title: "Max/Tag", value: "\(stats.maxCount)", systemImage: "sparkles")
+                MetricCard(title: "Max/Tag", value: "\(formatInt(stats.maxCount))\(activityMetric.unitSuffix)", systemImage: "sparkles")
 
                 MetricCard(title: "Aktueller Streak", value: "\(stats.currentStreak) Tage", systemImage: "flame")
                 MetricCard(title: "Längster Streak", value: "\(stats.longestStreak) Tage", systemImage: "trophy")
@@ -313,7 +323,8 @@ struct StatisticsView: View {
                                         date: day.date,
                                         count: day.count,
                                         level: day.level,
-                                        isInRange: day.isInRange
+                                        isInRange: day.isInRange,
+                                        unitSuffix: activityMetric.unitSuffix
                                     )
                                 }
                             }
@@ -324,7 +335,7 @@ struct StatisticsView: View {
                 }
             }
 
-            HeatmapLegend(maxCount: stats.maxCount)
+            HeatmapLegend(maxCount: stats.maxCount, unitSuffix: activityMetric.unitSuffix)
                 .padding(.top, 2)
 
             Text(heatmapHintText(range: range))
@@ -340,6 +351,8 @@ struct StatisticsView: View {
         switch activityMetric {
         case .readingDays:
             return "„Lesetage“ zählt pro Tag, an dem ein Buch aktiv war (aus readFrom/readTo; bei „Lese ich“ bis heute). Zeitraum: \(range.start.formatted(date: .numeric, time: .omitted))–\(range.end.formatted(date: .numeric, time: .omitted))."
+        case .readingMinutes:
+            return "„Leseminuten“ summiert die Dauer aller geloggten Lesesessions pro Tag (aus ReadingSession.durationSeconds). Zeitraum: \(range.start.formatted(date: .numeric, time: .omitted))–\(range.end.formatted(date: .numeric, time: .omitted))."
         case .completions:
             return "„Abschlüsse“ zählt pro Tag, an dem ein Buch beendet wurde (readTo/readFrom). Zeitraum: \(range.start.formatted(date: .numeric, time: .omitted))–\(range.end.formatted(date: .numeric, time: .omitted))."
         }
@@ -413,8 +426,52 @@ struct StatisticsView: View {
                 day = next
             }
         }
-
         switch metric {
+        case .readingMinutes:
+            var secondsByDay: [Date: Int] = [:]
+
+            func addSeconds(_ secs: Int, on dayDate: Date) {
+                let day = cal.startOfDay(for: dayDate)
+                guard day >= range.start && day <= range.end else { return }
+                guard secs > 0 else { return }
+                secondsByDay[day, default: 0] += secs
+            }
+
+            func addSession(start: Date, end: Date) {
+                var start = start
+                var end = end
+                if end < start { (start, end) = (end, start) }
+
+                // Clamp to heatmap year range (absolute time)
+                let clampedStart = max(start, range.start)
+                let clampedEnd = min(end, cal.date(byAdding: .day, value: 1, to: range.end) ?? range.end)
+                guard clampedEnd > clampedStart else { return }
+
+                var cursor = clampedStart
+                while cursor < clampedEnd {
+                    let dayStart = cal.startOfDay(for: cursor)
+                    guard let nextDayStart = cal.date(byAdding: .day, value: 1, to: dayStart) else { break }
+                    let segmentEnd = min(clampedEnd, nextDayStart)
+                    let segSecs = max(0, Int(segmentEnd.timeIntervalSince(cursor).rounded(.down)))
+                    addSeconds(segSecs, on: dayStart)
+                    cursor = segmentEnd
+                }
+            }
+
+            for b in scopedBooks {
+                for s in b.readingSessionsSafe {
+                    addSession(start: s.startedAt, end: s.endedAt)
+                }
+            }
+
+            var minutes: [Date: Int] = [:]
+            minutes.reserveCapacity(secondsByDay.count)
+            for (day, secs) in secondsByDay {
+                let m = Int((Double(secs) / 60.0).rounded())
+                if m > 0 { minutes[day] = m }
+            }
+            return minutes
+
         case .completions:
             for b in scopedBooks where b.status == .finished {
                 if let d = b.readTo ?? b.readFrom {
@@ -513,12 +570,14 @@ struct StatisticsView: View {
         let bestWeekLabel: String
     }
 
-    private func heatmapStats(counts: [Date: Int], range: HeatmapRange) -> HeatmapStats {
+    private func heatmapStats(counts: [Date: Int], range: HeatmapRange, metric: ActivityMetric) -> HeatmapStats {
         var cal = Calendar(identifier: .iso8601)
         cal.timeZone = .current
 
         let maxCount = counts.values.max() ?? 0
         let activeDays = counts.values.filter { $0 > 0 }.count
+
+        let unitSuffix = metric.unitSuffix
 
         // best day
         var bestDay: Date? = nil
@@ -531,7 +590,7 @@ struct StatisticsView: View {
         }
         let bestDayLabel: String
         if let bestDay {
-            bestDayLabel = "\(bestDay.formatted(date: .abbreviated, time: .omitted)) • \(bestDayCount)"
+            bestDayLabel = "\(bestDay.formatted(date: .abbreviated, time: .omitted)) • \(formatInt(bestDayCount))\(unitSuffix)"
         } else {
             bestDayLabel = "–"
         }
@@ -548,7 +607,7 @@ struct StatisticsView: View {
 
         let bestWeekdayIdx = weekdaySums.enumerated().max(by: { $0.element < $1.element })?.offset
         let bestWeekdayLabel = (bestWeekdayIdx != nil && weekdaySums[bestWeekdayIdx!] > 0)
-            ? "\(weekdayLabels[bestWeekdayIdx!]) • \(weekdaySums[bestWeekdayIdx!])"
+            ? "\(weekdayLabels[bestWeekdayIdx!]) • \(formatInt(weekdaySums[bestWeekdayIdx!]))\(unitSuffix)"
             : "–"
 
         // best week (ISO KW)
@@ -573,7 +632,7 @@ struct StatisticsView: View {
             let parts = bestWeekKey.split(separator: "-")
             let y = parts.first.map(String.init) ?? "\(selectedYear)"
             let w = parts.dropFirst().first.map(String.init) ?? "?"
-            bestWeekLabel = "KW \(w) (\(y)) • \(bestWeekSum)"
+            bestWeekLabel = "KW \(w) (\(y)) • \(formatInt(bestWeekSum))\(unitSuffix)"
         } else {
             bestWeekLabel = "–"
         }
@@ -1226,6 +1285,7 @@ private struct HeatmapCellView: View {
     let count: Int
     let level: Int
     let isInRange: Bool
+    var unitSuffix: String = ""
 
     var body: some View {
         RoundedRectangle(cornerRadius: 3)
@@ -1251,12 +1311,13 @@ private struct HeatmapCellView: View {
 
     private var accessibilityText: String {
         let d = date.formatted(date: .abbreviated, time: .omitted)
-        return "\(d): \(count)"
+        return "\(d): \(count)\(unitSuffix)"
     }
 }
 
 private struct HeatmapLegend: View {
     let maxCount: Int
+    let unitSuffix: String
 
     var body: some View {
         HStack(spacing: 8) {
@@ -1279,7 +1340,7 @@ private struct HeatmapLegend: View {
             Spacer()
 
             if maxCount > 0 {
-                Text("Max: \(maxCount)")
+                Text("Max: \(maxCount)\(unitSuffix)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
