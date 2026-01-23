@@ -1,0 +1,11 @@
+//
+//  base.xcconfig
+//  Shelf Notes
+//
+//  Created by Marc Fechner on 23.01.26.
+//
+
+// Configuration settings file format documentation can be found at:
+// https://developer.apple.com/documentation/xcode/adding-a-build-configuration-file-to-your-project
+
+#include "secrets.xcconfig"

@@ -172,7 +172,13 @@ final class GoogleBooksClient {
         comps?.queryItems = items
         guard let url = comps?.url else { throw GoogleBooksError.invalidURL }
 
-        let (data, response) = try await session.data(from: url)
+        var request = URLRequest(url: url)
+        if let bundleId = Bundle.main.bundleIdentifier {
+            request.setValue(bundleId, forHTTPHeaderField: "X-Ios-Bundle-Identifier")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
         let http = response as? HTTPURLResponse
 
         let debugBase = GoogleBooksDebugInfo(

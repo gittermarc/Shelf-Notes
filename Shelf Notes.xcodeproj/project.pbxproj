@@ -354,6 +354,8 @@
 		};
 		60A8A81D2EEB1E7800BED10B /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 60A8A7F82EEB1E7600BED10B /* Shelf Notes */;
+			baseConfigurationReferenceRelativePath = config/base.xcconfig;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -418,6 +420,8 @@
 		};
 		60A8A81E2EEB1E7800BED10B /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 60A8A7F82EEB1E7600BED10B /* Shelf Notes */;
+			baseConfigurationReferenceRelativePath = config/base.xcconfig;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
