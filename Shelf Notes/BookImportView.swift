@@ -784,7 +784,7 @@ struct BookImportView: View {
         newBook.isEbook = volume.isEbook
 
         modelContext.insert(newBook)
-        try? modelContext.save()
+        modelContext.saveWithDiagnostics()
 
         // Generate a synced thumbnail (so covers work offline + across devices).
         Task { @MainActor in
@@ -866,7 +866,7 @@ struct BookImportView: View {
             let fd = FetchDescriptor<Book>(predicate: #Predicate<Book> { $0.id == bookID })
             if let book = try modelContext.fetch(fd).first {
                 modelContext.delete(book)
-                try? modelContext.save()
+                modelContext.saveWithDiagnostics()
             }
         } catch {
             // ignore – UI is still consistent

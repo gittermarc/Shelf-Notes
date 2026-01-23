@@ -24,6 +24,8 @@ struct SettingsView: View {
     @EnvironmentObject private var pro: ProManager
     @State private var showingPaywall = false
 
+    @ObservedObject private var sync = SyncDiagnostics.shared
+
     @State private var confirmClearCoverCache = false
     @State private var cacheInfoText: String? = nil
     @State private var coverCacheSizeText: String = "…"
@@ -47,8 +49,27 @@ struct SettingsView: View {
                 }
 
                 Section("Sync") {
-                    Text("iCloud-Sync ist aktiv (CloudKit).")
-                        .foregroundStyle(.secondary)
+                    NavigationLink {
+                        SyncDiagnosticsView()
+                    } label: {
+                        Label("Sync-Diagnose", systemImage: "icloud.and.arrow.up")
+                    }
+
+                    LabeledContent("iCloud", value: sync.accountStatusShort)
+                    LabeledContent("Netzwerk", value: sync.networkStatusShort)
+                    LabeledContent("Letzter lokaler Save", value: sync.lastLocalSaveShort)
+
+                    if sync.offlineSaveCount > 0 {
+                        Text("Offline gespeicherte Änderungen: " + String(sync.offlineSaveCount))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let hint = sync.accountStatusHint {
+                        Text(hint)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Section("Lesesessions") {
@@ -149,6 +170,7 @@ struct SettingsView: View {
                 await pro.refreshEntitlements()
                 await pro.loadProductIfNeeded()
                 await refreshCoverCacheSize()
+                await sync.refreshIfStale()
             }
         }
     }

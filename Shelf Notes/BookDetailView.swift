@@ -86,7 +86,7 @@ struct BookDetailView: View {
                     if book.readFrom == nil { book.readFrom = Date() }
                     if book.readTo == nil { book.readTo = book.readFrom }
                 }
-                try? modelContext.save()
+                modelContext.saveWithDiagnostics()
             }
         )
     }
@@ -170,7 +170,7 @@ struct BookDetailView: View {
         }
         .sheet(isPresented: $showingNotesSheet) {
             NotesEditorSheet(notes: $book.notes) {
-                try? modelContext.save()
+                modelContext.saveWithDiagnostics()
             }
         }
         .sheet(isPresented: $showingCollectionsSheet) {
@@ -184,7 +184,7 @@ struct BookDetailView: View {
             RatingEditorSheet(
                 book: book,
                 onReset: { resetUserRating() },
-                onSave: { try? modelContext.save() }
+                onSave: { modelContext.saveWithDiagnostics() }
             )
         }
         .sheet(isPresented: $showingAllSessionsSheet) {
@@ -230,7 +230,7 @@ struct BookDetailView: View {
         }
         #endif
         .onDisappear {
-            try? modelContext.save()
+            modelContext.saveWithDiagnostics()
         }
     }
 
@@ -461,7 +461,7 @@ struct BookDetailView: View {
                         set: { newValue in
                             book.readFrom = newValue
                             if let to = book.readTo, to < newValue { book.readTo = newValue }
-                            try? modelContext.save()
+                            modelContext.saveWithDiagnostics()
                         }
                     ),
                     displayedComponents: [.date]
@@ -474,7 +474,7 @@ struct BookDetailView: View {
                         set: { newValue in
                             book.readTo = newValue
                             if let from = book.readFrom, from > newValue { book.readFrom = newValue }
-                            try? modelContext.save()
+                            modelContext.saveWithDiagnostics()
                         }
                     ),
                     in: (book.readFrom ?? Date.distantPast)...Date(),
@@ -896,7 +896,7 @@ struct BookDetailView: View {
         book.userRatingAtmosphere = 0
         book.userRatingGenreFit = 0
         book.userRatingPresentation = 0
-        try? modelContext.save()
+        modelContext.saveWithDiagnostics()
     }
 
     private var prettyViewability: String? {
@@ -966,7 +966,7 @@ struct BookDetailView: View {
         }
         book.userCoverFileName = nil
         book.userCoverData = nil
-        try? modelContext.save()
+        modelContext.saveWithDiagnostics()
 
         Task { @MainActor in
             await CoverThumbnailer.backfillThumbnailIfNeeded(for: book, modelContext: modelContext)
@@ -982,7 +982,7 @@ struct BookDetailView: View {
         }
 
         modelContext.delete(book)
-        try? modelContext.save()
+        modelContext.saveWithDiagnostics()
         dismiss()
     }
 
@@ -1036,7 +1036,7 @@ struct BookDetailView: View {
 
         book.tags = out
         tagsText = out.joined(separator: ", ")
-        try? modelContext.save()
+        modelContext.saveWithDiagnostics()
     }
 
     private func addTagsFromDraft() {
@@ -1071,7 +1071,7 @@ struct BookDetailView: View {
         book.tags = out
         tagsText = out.joined(separator: ", ")
         tagDraft = ""
-        try? modelContext.save()
+        modelContext.saveWithDiagnostics()
     }
 
     private func removeTag(_ tag: String) {
@@ -1090,7 +1090,7 @@ struct BookDetailView: View {
 
         book.tags = out
         tagsText = out.joined(separator: ", ")
-        try? modelContext.save()
+        modelContext.saveWithDiagnostics()
     }
 
     private func parseTags(_ input: String) -> [String] {
@@ -1153,7 +1153,7 @@ struct BookDetailView: View {
         collection.booksSafe = books
         collection.updatedAt = Date()
 
-        try? modelContext.save()
+        modelContext.saveWithDiagnostics()
     }
 
     private func createAndAttachCollection(named name: String) {

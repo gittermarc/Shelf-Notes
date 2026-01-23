@@ -205,12 +205,12 @@ struct TimerSessionCompletionSheet: View {
 
         modelContext.insert(session)
 
-        do {
-            try modelContext.save()
+        if let error = modelContext.saveWithDiagnostics() {
+            lastError = "Konnte Session nicht speichern: " + error.localizedDescription
+        } else {
+            lastError = nil
             timer.discardPendingCompletion()
             dismiss()
-        } catch {
-            lastError = "Konnte Session nicht speichern: \(error.localizedDescription)"
         }
     }
 

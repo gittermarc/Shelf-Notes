@@ -81,7 +81,7 @@ struct CollectionsView: View {
                 NewCollectionSheet { name in
                     let col = BookCollection(name: name)
                     modelContext.insert(col)
-                    try? modelContext.save()
+                    modelContext.saveWithDiagnostics()
                 }
             }
             .sheet(isPresented: $showingPaywall) {
@@ -118,7 +118,7 @@ struct CollectionsView: View {
 
             modelContext.delete(col)
         }
-        try? modelContext.save()
+        modelContext.saveWithDiagnostics()
     }
 }
 

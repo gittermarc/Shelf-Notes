@@ -238,7 +238,7 @@ struct GoalsView: View {
             let goal = ReadingGoal(year: year, targetCount: targetCount)
             modelContext.insert(goal)
         }
-        try? modelContext.save()
+        modelContext.saveWithDiagnostics()
     }
 }
 

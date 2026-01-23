@@ -781,7 +781,7 @@ case .title:
             b.clearUserRatings()
         }
 
-        try? modelContext.save()
+        modelContext.saveWithDiagnostics()
     }
 
 
@@ -791,14 +791,14 @@ case .title:
         for index in offsets {
             modelContext.delete(displayedBooks[index])
         }
-        try? modelContext.save()
+        modelContext.saveWithDiagnostics()
     }
 
     private func deleteBooksInSection(_ sectionBooks: [Book], offsets: IndexSet) {
         for index in offsets {
             modelContext.delete(sectionBooks[index])
         }
-        try? modelContext.save()
+        modelContext.saveWithDiagnostics()
     }
 }
 

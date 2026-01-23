@@ -319,19 +319,19 @@ struct SessionsCard: View {
 
         modelContext.insert(session)
 
-        do {
-            try modelContext.save()
-        } catch {
-            lastError = "Konnte Session nicht speichern: \(error.localizedDescription)"
+        if let error = modelContext.saveWithDiagnostics() {
+            lastError = "Konnte Session nicht speichern: " + error.localizedDescription
+        } else {
+            lastError = nil
         }
     }
 
     private func delete(_ session: ReadingSession) {
         modelContext.delete(session)
-        do {
-            try modelContext.save()
-        } catch {
-            lastError = "Konnte Session nicht löschen: \(error.localizedDescription)"
+        if let error = modelContext.saveWithDiagnostics() {
+            lastError = "Konnte Session nicht löschen: " + error.localizedDescription
+        } else {
+            lastError = nil
         }
     }
 
@@ -599,11 +599,10 @@ struct AllSessionsListSheet: View {
             let s = sessions[idx]
             modelContext.delete(s)
         }
-        do {
-            try modelContext.save()
+        if let error = modelContext.saveWithDiagnostics() {
+            lastError = "Konnte nicht löschen: " + error.localizedDescription
+        } else {
             lastError = nil
-        } catch {
-            lastError = "Konnte nicht löschen: \(error.localizedDescription)"
         }
     }
 
@@ -811,10 +810,10 @@ struct ReadingProgressView: View {
 
         book.pageCount = val
 
-        do {
-            try modelContext.save()
-        } catch {
-            inlineError = "Konnte Seitenzahl nicht speichern: \(error.localizedDescription)"
+        if let error = modelContext.saveWithDiagnostics() {
+            inlineError = "Konnte Seitenzahl nicht speichern: " + error.localizedDescription
+        } else {
+            inlineError = nil
         }
     }
 }

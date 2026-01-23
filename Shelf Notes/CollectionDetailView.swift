@@ -33,7 +33,7 @@ struct CollectionDetailView: View {
                         let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                         collection.name = t
                         collection.updatedAt = Date()
-                        try? modelContext.save()
+                        modelContext.saveWithDiagnostics()
                     }
             }
 
@@ -56,7 +56,7 @@ struct CollectionDetailView: View {
                                 var current = b.collections ?? []
                                 current.removeAll(where: { $0.id == collection.id })
                                 b.collections = current
-                                try? modelContext.save()
+                                modelContext.saveWithDiagnostics()
                             } label: {
                                 Label("Entfernen", systemImage: "trash")
                             }

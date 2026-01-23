@@ -334,7 +334,7 @@ struct CSVImportExportView: View {
                     }
 
                     modelContext.insert(book)
-                    try? modelContext.save()
+                    modelContext.saveWithDiagnostics()
 
                     // Update duplicate sets
                     if let v = book.googleVolumeID, !v.isEmpty { existingVolumeIDs.insert(v) }

@@ -353,7 +353,7 @@ struct AddBookView: View {
         newBook.isEbook = isEbook
 
         modelContext.insert(newBook)
-        try? modelContext.save()
+        modelContext.saveWithDiagnostics()
 
         // Generate and sync thumbnail cover if we have any cover candidates.
         Task { @MainActor in

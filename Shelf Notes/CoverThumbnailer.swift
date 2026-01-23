@@ -117,7 +117,7 @@ enum CoverThumbnailer {
            let img = UIImage(contentsOfFile: fileURL.path),
            let data = await makeThumbnailData(from: img) {
             book.userCoverData = data
-            try? modelContext.save()
+            modelContext.saveWithDiagnostics()
             return
         }
 
@@ -143,7 +143,7 @@ enum CoverThumbnailer {
             if let data = await thumbnailData(forRemoteURLString: s) {
                 book.persistResolvedCoverURL(s)
                 book.userCoverData = data
-                try? modelContext.save()
+                modelContext.saveWithDiagnostics()
                 return
             }
         }
@@ -236,7 +236,7 @@ enum CoverThumbnailer {
            let img = UIImage(contentsOfFile: fileURL.path),
            let data = await makeThumbnailData(from: img) {
             book.userCoverData = data
-            try? modelContext.save()
+            modelContext.saveWithDiagnostics()
             return
         }
 
@@ -253,7 +253,7 @@ enum CoverThumbnailer {
                 // Persist the working URL (https-normalized + moved best-first)
                 book.persistResolvedCoverURL(s)
                 book.userCoverData = data
-                try? modelContext.save()
+                modelContext.saveWithDiagnostics()
                 return
             }
         }
@@ -316,7 +316,7 @@ enum CoverThumbnailer {
             book.userCoverData = nil
         }
 
-        try? modelContext.save()
+        modelContext.saveWithDiagnostics()
     }
 
     /// Called when the user explicitly selects a remote cover URL.
@@ -342,7 +342,7 @@ enum CoverThumbnailer {
             book.userCoverData = nil
         }
 
-        try? modelContext.save()
+        modelContext.saveWithDiagnostics()
     }
 
     #endif
@@ -502,7 +502,7 @@ struct BookCoverThumbnailView: View {
                         )
                     }
                     #else
-                    try? modelContext.save()
+                    modelContext.saveWithDiagnostics()
                     #endif
                 }
             ) { image in
