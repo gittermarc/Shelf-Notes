@@ -101,7 +101,7 @@ struct AddBookView: View {
 
                     Picker("Status", selection: $status) {
                         ForEach(ReadingStatus.allCases) { status in
-                            Text(status.rawValue).tag(status)
+                            Text(status.displayName).tag(status)
                         }
                     }
                 }

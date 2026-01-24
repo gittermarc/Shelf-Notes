@@ -22,7 +22,8 @@ struct ReadingTimelineView: View {
     // "Key path cannot refer to enum case 'finished'"
     //
     // So we filter by the persisted raw string value directly.
-    @Query(filter: #Predicate<Book> { $0.statusRawValue == "Gelesen" })
+    // (v2: stable code "finished"; v1 legacy: "Gelesen")
+    @Query(filter: #Predicate<Book> { $0.statusRawValue == "finished" || $0.statusRawValue == "Gelesen" })
     private var finishedBooks: [Book]
 
     @State private var jumpToYear: Int?

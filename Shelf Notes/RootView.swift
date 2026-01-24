@@ -76,6 +76,9 @@ struct RootView: View {
             }
         }
         .task {
+            // One-time: migrate legacy ReadingStatus strings to stable codes
+            await ReadingStatusMigrator.migrateIfNeeded(modelContext: modelContext)
+
             // One-time: make sure existing books get synced thumbnails
             guard !didRunCoverBackfill else { return }
             didRunCoverBackfill = true

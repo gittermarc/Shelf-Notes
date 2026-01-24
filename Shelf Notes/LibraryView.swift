@@ -93,7 +93,7 @@ struct LibraryView: View {
         if books.isEmpty { return "Dein ruhiges, soziales-freies Lesetagebuch." }
         if !trimmed.isEmpty { return "Suche: „\(trimmed)“" }
         if let selectedTag { return "Filter: #\(selectedTag)" }
-        if let selectedStatus { return "Filter: \(selectedStatus.rawValue)" }
+        if let selectedStatus { return "Filter: \(selectedStatus.displayName)" }
         if onlyWithNotes { return "Filter: nur mit Notizen" }
         return "Dein Regal — \(books.count) Bücher"
     }
@@ -168,15 +168,18 @@ struct LibraryView: View {
                         // --- Filter ---
                         Section("Filter") {
                             Picker("Status", selection: Binding(
-                                get: { selectedStatus?.rawValue ?? "Alle" },
+                                get: { selectedStatus?.rawValue ?? "__all__" },
                                 set: { newValue in
-                                    selectedStatus = ReadingStatus.allCases.first(where: { $0.rawValue == newValue })
-                                    if newValue == "Alle" { selectedStatus = nil }
+                                    if newValue == "__all__" {
+                                        selectedStatus = nil
+                                    } else {
+                                        selectedStatus = ReadingStatus.fromPersisted(newValue)
+                                    }
                                 }
                             )) {
-                                Text("Alle").tag("Alle")
+                                Text("Alle").tag("__all__")
                                 ForEach(ReadingStatus.allCases) { status in
-                                    Text(status.rawValue).tag(status.rawValue)
+                                    Text(status.displayName).tag(status.rawValue)
                                 }
                             }
 
@@ -384,7 +387,7 @@ struct LibraryView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 if let selectedStatus {
-                    TagChip(text: selectedStatus.rawValue, systemImage: "flag.fill") {
+                    TagChip(text: selectedStatus.displayName, systemImage: "flag.fill") {
                         withAnimation { self.selectedStatus = nil }
                     }
                 }

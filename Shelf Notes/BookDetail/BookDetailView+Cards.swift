@@ -43,7 +43,7 @@ extension BookDetailView {
             VStack(alignment: .leading, spacing: 10) {
                 Picker("Status", selection: statusBinding) {
                     ForEach(ReadingStatus.allCases) { status in
-                        Text(status.rawValue).tag(status)
+                        Text(status.displayName).tag(status)
                     }
                 }
                 .pickerStyle(.segmented)

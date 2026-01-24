@@ -84,7 +84,7 @@ struct CSVImportExportView: View {
 
                 Picker("Status für Import", selection: $importStatus) {
                     ForEach(ReadingStatus.allCases) { s in
-                        Text(s.rawValue).tag(s)
+                        Text(s.displayName).tag(s)
                     }
                 }
 

@@ -9,12 +9,99 @@ import Foundation
 import SwiftData
 
 enum ReadingStatus: String, Codable, CaseIterable, Identifiable {
-    case toRead = "Will ich lesen"
-    case reading = "Lese ich gerade"
-    case finished = "Gelesen"
+    /// Stable persisted codes (do not localize).
+    case toRead = "toRead"
+    case reading = "reading"
+    case finished = "finished"
 
     var id: String { rawValue }
+
+    /// User-facing label (safe to change / localize).
+    var displayName: String {
+        switch self {
+        case .toRead: return "Will ich lesen"
+        case .reading: return "Lese ich gerade"
+        case .finished: return "Gelesen"
+        }
+    }
+
+    /// Maps both stable codes and legacy persisted display strings to a status.
+    static func fromPersisted(_ value: String) -> ReadingStatus? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // v2+ stable codes
+        if let s = ReadingStatus(rawValue: trimmed) { return s }
+
+        // v1 legacy persisted values (display strings)
+        switch trimmed {
+        case "Will ich lesen", "Will lesen":
+            return .toRead
+        case "Lese ich gerade", "Lese ich":
+            return .reading
+        case "Gelesen":
+            return .finished
+        default:
+            return nil
+        }
+    }
 }
+
+/// One-time migration:
+/// - v1 persisted `ReadingStatus` as localized display strings (e.g. "Gelesen").
+/// - v2 persists stable codes ("toRead"/"reading"/"finished") and renders UI via `displayName`.
+///
+/// This migrator rewrites legacy `Book.statusRawValue` values to the stable codes.
+enum ReadingStatusMigrator {
+
+    private static let migrationKey = "did_migrate_reading_status_codes_v1"
+
+    @MainActor
+    static func migrateIfNeeded(modelContext: ModelContext) async {
+        let defaults = UserDefaults.standard
+        guard defaults.bool(forKey: migrationKey) == false else { return }
+
+        let descriptor = FetchDescriptor<Book>(
+            predicate: #Predicate<Book> {
+                $0.statusRawValue == "Will ich lesen" ||
+                $0.statusRawValue == "Lese ich gerade" ||
+                $0.statusRawValue == "Gelesen" ||
+                $0.statusRawValue == "Will lesen" ||
+                $0.statusRawValue == "Lese ich"
+            }
+        )
+
+        do {
+            let books = try modelContext.fetch(descriptor)
+            guard !books.isEmpty else {
+                defaults.set(true, forKey: migrationKey)
+                return
+            }
+
+            var didChange = false
+            for b in books {
+                guard let mapped = ReadingStatus.fromPersisted(b.statusRawValue) else { continue }
+
+                // Store the stable code (rawValue) instead of a localized label.
+                if b.statusRawValue != mapped.rawValue {
+                    b.statusRawValue = mapped.rawValue
+                    didChange = true
+                }
+            }
+
+            if didChange {
+                try modelContext.save()
+            }
+
+            defaults.set(true, forKey: migrationKey)
+        } catch {
+            // If this fails, we will retry next launch.
+            #if DEBUG
+            print("ReadingStatusMigrator failed: \(error)")
+            #endif
+        }
+    }
+}
+
 
 @Model
 final class Book {
@@ -133,7 +220,7 @@ final class Book {
     }
 
     var status: ReadingStatus {
-        get { ReadingStatus(rawValue: statusRawValue) ?? .toRead }
+        get { ReadingStatus.fromPersisted(statusRawValue) ?? .toRead }
         set {
             statusRawValue = newValue.rawValue
 

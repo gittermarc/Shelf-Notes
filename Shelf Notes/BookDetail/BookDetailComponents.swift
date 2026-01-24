@@ -232,7 +232,7 @@ struct BottomActionBar: View {
             Menu {
                 Picker("Status", selection: $status) {
                     ForEach(ReadingStatus.allCases) { s in
-                        Text(s.rawValue).tag(s)
+                        Text(s.displayName).tag(s)
                     }
                 }
             } label: {

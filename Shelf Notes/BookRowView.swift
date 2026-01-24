@@ -39,7 +39,7 @@ struct BookRowView: View {
 
                 // Status + (Monat/Jahr, wenn gelesen)
                 HStack(spacing: 6) {
-                    Text(book.status.rawValue)
+                    Text(book.status.displayName)
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
