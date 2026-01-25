@@ -2,3 +2,12 @@
 config/secrets.xcconfig
 secrets.xcconfig
 
+# macOS
+.DS_Store
+__MACOSX/
+
+# Xcode
+DerivedData/
+*.xcuserstate
+*.xccheckout
+
