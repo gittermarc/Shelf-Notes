@@ -140,7 +140,9 @@ private struct DataScannerRepresentable: UIViewControllerRepresentable {
             do {
                 try uiViewController.startScanning()
             } catch {
+                #if DEBUG
                 print("❌ DataScanner startScanning() failed:", error)
+                #endif
             }
         }
     }

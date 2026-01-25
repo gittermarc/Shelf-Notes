@@ -8,5 +8,9 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Zum Scannen von ISBN-Barcodes benötigt Shelf Notes Zugriff auf die Kamera.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Zum Auswählen eines eigenen Covers benötigt Shelf Notes Zugriff auf deine Fotos.</string>
 </dict>
 </plist>
