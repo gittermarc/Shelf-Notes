@@ -67,13 +67,48 @@ enum ModelContainerFactory {
         ])
     }
 
+    // MARK: - Store separation
+
+    /// We intentionally keep the CloudKit-backed store and the explicit local-only store
+    /// in *separate* persistent stores. This avoids accidental "store mixing" when a user
+    /// launches the app in local-only fallback mode (e.g. iCloud issues) and later goes
+    /// back to CloudKit.
+    ///
+    /// This does mean local-only mode has its own local data set.
+    private enum StoreName {
+        static let cloud = "ShelfNotesCloud"
+        static let local = "ShelfNotesLocal"
+    }
+
+    private static func storeURL(for storeBaseName: String) throws -> URL {
+        // SwiftData uses a directory-based store in Application Support.
+        let fm = FileManager.default
+        let appSupport = try fm.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+
+        // Keep our SwiftData stores in an app-scoped folder to avoid clutter.
+        let dir = appSupport
+            .appendingPathComponent("ShelfNotes", isDirectory: true)
+            .appendingPathComponent("SwiftData", isDirectory: true)
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: nil)
+
+        return dir.appendingPathComponent("\(storeBaseName).store")
+    }
+
     static func makeContainer(mode: AppBootstrapper.StorageMode) throws -> ModelContainer {
         switch mode {
         case .cloudKit:
             // CloudKit sync via iCloud (uses the container from your entitlements)
+            let cloudURL = try storeURL(for: StoreName.cloud)
             let config = ModelConfiguration(
+                StoreName.cloud,
                 schema: schema,
-                isStoredInMemoryOnly: false,
+                url: cloudURL,
+                allowsSave: true,
                 cloudKitDatabase: .automatic
             )
             return try ModelContainer(for: schema, configurations: [config])
@@ -81,9 +116,12 @@ enum ModelContainerFactory {
         case .localOnly:
             // Local persistent store *without* CloudKit.
             // IMPORTANT: This is an explicit, user-chosen fallback to avoid silent data divergence.
+            let localURL = try storeURL(for: StoreName.local)
             let config = ModelConfiguration(
+                StoreName.local,
                 schema: schema,
-                isStoredInMemoryOnly: false,
+                url: localURL,
+                allowsSave: true,
                 cloudKitDatabase: .none
             )
             return try ModelContainer(for: schema, configurations: [config])
@@ -125,7 +163,7 @@ struct AppContainerHostView: View {
                 .alert("Offline-Modus", isPresented: $showingLocalOnlyNotice) {
                     Button("OK", role: .cancel) {}
                 } message: {
-                    Text("Du nutzt Shelf Notes aktuell ohne iCloud/CloudKit. Änderungen werden lokal gespeichert und nicht synchronisiert.")
+                    Text("Du nutzt Shelf Notes aktuell ohne iCloud/CloudKit. Änderungen werden lokal gespeichert und nicht synchronisiert. Wichtig: Das ist ein eigener lokaler Datenstand (separat vom iCloud-Speicher).")
                 }
 
         case .failed(let error):
