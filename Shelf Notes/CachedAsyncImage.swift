@@ -214,67 +214,20 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
     @MainActor
     private func loadIfNeeded() async {
         guard !isLoading else { return }
+        guard uiImage == nil else { return }
         guard let url else { return }
-
-        // Special case: local file URLs (user uploaded covers)
-        if url.isFileURL {
-            do {
-                let data = try Data(contentsOf: url)
-                if let img = UIImage(data: data) {
-                    ImageMemoryCache.shared.setImage(img, for: url)
-                    uiImage = img
-                    onLoadResult?(true)
-                } else {
-                    onLoadResult?(false)
-                }
-            } catch {
-                onLoadResult?(false)
-            }
-            return
-        }
-
-        // 1) Memory cache
-        if let cached = ImageMemoryCache.shared.image(for: url) {
-            uiImage = cached
-            onLoadResult?(true)
-            return
-        }
-
-        // 2) Disk cache
-        if let diskImg = ImageDiskCache.shared.image(for: url) {
-            ImageMemoryCache.shared.setImage(diskImg, for: url)
-            uiImage = diskImg
-            onLoadResult?(true)
-            return
-        }
 
         isLoading = true
         defer { isLoading = false }
 
-        // 3) Network (URLCache as a bonus)
-        var request = URLRequest(url: url)
-        request.cachePolicy = .returnCacheDataElseLoad
+        let img = await CoverImageLoader.loadImage(for: url)
 
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+        if Task.isCancelled { return }
 
-            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                onLoadResult?(false)
-                return
-            }
-
-            guard let img = UIImage(data: data) else {
-                onLoadResult?(false)
-                return
-            }
-
-            // persist to disk + memory
-            ImageDiskCache.shared.store(data: data, for: url)
-            ImageMemoryCache.shared.setImage(img, for: url)
-
+        if let img {
             uiImage = img
             onLoadResult?(true)
-        } catch {
+        } else {
             onLoadResult?(false)
         }
     }

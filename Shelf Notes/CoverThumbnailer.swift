@@ -152,38 +152,7 @@ enum CoverThumbnailer {
     /// Loads a UIImage for a given URL, preferring memory/disk caches.
     /// - Remote URLs will be cached in ImageDiskCache + ImageMemoryCache.
     static func loadUIImage(for url: URL) async -> UIImage? {
-        if url.isFileURL {
-            guard let data = try? Data(contentsOf: url) else { return nil }
-            return UIImage(data: data)
-        }
-
-        if let cached = ImageMemoryCache.shared.image(for: url) {
-            return cached
-        }
-
-        if let disk = ImageDiskCache.shared.image(for: url) {
-            ImageMemoryCache.shared.setImage(disk, for: url)
-            return disk
-        }
-
-        var request = URLRequest(url: url)
-        request.cachePolicy = .returnCacheDataElseLoad
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                return nil
-            }
-            guard let img = UIImage(data: data) else { return nil }
-
-            // Cache
-            ImageDiskCache.shared.store(data: data, for: url)
-            ImageMemoryCache.shared.setImage(img, for: url)
-
-            return img
-        } catch {
-            return nil
-        }
+        await CoverImageLoader.loadImage(for: url)
     }
 
     /// Produces thumbnail data for a remote URL string (best effort).
