@@ -24,6 +24,16 @@
 				<string>CA92.1</string>
 			</array>
 		</dict>
+
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<!-- C617.1: Access file metadata (timestamps/size) for files inside the app container (e.g. local caches). -->
+				<string>C617.1</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>

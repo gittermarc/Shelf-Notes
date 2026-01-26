@@ -138,6 +138,21 @@ enum ModelContainerFactory {
     }
 }
 
+
+
+private extension AppBootstrapper.StorageMode {
+    /// Identifier used to run one-time data repairs per persistent store.
+    ///
+    /// We intentionally keep CloudKit and Local-only stores separate, so repairs must run per store.
+    var collectionRepairScope: String? {
+        switch self {
+        case .cloudKit: return "cloudKit"
+        case .localOnly: return "localOnly"
+        case .inMemory: return nil
+        }
+    }
+}
+
 struct AppContainerHostView: View {
     @StateObject private var bootstrapper = AppBootstrapper()
     @State private var showingLocalOnlyNotice = false
@@ -151,6 +166,10 @@ struct AppContainerHostView: View {
         case .ready(let container, let mode):
             RootView()
                 .modelContainer(container)
+                .task(id: mode) {
+                    guard let scope = mode.collectionRepairScope else { return }
+                    await CollectionMembershipRepair.repairIfNeeded(modelContext: container.mainContext, scope: scope)
+                }
                 .overlay(alignment: .top) {
                     if mode == .localOnly {
                         LocalOnlyBanner()
