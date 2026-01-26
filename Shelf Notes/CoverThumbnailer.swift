@@ -232,25 +232,56 @@ enum CoverThumbnailer {
     ///
     /// This will generate synced thumbnails for books that don't have `userCoverData` yet
     /// OR have a low-res synced thumbnail.
-    /// It is throttled to avoid hammering the network.
+    /// It is throttled to avoid hammering the network and to keep the UI responsive.
     @MainActor
     static func backfillAllBooksIfNeeded(modelContext: ModelContext) async {
+        await backfillAllBooksIfNeeded(
+            modelContext: modelContext,
+            batchSize: 6,
+            interBatchDelayNanoseconds: 120_000_000
+        )
+    }
+
+    /// Backfills synced cover thumbnails in small bursts.
+    ///
+    /// This is intentionally `@MainActor` because SwiftData `ModelContext` is main-actor-bound in this app,
+    /// but we continuously yield/sleep so we don't monopolize the main thread.
+    @MainActor
+    static func backfillAllBooksIfNeeded(
+        modelContext: ModelContext,
+        batchSize: Int,
+        interBatchDelayNanoseconds: UInt64
+    ) async {
+        let batch = max(1, batchSize)
+
         do {
             let fd = FetchDescriptor<Book>()
             let books = try modelContext.fetch(fd)
-            var processed = 0
 
-            for b in books {
-                if let data = b.userCoverData, !isLowResSyncedThumbnail(data) {
-                    continue
-                }
+            // Build a work list first so we don't keep re-checking conditions while updating.
+            let pending = books.filter { book in
+                guard let data = book.userCoverData else { return true }
+                return isLowResSyncedThumbnail(data)
+            }
+
+            guard !pending.isEmpty else { return }
+
+            var processed = 0
+            for b in pending {
+                if Task.isCancelled { return }
 
                 await backfillThumbnailIfNeeded(for: b, modelContext: modelContext)
                 processed += 1
 
-                // Throttle a bit every few items
-                if processed % 6 == 0 {
-                    try? await Task.sleep(nanoseconds: 120_000_000)
+                // Keep the UI responsive: yield often and sleep between batches.
+                if processed % batch == 0 {
+                    await Task.yield()
+                    if interBatchDelayNanoseconds > 0 {
+                        try? await Task.sleep(nanoseconds: interBatchDelayNanoseconds)
+                    }
+                } else if processed % 2 == 0 {
+                    // small cooperative yield even within a batch
+                    await Task.yield()
                 }
             }
         } catch {
@@ -327,6 +358,13 @@ extension CoverThumbnailer {
 
     @MainActor
     static func backfillAllBooksIfNeeded(modelContext: ModelContext) async { }
+
+    @MainActor
+    static func backfillAllBooksIfNeeded(
+        modelContext: ModelContext,
+        batchSize: Int,
+        interBatchDelayNanoseconds: UInt64
+    ) async { }
 
     @MainActor
     static func applyUserPickedCover(imageData: Data, to book: Book, modelContext: ModelContext) async throws { }
