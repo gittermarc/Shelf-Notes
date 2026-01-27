@@ -134,8 +134,18 @@ final class GoogleBooksClient {
         query: String,
         startIndex: Int = 0,
         maxResults: Int = 40,
-        options: GoogleBooksQueryOptions = .default
+        // IMPORTANT: No default argument that touches MainActor-isolated init/static.
+        // Default is resolved inside async body.
+        options: GoogleBooksQueryOptions? = nil
     ) async throws -> GoogleBooksSearchResult {
+
+        // Resolve default options *inside* async context (safe even if init/default is MainActor-isolated).
+        let resolvedOptions: GoogleBooksQueryOptions
+        if let options {
+            resolvedOptions = options
+        } else {
+            resolvedOptions = await MainActor.run { GoogleBooksQueryOptions.default }
+        }
 
         var comps = URLComponents(string: "https://www.googleapis.com/books/v1/volumes")
         let clampedMax = min(max(maxResults, 1), 40)
@@ -148,20 +158,20 @@ final class GoogleBooksClient {
             URLQueryItem(name: "printType", value: "books"),
 
             // Explicit settings help with reproducibility / debugging
-            URLQueryItem(name: "orderBy", value: options.orderBy.rawValue)
+            URLQueryItem(name: "orderBy", value: resolvedOptions.orderBy.rawValue)
         ]
 
-        if let lang = options.langRestrict?.trimmingCharacters(in: .whitespacesAndNewlines),
+        if let lang = resolvedOptions.langRestrict?.trimmingCharacters(in: .whitespacesAndNewlines),
            !lang.isEmpty {
             items.append(URLQueryItem(name: "langRestrict", value: lang))
         }
 
-        if options.filter.shouldSendToAPI {
-            items.append(URLQueryItem(name: "filter", value: options.filter.rawValue))
+        if resolvedOptions.filter.shouldSendToAPI {
+            items.append(URLQueryItem(name: "filter", value: resolvedOptions.filter.rawValue))
         }
 
-        if options.projection != .lite {
-            items.append(URLQueryItem(name: "projection", value: options.projection.rawValue))
+        if resolvedOptions.projection != .lite {
+            items.append(URLQueryItem(name: "projection", value: resolvedOptions.projection.rawValue))
         }
 
         // Key is optional for testing; if present we send it.
