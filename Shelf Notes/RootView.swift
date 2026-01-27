@@ -63,7 +63,7 @@ struct RootView: View {
         }
         .environmentObject(pro)
         .environmentObject(timer)
-        .onChange(of: scenePhase) { newPhase in
+        .onChange(of: scenePhase) { _, newPhase in
             timer.handleScenePhaseChange(newPhase)
 
             // Backfill should never run while the app is not active.

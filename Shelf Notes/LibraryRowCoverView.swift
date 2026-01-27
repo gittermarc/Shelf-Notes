@@ -119,6 +119,8 @@ private struct SyncedThumbnailImage: View {
     let contentMode: ContentMode
     let cornerRadius: CGFloat
 
+    @Environment(\.displayScale) private var displayScale
+
     @State private var uiImage: UIImage? = nil
 
     private var cacheKey: String {
@@ -151,7 +153,7 @@ private struct SyncedThumbnailImage: View {
         }
 
         // Decode off-main and downscale to what we need for the list.
-        let maxPixel = max(targetSize.width, targetSize.height) * UIScreen.main.scale * 1.25
+        let maxPixel = max(targetSize.width, targetSize.height) * displayScale * 1.25
         let maxPixelInt = Int(max(1, maxPixel).rounded(.up))
 
         let decoded: UIImage? = await Self.background(qos: .userInitiated) {
@@ -190,7 +192,7 @@ private struct SyncedThumbnailImage: View {
             var v: UInt64 = 0
             withUnsafeMutableBytes(of: &v) { buf in
                 // `copyBytes` is safe regardless of alignment.
-                slice.copyBytes(to: buf)
+                _ = slice.copyBytes(to: buf)
             }
             return v
         }

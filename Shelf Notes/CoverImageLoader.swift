@@ -43,9 +43,9 @@ enum CoverImageLoader {
         }
 
         // 3) Disk cache (local-only)
-        if let diskImg: UIImage? = await background(qos: .userInitiated, work: {
+        if let diskImg = await background(qos: .userInitiated, work: {
             ImageDiskCache.shared.image(for: url)
-        }), let diskImg {
+        }) {
             ImageMemoryCache.shared.setImage(diskImg, for: url)
             return diskImg
         }
