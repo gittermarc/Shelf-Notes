@@ -8,19 +8,8 @@
 
 import SwiftUI
 import SwiftData
-import StoreKit
-import Combine
-
-#if canImport(PhotosUI)
-import PhotosUI
-#endif
-
-#if canImport(UIKit)
-import UIKit
-#endif
 
 struct BookRowView: View {
-    @Environment(\.modelContext) private var modelContext
     let book: Book
 
     var body: some View {
@@ -89,10 +78,11 @@ struct BookRowView: View {
 
     @ViewBuilder
     private var cover: some View {
-        BookCoverThumbnailView(
+        LibraryRowCoverView(
             book: book,
             size: CGSize(width: 44, height: 66),
-            cornerRadius: 8
+            cornerRadius: 8,
+            contentMode: .fit
         )
     }
 }

@@ -156,6 +156,9 @@ struct SettingsView: View {
                 Button("Löschen", role: .destructive) {
                     ImageDiskCache.shared.clearAll()
                     ImageMemoryCache.shared.clear()
+                    #if canImport(UIKit)
+                    SyncedThumbnailMemoryCache.shared.removeAll()
+                    #endif
                     cacheInfoText = "Cache gelöscht: \(Date().formatted(date: .numeric, time: .shortened))"
                     Task { await refreshCoverCacheSize() }
                 }
