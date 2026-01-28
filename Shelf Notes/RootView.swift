@@ -29,26 +29,14 @@ struct RootView: View {
                     Label("Bibliothek", systemImage: "books.vertical")
                 }
 
-            // ✅ Neu: Visuelle Lese-Zeitleiste (gelesene Bücher als horizontaler Zeitstrahl)
-            ReadingTimelineView()
+            ProgressHubView()
                 .tabItem {
-                    Label("Zeitleiste", systemImage: "clock")
+                    Label("Fortschritt", systemImage: "chart.line.uptrend.xyaxis")
                 }
 
             CollectionsView()
                 .tabItem {
                     Label("Listen", systemImage: "rectangle.stack")
-                }
-
-            GoalsView()
-                .tabItem {
-                    Label("Ziele", systemImage: "target")
-                }
-
-            // ✅ Neu: Dashboard / Statistiken
-            StatisticsView()
-                .tabItem {
-                    Label("Statistiken", systemImage: "chart.bar.xaxis")
                 }
 
             TagsView()

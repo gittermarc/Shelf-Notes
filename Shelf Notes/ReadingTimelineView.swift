@@ -56,46 +56,44 @@ struct ReadingTimelineView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if finishedBooks.isEmpty {
-                    emptyState
-                } else if vm.items.isEmpty {
-                    loadingState
-                } else {
-                    content
-                }
+        Group {
+            if finishedBooks.isEmpty {
+                emptyState
+            } else if vm.items.isEmpty {
+                loadingState
+            } else {
+                content
             }
-            .navigationTitle("Zeitleiste")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    if !vm.years.isEmpty {
-                        Menu {
-                            Button("Zum Anfang") {
-                                vm.requestJumpToStart()
-                            }
-                            Button("Zum Ende") {
-                                vm.requestJumpToEnd()
-                            }
-                            Divider()
-
-                            ForEach(vm.years, id: \.self) { y in
-                                Button(String(y)) {
-                                    vm.requestJump(to: y)
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "calendar")
+        }
+        .navigationTitle("Zeitleiste")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if !vm.years.isEmpty {
+                    Menu {
+                        Button("Zum Anfang") {
+                            vm.requestJumpToStart()
                         }
-                        .accessibilityLabel("Zu Jahr springen")
+                        Button("Zum Ende") {
+                            vm.requestJumpToEnd()
+                        }
+                        Divider()
+
+                        ForEach(vm.years, id: \.self) { y in
+                            Button(String(y)) {
+                                vm.requestJump(to: y)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "calendar")
                     }
+                    .accessibilityLabel("Zu Jahr springen")
                 }
             }
-            .task(id: finishedBooks.map { $0.id }) {
-                // Keep view model derived data in sync with SwiftData changes.
-                vm.setBooks(finishedBooks)
-            }
+        }
+        .task(id: finishedBooks.map { $0.id }) {
+            // Keep view model derived data in sync with SwiftData changes.
+            vm.setBooks(finishedBooks)
         }
     }
 

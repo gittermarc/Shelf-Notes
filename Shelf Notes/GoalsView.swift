@@ -33,22 +33,20 @@ struct GoalsView: View {
     ]
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
-                    goalCard
-                    progressCard
-                    slotsGrid
-                }
-                .padding(.horizontal)
-                .padding(.bottom, 18)
-                .padding(.top, 12)
+        ScrollView {
+            VStack(spacing: 14) {
+                goalCard
+                progressCard
+                slotsGrid
             }
-            .navigationTitle("Leseziele")
-            .navigationBarTitleDisplayMode(.inline)
-            .onAppear { loadGoalForSelectedYear() }
-            .onChange(of: selectedYear) { _, _ in loadGoalForSelectedYear() }
+            .padding(.horizontal)
+            .padding(.bottom, 18)
+            .padding(.top, 12)
         }
+        .navigationTitle("Leseziele")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { loadGoalForSelectedYear() }
+        .onChange(of: selectedYear) { _, _ in loadGoalForSelectedYear() }
     }
 
     private var goalCard: some View {

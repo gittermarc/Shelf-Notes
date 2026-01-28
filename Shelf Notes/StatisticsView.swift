@@ -16,9 +16,6 @@ struct StatisticsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query var books: [Book]
 
-    @Query(sort: [SortDescriptor(\ChallengeRecord.periodStart, order: .reverse)])
-    private var challenges: [ChallengeRecord]
-
     @State var selectedYear: Int = Calendar.current.component(.year, from: Date())
     @State var scope: Scope = .all
     @State var activityMetric: ActivityMetric = .readingDays
@@ -48,42 +45,32 @@ struct StatisticsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if books.isEmpty {
-                    ContentUnavailableView(
-                        "Noch keine Daten",
-                        systemImage: "chart.bar",
-                        description: Text("Füge Bücher hinzu — dann wird’s hier schön nerdig. 📈")
-                    )
-                    .padding(.horizontal)
-                } else {
-                    ScrollView {
-                        VStack(spacing: 14) {
-                            headerCard
-                            yearAndScopeCard
-                            overviewGrid
-
-                            NavigationLink {
-                                ChallengesView()
-                            } label: {
-                                ChallengesSummaryCard(challenges: challenges)
-                            }
-                            .buttonStyle(.plain)
-
-                            readingChartsCard
-                            activityHeatmapCard
-                            topListsCard
-                            nerdCornerCard
-                        }
-                        .padding(.horizontal)
-                        .padding(.bottom, 18)
-                        .padding(.top, 12)
+        Group {
+            if books.isEmpty {
+                ContentUnavailableView(
+                    "Noch keine Daten",
+                    systemImage: "chart.bar",
+                    description: Text("Füge Bücher hinzu — dann wird’s hier schön nerdig. 📈")
+                )
+                .padding(.horizontal)
+            } else {
+                ScrollView {
+                    VStack(spacing: 14) {
+                        headerCard
+                        yearAndScopeCard
+                        overviewGrid
+                        readingChartsCard
+                        activityHeatmapCard
+                        topListsCard
+                        nerdCornerCard
                     }
+                    .padding(.horizontal)
+                    .padding(.bottom, 18)
+                    .padding(.top, 12)
                 }
             }
-            .navigationTitle("Statistiken")
-            .navigationBarTitleDisplayMode(.inline)
         }
+        .navigationTitle("Statistiken")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
