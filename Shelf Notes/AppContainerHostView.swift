@@ -63,7 +63,8 @@ enum ModelContainerFactory {
             Book.self,
             ReadingSession.self,
             ReadingGoal.self,
-            BookCollection.self
+            BookCollection.self,
+            ChallengeRecord.self
         ])
     }
 
@@ -167,8 +168,15 @@ struct AppContainerHostView: View {
             RootView()
                 .modelContainer(container)
                 .task(id: mode) {
-                    guard let scope = mode.collectionRepairScope else { return }
-                    await CollectionMembershipRepair.repairIfNeeded(modelContext: container.mainContext, scope: scope)
+                    if let scope = mode.collectionRepairScope {
+                        await CollectionMembershipRepair.repairIfNeeded(modelContext: container.mainContext, scope: scope)
+                    }
+
+                    // Challenges: ensure current weekly/monthly challenges exist.
+                    await MainActor.run {
+                        ChallengeEngine.ensureCurrentChallenges(modelContext: container.mainContext)
+                        ChallengeEngine.refreshCompletionForActiveChallenges(modelContext: container.mainContext)
+                    }
                 }
                 .overlay(alignment: .top) {
                     if mode == .localOnly {

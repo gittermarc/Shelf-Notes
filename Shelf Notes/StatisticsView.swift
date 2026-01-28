@@ -13,7 +13,11 @@ import Charts
 #endif
 
 struct StatisticsView: View {
+    @Environment(\.modelContext) private var modelContext
     @Query var books: [Book]
+
+    @Query(sort: [SortDescriptor(\ChallengeRecord.periodStart, order: .reverse)])
+    private var challenges: [ChallengeRecord]
 
     @State var selectedYear: Int = Calendar.current.component(.year, from: Date())
     @State var scope: Scope = .all
@@ -59,6 +63,14 @@ struct StatisticsView: View {
                             headerCard
                             yearAndScopeCard
                             overviewGrid
+
+                            NavigationLink {
+                                ChallengesView()
+                            } label: {
+                                ChallengesSummaryCard(challenges: challenges)
+                            }
+                            .buttonStyle(.plain)
+
                             readingChartsCard
                             activityHeatmapCard
                             topListsCard

@@ -209,6 +209,11 @@ struct TimerSessionCompletionSheet: View {
             lastError = "Konnte Session nicht speichern: " + error.localizedDescription
         } else {
             lastError = nil
+
+            // Update Challenges (weekly/monthly) after a successful session save.
+            ChallengeEngine.ensureCurrentChallenges(modelContext: modelContext)
+            ChallengeEngine.refreshCompletionForActiveChallenges(modelContext: modelContext)
+
             timer.discardPendingCompletion()
             dismiss()
         }

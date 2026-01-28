@@ -8,16 +8,6 @@
 
 import SwiftUI
 import SwiftData
-import StoreKit
-import Combine
-
-#if canImport(PhotosUI)
-import PhotosUI
-#endif
-
-#if canImport(UIKit)
-import UIKit
-#endif
 
 // MARK: - Add Book
 struct AddBookView: View {
@@ -74,125 +64,36 @@ struct AddBookView: View {
     // track if we currently have quick-added books in this session (and not undone)
     @State private var quickAddActive = false
 
+    // UI state
+    @State private var isDescriptionExpanded: Bool = false
+
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    Button {
-                        pendingScanISBN = nil
-                        quickAddActive = false
-                        showingImportSheet = true
-                    } label: {
-                        Label("Aus Google Books suchen", systemImage: "magnifyingglass")
+            ScrollView {
+                VStack(spacing: 14) {
+                    heroCard
+                    importActionsCard
+                    basicsCard
+
+                    if hasAnyImportedMetadata {
+                        metadataCard
                     }
 
-                    Button {
-                        pendingScanISBN = nil
-                        showingScannerSheet = true
-                    } label: {
-                        Label("ISBN scannen", systemImage: "barcode.viewfinder")
+                    if !trimmedDescription.isEmpty {
+                        descriptionCard
                     }
-                }
 
-
-                Section("Neues Buch") {
-                    TextField("Titel", text: $title)
-                    TextField("Autor", text: $author)
-
-                    Picker("Status", selection: $status) {
-                        ForEach(ReadingStatus.allCases) { status in
-                            Text(status.displayName).tag(status)
-                        }
+                    if hasAnyLinks {
+                        linksCard
                     }
                 }
-
-                if status == .finished {
-                    Section("Gelesen") {
-                        DatePicker("Von", selection: $readFrom, displayedComponents: [.date])
-                            .onChange(of: readFrom) { _, newValue in
-                                if readTo < newValue { readTo = newValue }
-                            }
-
-                        DatePicker("Bis", selection: $readTo, in: readFrom...Date(), displayedComponents: [.date])
-                            .onChange(of: readTo) { _, newValue in
-                                if newValue < readFrom { readFrom = newValue }
-                            }
-                    }
-                }
-
-                if let thumbnailURL, let url = URL(string: thumbnailURL) {
-                    Section("Cover") {
-                        HStack(alignment: .top, spacing: 12) {
-
-                            // Cover "Card" – echtes Cover-Format, ohne Abschneiden
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.ultraThinMaterial)
-                                    .opacity(0.35)
-
-                                CachedAsyncImage(url: url) { image in
-                                    image
-                                        .resizable()
-                                        .scaledToFit()          // <- KEIN Crop
-                                } placeholder: {
-                                    ProgressView()
-                                }
-                                .padding(6)                    // <- etwas Luft, falls das Thumbnail nicht 2:3 ist
-                            }
-                            .frame(width: 120, height: 180)     // 2:3 (120x180)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-
-                            // Rechte Seite: Mini-Preview Infos
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Ohne Titel" : title)
-                                    .font(.headline)
-                                    .lineLimit(3)
-
-                                if !author.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    Text(author)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(2)
-                                }
-
-                                if let isbn13, !isbn13.isEmpty {
-                                    Text("ISBN \(isbn13)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-
-                                Spacer(minLength: 0)
-                            }
-
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.vertical, 6)
-                    }
-                }
-
-
-
-                if hasAnyImportedMetadata {
-                    Section("Übernommene Metadaten") {
-                        if let isbn13 { LabeledContent("ISBN 13", value: isbn13) }
-                        if let publisher { LabeledContent("Verlag", value: publisher) }
-                        if let publishedDate { LabeledContent("Erschienen", value: publishedDate) }
-                        if let pageCount { LabeledContent("Seiten", value: "\(pageCount)") }
-                        if let language { LabeledContent("Sprache", value: language) }
-                        if !categories.isEmpty {
-                            Text("Kategorien: \(categories.joined(separator: ", "))")
-                                .foregroundStyle(.secondary)
-                        }
-                        if !bookDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            Text(bookDescription)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(6)
-                        }
-                    }
-                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 24)
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Buch hinzufügen")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Abbrechen") { dismiss() }
@@ -202,12 +103,14 @@ struct AddBookView: View {
                         addBook()
                         dismiss()
                     }
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(trimmedTitle.isEmpty)
                 }
+            }
+            .safeAreaInset(edge: .bottom) {
+                primaryActionBar
             }
             .sheet(isPresented: $showingImportSheet, onDismiss: {
                 pendingScanISBN = nil
-                let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
                 if quickAddActive && trimmedTitle.isEmpty {
                     dismiss()
                 }
@@ -216,7 +119,7 @@ struct AddBookView: View {
                     onPick: { imported in
                         title = imported.title
                         author = imported.author
-                        
+
                         isbn13 = imported.isbn13
                         thumbnailURL = imported.thumbnailURL
                         publisher = imported.publisher
@@ -226,31 +129,32 @@ struct AddBookView: View {
                         categories = imported.categories
                         bookDescription = imported.description
                         googleVolumeID = imported.googleVolumeID
-                        
+
                         // ✅ New rich metadata
                         subtitle = imported.subtitle
                         previewLink = imported.previewLink
                         infoLink = imported.infoLink
                         canonicalVolumeLink = imported.canonicalVolumeLink
-                        
+
                         averageRating = imported.averageRating
                         ratingsCount = imported.ratingsCount
                         mainCategory = imported.mainCategory
-                        
+
                         coverURLCandidates = imported.coverURLCandidates
-                        
+
                         viewability = imported.viewability
                         isPublicDomain = imported.isPublicDomain
                         isEmbeddable = imported.isEmbeddable
-                        
+
                         isEpubAvailable = imported.isEpubAvailable
                         isPdfAvailable = imported.isPdfAvailable
                         epubAcsTokenLink = imported.epubAcsTokenLink
                         pdfAcsTokenLink = imported.pdfAcsTokenLink
-                        
+
                         saleability = imported.saleability
                         isEbook = imported.isEbook
-                    }, initialQuery: pendingScanISBN,
+                    },
+                    initialQuery: pendingScanISBN,
                     autoSearchOnAppear: true,
                     onQuickAddHappened: {
                         quickAddActive = true
@@ -273,6 +177,402 @@ struct AddBookView: View {
                 }
             }
         }
+    }
+
+    // MARK: - UI building blocks
+
+    private var trimmedTitle: String {
+        title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedAuthor: String {
+        author.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedSubtitle: String {
+        (subtitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedDescription: String {
+        bookDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var publishedYear: String? {
+        publishedYear(from: publishedDate)
+    }
+
+    private var coverCandidatesAll: [String] {
+        var out: [String] = []
+
+        func add(_ s: String?) {
+            guard let s else { return }
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty else { return }
+            if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
+                out.append(t)
+            }
+        }
+
+        add(thumbnailURL)
+        for c in coverURLCandidates {
+            add(c)
+        }
+        return out
+    }
+
+    private var bestCoverURL: URL? {
+        // Best effort background: prefer thumbnail, otherwise first candidate.
+        if let u = url(from: thumbnailURL) { return u }
+        return url(from: coverURLCandidates.first)
+    }
+
+    private var previewURL: URL? { url(from: previewLink) }
+    private var infoURL: URL? { url(from: infoLink) }
+    private var canonicalURL: URL? { url(from: canonicalVolumeLink) }
+
+    private var hasAnyLinks: Bool {
+        previewURL != nil || infoURL != nil || canonicalURL != nil
+    }
+
+    @ViewBuilder
+    private var heroCard: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.ultraThinMaterial)
+
+            if let bg = bestCoverURL {
+                CachedAsyncImage(url: bg, contentMode: .fill) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    Color.clear
+                }
+                .blur(radius: 18)
+                .opacity(0.22)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+
+            HStack(alignment: .top, spacing: 14) {
+                coverView
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(trimmedTitle.isEmpty ? "Neues Buch" : trimmedTitle)
+                        .font(.title3.weight(.semibold))
+                        .lineLimit(3)
+
+                    if !trimmedSubtitle.isEmpty {
+                        Text(trimmedSubtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+
+                    if !trimmedAuthor.isEmpty {
+                        Text(trimmedAuthor)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+
+                    if let rating = averageRating {
+                        HStack(spacing: 8) {
+                            StarsView(rating: rating, size: 12)
+
+                            Text(String(format: "%.1f", rating))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+
+                            if let c = ratingsCount, c > 0 {
+                                Text("(\(c))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            }
+
+                            Spacer(minLength: 0)
+                        }
+                    }
+
+                    HStack(spacing: 8) {
+                        if let pc = pageCount {
+                            Chip(text: "\(pc) S.", systemImage: "doc.plaintext")
+                        }
+                        if let y = publishedYear {
+                            Chip(text: y, systemImage: "calendar")
+                        }
+                        if let lang = language?.trimmingCharacters(in: .whitespacesAndNewlines), !lang.isEmpty {
+                            Chip(text: lang.uppercased(), systemImage: "globe")
+                        }
+                        Spacer(minLength: 0)
+                    }
+
+                    if !categories.isEmpty {
+                        WrapChipsView(chips: categories, maxVisible: 6)
+                    } else if let mc = mainCategory?.trimmingCharacters(in: .whitespacesAndNewlines), !mc.isEmpty {
+                        HStack {
+                            Chip(text: mc, systemImage: "tag")
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(14)
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private var coverView: some View {
+        if !coverCandidatesAll.isEmpty {
+            CoverCandidatesImage(
+                urlStrings: coverCandidatesAll,
+                preferredURLString: thumbnailURL,
+                contentMode: .fit,
+                onResolvedURL: nil
+            ) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } placeholder: {
+                BookCoverPlaceholder(cornerRadius: 14)
+            }
+            .frame(width: 110, height: 165)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        } else {
+            BookCoverPlaceholder(cornerRadius: 14)
+                .frame(width: 110, height: 165)
+        }
+    }
+
+    private var importActionsCard: some View {
+        AddBookCard(title: "Import") {
+            HStack(spacing: 12) {
+                AddBookActionTile(
+                    title: "Google Books",
+                    subtitle: "Suchen",
+                    systemImage: "magnifyingglass"
+                ) {
+                    pendingScanISBN = nil
+                    quickAddActive = false
+                    showingImportSheet = true
+                }
+
+                AddBookActionTile(
+                    title: "ISBN",
+                    subtitle: "Scannen",
+                    systemImage: "barcode.viewfinder"
+                ) {
+                    pendingScanISBN = nil
+                    showingScannerSheet = true
+                }
+            }
+
+            Text("Du kannst Titel, Autor und Status vor dem Speichern noch anpassen.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var basicsCard: some View {
+        AddBookCard(title: "Details") {
+            AddBookTextFieldRow(title: "Titel", systemImage: "textformat", text: $title)
+            AddBookTextFieldRow(title: "Autor", systemImage: "person", text: $author)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Status")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker("Status", selection: $status) {
+                    ForEach(ReadingStatus.allCases) { s in
+                        Text(s.displayName).tag(s)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
+            if status == .finished {
+                Divider().opacity(0.6)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Gelesen")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    DatePicker("Von", selection: $readFrom, displayedComponents: [.date])
+                        .datePickerStyle(.compact)
+                        .onChange(of: readFrom) { _, newValue in
+                            if readTo < newValue { readTo = newValue }
+                        }
+
+                    DatePicker("Bis", selection: $readTo, in: readFrom...Date(), displayedComponents: [.date])
+                        .datePickerStyle(.compact)
+                        .onChange(of: readTo) { _, newValue in
+                            if newValue < readFrom { readFrom = newValue }
+                        }
+                }
+            }
+        }
+    }
+
+    private var metadataCard: some View {
+        AddBookCard(title: "Metadaten") {
+            AddBookSubsection(title: "Bibliografisch") {
+                AddBookMetaRow(title: "Verlag", systemImage: "building.2", value: publisher)
+                AddBookMetaRow(title: "Erschienen", systemImage: "calendar", value: publishedDate)
+                AddBookMetaRow(title: "Seiten", systemImage: "doc.plaintext", value: pageCount.map(String.init))
+                AddBookMetaRow(title: "Sprache", systemImage: "globe", value: language?.uppercased())
+            }
+
+            if !categories.isEmpty {
+                AddBookSubsection(title: "Kategorien") {
+                    WrapChipsView(chips: categories, maxVisible: 10)
+                }
+            } else if let mc = mainCategory?.trimmingCharacters(in: .whitespacesAndNewlines), !mc.isEmpty {
+                AddBookSubsection(title: "Kategorie") {
+                    HStack {
+                        Chip(text: mc, systemImage: "tag")
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+
+            AddBookSubsection(title: "IDs") {
+                AddBookMetaRow(title: "ISBN 13", systemImage: "barcode", value: isbn13)
+                AddBookMetaRow(title: "Google Volume ID", systemImage: "number", value: googleVolumeID)
+            }
+
+            if hasAvailabilityChips {
+                AddBookSubsection(title: "Verfügbarkeit") {
+                    availabilityChips
+                }
+            }
+        }
+    }
+
+    private var hasAvailabilityChips: Bool {
+        isEbook || isEpubAvailable || isPdfAvailable || isEmbeddable || isPublicDomain || saleability != nil || viewability != nil
+    }
+
+    private var availabilityChips: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                if isEbook {
+                    Chip(text: "E-Book", systemImage: "ipad.and.iphone")
+                }
+                if isEpubAvailable {
+                    Chip(text: "EPUB", systemImage: "doc.richtext")
+                }
+                if isPdfAvailable {
+                    Chip(text: "PDF", systemImage: "doc")
+                }
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 8) {
+                if isEmbeddable {
+                    Chip(text: "Embeddable", systemImage: "checkmark.seal")
+                }
+                if isPublicDomain {
+                    Chip(text: "Public Domain", systemImage: "globe.europe.africa")
+                }
+                Spacer(minLength: 0)
+            }
+
+            if let s = saleability?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+                AddBookMetaRow(title: "Saleability", systemImage: "cart", value: s)
+            }
+
+            if let v = viewability?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty {
+                AddBookMetaRow(title: "Viewability", systemImage: "eye", value: v)
+            }
+        }
+    }
+
+    private var descriptionCard: some View {
+        AddBookCard(title: "Beschreibung") {
+            Text(trimmedDescription)
+                .foregroundStyle(.secondary)
+                .lineLimit(isDescriptionExpanded ? nil : 6)
+
+            if trimmedDescription.count > 240 {
+                Button(isDescriptionExpanded ? "Weniger anzeigen" : "Mehr lesen") {
+                    withAnimation(.snappy) {
+                        isDescriptionExpanded.toggle()
+                    }
+                }
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+    }
+
+    private var linksCard: some View {
+        AddBookCard(title: "Links") {
+            if let u = previewURL {
+                AddBookLinkRow(title: "Vorschau", systemImage: "play.rectangle", url: u)
+            }
+            if let u = infoURL {
+                AddBookLinkRow(title: "Mehr Infos", systemImage: "safari", url: u)
+            }
+            if let u = canonicalURL {
+                AddBookLinkRow(title: "Google Books", systemImage: "book", url: u)
+            }
+        }
+    }
+
+    private var primaryActionBar: some View {
+        VStack(spacing: 10) {
+            Divider()
+
+            Button {
+                addBook()
+                dismiss()
+            } label: {
+                Label("In Bibliothek aufnehmen", systemImage: "tray.and.arrow.down.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(trimmedTitle.isEmpty)
+
+            if trimmedTitle.isEmpty {
+                Text("Titel fehlt noch – ohne Titel landet das Buch sonst als \"Neues Buch\" in deiner Bibliothek. (Und das wäre wirklich… mutig.)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .background(.ultraThinMaterial)
+    }
+
+    private func publishedYear(from s: String?) -> String? {
+        guard let s = s?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return nil }
+        // Accept "YYYY" or "YYYY-MM-DD" or similar.
+        if s.count >= 4 {
+            let y = String(s.prefix(4))
+            if Int(y) != nil { return y }
+        }
+        return nil
+    }
+
+    private func url(from s: String?) -> URL? {
+        guard let s else { return nil }
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return nil }
+        return URL(string: t)
     }
 
     private var hasAnyImportedMetadata: Bool {
@@ -358,6 +658,204 @@ struct AddBookView: View {
         // Generate and sync thumbnail cover if we have any cover candidates.
         Task { @MainActor in
             await CoverThumbnailer.backfillThumbnailIfNeeded(for: newBook, modelContext: modelContext)
+        }
+    }
+}
+
+// MARK: - Components
+
+private struct AddBookCard<Content: View>: View {
+    let title: String?
+    @ViewBuilder let content: () -> Content
+
+    init(title: String? = nil, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.content = content
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let title, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(title)
+                    .font(.headline)
+            }
+
+            content()
+        }
+        .padding(14)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+}
+
+private struct AddBookActionTile: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    Image(systemName: systemImage)
+                        .font(.title3.weight(.semibold))
+                        .frame(width: 26)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(subtitle)
+                            .font(.subheadline.weight(.semibold))
+                        Text(title)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.thinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(.primary.opacity(0.08), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+private struct AddBookTextFieldRow: View {
+    let title: String
+    let systemImage: String
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+
+                TextField(title, text: $text)
+                    .textInputAutocapitalization(.sentences)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(.thinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(.primary.opacity(0.08), lineWidth: 1)
+            )
+        }
+    }
+}
+
+private struct AddBookSubsection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: () -> Content
+
+    init(title: String, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.content = content
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct AddBookMetaRow: View {
+    let title: String
+    let systemImage: String
+    let value: String?
+
+    private var trimmedValue: String? {
+        guard let value else { return nil }
+        let t = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if let v = trimmedValue {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Label(title, systemImage: systemImage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 130, alignment: .leading)
+
+                Text(v)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+}
+
+private struct AddBookLinkRow: View {
+    let title: String
+    let systemImage: String
+    let url: URL
+
+    private var hostLabel: String {
+        url.host ?? url.absoluteString
+    }
+
+    var body: some View {
+        Link(destination: url) {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                    Text(hostLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "arrow.up.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.thinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(.primary.opacity(0.08), lineWidth: 1)
+            )
         }
     }
 }
