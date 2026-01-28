@@ -40,13 +40,26 @@ struct BookImportResultsView: View {
     }
 
     private var resultsMeta: some View {
-        HStack(spacing: 8) {
-            Text("Zeige \(vm.resultsCount)\(vm.totalItemsText) Ergebnisse")
-                .font(.caption)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text("Zeige \(vm.resultsCount)\(vm.totalItemsText) Ergebnisse")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+
+            Text(vm.activeFiltersSummary)
+                .font(.caption2)
                 .foregroundStyle(.secondary)
-            Spacer()
+                .lineLimit(2)
+
+            if let dbg = vm.lastRequestDebugSummary {
+                Text(dbg)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var resultsList: some View {

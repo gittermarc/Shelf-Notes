@@ -98,28 +98,47 @@ struct BookImportSearchPanel: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        HStack(spacing: 10) {
-                            Picker("Sprache", selection: $vm.language) {
-                                ForEach(BookImportLanguageOption.allCases) { opt in
-                                    Text(opt.title).tag(opt)
-                                }
-                            }
-                            .pickerStyle(.menu)
+						LazyVGrid(
+							columns: [GridItem(.flexible()), GridItem(.flexible())],
+							alignment: .leading,
+							spacing: 10
+						) {
+							Picker("Suchfeld", selection: $vm.scope) {
+								ForEach(BookImportSearchScope.allCases) { opt in
+									Text(opt.title).tag(opt)
+								}
+							}
+							.pickerStyle(.menu)
 
-                            Picker("Sortierung", selection: $vm.orderBy) {
-                                ForEach(GoogleBooksOrderBy.allCases) { opt in
-                                    Text(opt.title).tag(opt)
-                                }
-                            }
-                            .pickerStyle(.menu)
+							Picker("Sprache", selection: $vm.language) {
+								ForEach(BookImportLanguageOption.allCases) { opt in
+									Text(opt.title).tag(opt)
+								}
+							}
+							.pickerStyle(.menu)
 
-                            Picker("Typ", selection: $vm.apiFilter) {
-                                ForEach(GoogleBooksFilter.allCases) { opt in
-                                    Text(opt.title).tag(opt)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                        }
+							Picker("Sortierung", selection: $vm.sortOption) {
+								ForEach(BookImportSortOption.allCases) { opt in
+									Text(opt.title).tag(opt)
+								}
+							}
+							.pickerStyle(.menu)
+
+							Picker("Kategorie", selection: $vm.category) {
+								Text("Alle").tag("")
+								ForEach(vm.categoryPickerOptions, id: \.self) { cat in
+									Text(cat).tag(cat)
+								}
+							}
+							.pickerStyle(.menu)
+
+							Picker("Filter", selection: $vm.apiFilter) {
+								ForEach(GoogleBooksFilter.allCases) { opt in
+									Text(opt.title).tag(opt)
+								}
+							}
+							.pickerStyle(.menu)
+						}
                     }
 
                     Divider()
@@ -130,9 +149,11 @@ struct BookImportSearchPanel: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        Toggle("Nur mit Cover", isOn: $vm.onlyWithCover)
-                        Toggle("Nur mit ISBN", isOn: $vm.onlyWithISBN)
-                        Toggle("Bereits in Bibliothek ausblenden", isOn: $vm.hideAlreadyInLibrary)
+						Toggle("Nur mit Cover", isOn: $vm.onlyWithCover)
+						Toggle("Nur mit ISBN", isOn: $vm.onlyWithISBN)
+						Toggle("Nur mit Beschreibung", isOn: $vm.onlyWithDescription)
+						Toggle("Duplikate reduzieren", isOn: $vm.collapseDuplicates)
+						Toggle("Bereits in Bibliothek ausblenden", isOn: $vm.hideAlreadyInLibrary)
                     }
                     .font(.subheadline)
                 }

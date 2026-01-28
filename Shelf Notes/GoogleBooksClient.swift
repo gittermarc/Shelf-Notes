@@ -183,6 +183,9 @@ final class GoogleBooksClient {
         guard let url = comps?.url else { throw GoogleBooksError.invalidURL }
 
         var request = URLRequest(url: url)
+        // The user may toggle filters quickly; avoid showing cached responses.
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         if let bundleId = Bundle.main.bundleIdentifier {
             request.setValue(bundleId, forHTTPHeaderField: "X-Ios-Bundle-Identifier")
         }
