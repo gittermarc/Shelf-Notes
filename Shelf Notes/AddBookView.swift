@@ -19,7 +19,10 @@ struct AddBookView: View {
     @State private var status: ReadingStatus = .toRead
     
     @State private var showingScannerSheet = false
-    @State private var pendingScanISBN: String? = nil
+    @State private var pendingImportQuery: String? = nil
+
+    @State private var showingInspirationPicker = false
+    @State private var inspirationSelectedQuery: String? = nil
 
     @State private var readFrom: Date = Date()
     @State private var readTo: Date = Date()
@@ -110,7 +113,7 @@ struct AddBookView: View {
                 primaryActionBar
             }
             .sheet(isPresented: $showingImportSheet, onDismiss: {
-                pendingScanISBN = nil
+                pendingImportQuery = nil
                 if quickAddActive && trimmedTitle.isEmpty {
                     dismiss()
                 }
@@ -154,7 +157,7 @@ struct AddBookView: View {
                         saleability = imported.saleability
                         isEbook = imported.isEbook
                     },
-                    initialQuery: pendingScanISBN,
+                    initialQuery: pendingImportQuery,
                     autoSearchOnAppear: true,
                     onQuickAddHappened: {
                         quickAddActive = true
@@ -166,12 +169,17 @@ struct AddBookView: View {
             }
             .sheet(isPresented: $showingScannerSheet) {
                 BarcodeScannerSheet { isbn in
-                    pendingScanISBN = isbn
+                    pendingImportQuery = isbn
                 }
+            }
+            .sheet(isPresented: $showingInspirationPicker, onDismiss: handleInspirationPickerDismiss) {
+                InspirationSeedPickerView(onSelect: { query in
+                    inspirationSelectedQuery = query
+                })
             }
             .onChange(of: showingScannerSheet) { _, isShowing in
                 // Scanner ist zu -> wenn wir eine ISBN haben -> Import-Sheet öffnen
-                if !isShowing, let isbn = pendingScanISBN, !isbn.isEmpty {
+                if !isShowing, let isbn = pendingImportQuery, !isbn.isEmpty {
                     quickAddActive = false
                     showingImportSheet = true
                 }
@@ -353,13 +361,14 @@ struct AddBookView: View {
 
     private var importActionsCard: some View {
         AddBookCard(title: "Import") {
-            HStack(spacing: 12) {
+            let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+            LazyVGrid(columns: cols, spacing: 12) {
                 AddBookActionTile(
                     title: "Google Books",
                     subtitle: "Suchen",
                     systemImage: "magnifyingglass"
                 ) {
-                    pendingScanISBN = nil
+                    pendingImportQuery = nil
                     quickAddActive = false
                     showingImportSheet = true
                 }
@@ -369,9 +378,20 @@ struct AddBookView: View {
                     subtitle: "Scannen",
                     systemImage: "barcode.viewfinder"
                 ) {
-                    pendingScanISBN = nil
+                    pendingImportQuery = nil
                     showingScannerSheet = true
                 }
+
+
+                AddBookActionTile(
+                    title: "Inspiration",
+                    subtitle: "Stöbern",
+                    systemImage: "sparkles"
+                ) {
+                    inspirationSelectedQuery = nil
+                    showingInspirationPicker = true
+                }
+                .gridCellColumns(2)
             }
 
             Text("Du kannst Titel, Autor und Status vor dem Speichern noch anpassen.")
@@ -603,6 +623,16 @@ struct AddBookView: View {
         || pdfAcsTokenLink != nil
         || saleability != nil
         || isEbook
+    }
+
+    private func handleInspirationPickerDismiss() {
+        guard let q = inspirationSelectedQuery?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !q.isEmpty else { return }
+
+        inspirationSelectedQuery = nil
+        pendingImportQuery = q
+        quickAddActive = false
+        showingImportSheet = true
     }
 
     private func addBook() {
