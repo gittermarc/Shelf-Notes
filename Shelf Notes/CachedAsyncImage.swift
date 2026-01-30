@@ -67,6 +67,15 @@ final class ImageDiskCache {
         return UIImage(data: data)
     }
 
+    /// Returns the raw cached bytes for a URL if present on disk.
+    ///
+    /// This is useful when the caller wants to decode/resize using ImageIO (without creating a full UIImage).
+    func data(for url: URL) -> Data? {
+        let fileURL = cacheFileURL(for: url)
+        guard fm.fileExists(atPath: fileURL.path) else { return nil }
+        return try? Data(contentsOf: fileURL)
+    }
+
     func store(data: Data, for url: URL) {
         let fileURL = cacheFileURL(for: url)
         try? data.write(to: fileURL, options: [.atomic])
