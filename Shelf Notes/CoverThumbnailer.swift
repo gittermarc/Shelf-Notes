@@ -81,10 +81,12 @@ enum CoverThumbnailer {
         let maxPixel = max(1, Int(thumbnailMaxPixel.rounded(.toNearestOrAwayFromZero)))
         let quality = thumbnailJPEGQuality
 
+        // Convert UIImage -> bytes on the caller context, then do ImageIO work off-main.
+        guard let raw = image.jpegData(compressionQuality: 1.0) ?? image.pngData() else { return nil }
+
         return await Task.detached(priority: .userInitiated) {
             autoreleasepool {
-                guard let data = image.jpegData(compressionQuality: 1.0) ?? image.pngData() else { return nil }
-                return thumbnailJPEGData(from: data, maxPixel: maxPixel, quality: quality)
+                return thumbnailJPEGData(from: raw, maxPixel: maxPixel, quality: quality)
             }
         }.value
     }
@@ -287,9 +289,10 @@ enum CoverThumbnailer {
     @MainActor
     static func applyUserPickedCover(imageData: Data, to book: Book, modelContext: ModelContext) async throws {
         // Convert to JPEG (Photos can be HEIC), but keep full resolution and normalize orientation.
+        let quality = fullResJPEGQuality
         let fullResJPEG: Data = await Task.detached(priority: .userInitiated) {
             autoreleasepool {
-                convertToJPEGKeepingMaxResolution(imageData, quality: fullResJPEGQuality) ?? imageData
+                convertToJPEGKeepingMaxResolution(imageData, quality: quality) ?? imageData
             }
         }.value
 
@@ -339,7 +342,7 @@ enum CoverThumbnailer {
 
     // MARK: - ImageIO helpers
 
-    private static func pixelSize(from data: Data) -> (Int, Int)? {
+    private nonisolated static func pixelSize(from data: Data) -> (Int, Int)? {
         let opts: [CFString: Any] = [kCGImageSourceShouldCache: false]
         guard let src = CGImageSourceCreateWithData(data as CFData, opts as CFDictionary) else { return nil }
         guard let props = CGImageSourceCopyPropertiesAtIndex(src, 0, opts as CFDictionary) as? [CFString: Any] else { return nil }
@@ -360,7 +363,7 @@ enum CoverThumbnailer {
     /// Creates a JPEG thumbnail from raw image bytes using ImageIO.
     ///
     /// This respects EXIF orientation (`kCGImageSourceCreateThumbnailWithTransform`) and avoids creating full UIImages.
-    private static func thumbnailJPEGData(from data: Data, maxPixel: Int, quality: CGFloat) -> Data? {
+    private nonisolated static func thumbnailJPEGData(from data: Data, maxPixel: Int, quality: CGFloat) -> Data? {
         let sourceOptions: [CFString: Any] = [kCGImageSourceShouldCache: false]
         guard let src = CGImageSourceCreateWithData(data as CFData, sourceOptions as CFDictionary) else { return nil }
 
@@ -383,7 +386,7 @@ enum CoverThumbnailer {
     }
 
     /// Converts any image bytes to JPEG while keeping max resolution (no downscale) and normalizing orientation.
-    private static func convertToJPEGKeepingMaxResolution(_ data: Data, quality: CGFloat) -> Data? {
+    private nonisolated static func convertToJPEGKeepingMaxResolution(_ data: Data, quality: CGFloat) -> Data? {
         guard let (w, h) = pixelSize(from: data) else { return nil }
         let maxPx = max(w, h)
         return thumbnailJPEGData(from: data, maxPixel: maxPx, quality: quality)
