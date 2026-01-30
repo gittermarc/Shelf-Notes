@@ -6,11 +6,15 @@
 //
 
 import SwiftUI
+import SwiftData
 
 /// Small "seed picker" for discovery.
 /// Selecting a seed returns a query string that can be fed into `BookImportView(initialQuery:)`.
 struct InspirationSeedPickerView: View {
     @Environment(\.dismiss) private var dismiss
+
+    /// Used for building "Für dich" seeds.
+    @Query private var books: [Book]
 
     let onSelect: (String) -> Void
 
@@ -18,6 +22,28 @@ struct InspirationSeedPickerView: View {
         GridItem(.flexible(), spacing: 12),
         GridItem(.flexible(), spacing: 12)
     ]
+
+    private var forYouSeeds: [InspirationSeed] {
+        ForYouSeedBuilder.build(from: books)
+    }
+
+    private var forYouSubtitle: String {
+        if books.isEmpty {
+            return "Noch keine Bücher in deiner Bibliothek – hier ein paar Start-Ideen. Sobald du ein paar Bücher hinzugefügt hast, wird's persönlicher."
+        }
+
+        // We focus on "reading" + "finished" (and ignore pure wishlists) for better signal.
+        let signalCount = books.filter {
+            let status = ReadingStatus.fromPersisted($0.statusRawValue) ?? .toRead
+            return status == .reading || status == .finished
+        }.count
+
+        if signalCount == 0 {
+            return "Basierend auf deiner Bibliothek – sobald du Bücher als „Lese ich“ oder „Gelesen“ markierst, wird das hier noch treffsicherer."
+        }
+
+        return "Basierend auf deinen gelesenen & aktuellen Büchern."
+    }
 
     var body: some View {
         NavigationStack {
@@ -36,6 +62,31 @@ struct InspirationSeedPickerView: View {
                             Text("Tippe auf ein Thema – wir starten direkt eine Google-Books-Suche. Danach kannst du wie gewohnt filtern und sortieren.")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    // ✅ Second card: personalized seeds derived from your library
+                    SeedCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(spacing: 10) {
+                                Image(systemName: "person.crop.circle.badge.sparkles")
+                                    .font(.title3.weight(.semibold))
+                                Text("Für dich")
+                                    .font(.headline)
+                                Spacer(minLength: 0)
+                            }
+
+                            Text(forYouSubtitle)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+
+                            LazyVGrid(columns: columns, spacing: 12) {
+                                ForEach(Array(forYouSeeds.prefix(6))) { seed in
+                                    SeedTile(seed: seed) {
+                                        pick(seed)
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -144,7 +195,7 @@ struct InspirationSeedPickerView: View {
 
 // MARK: - UI Components
 
-private struct InspirationSeed: Identifiable {
+struct InspirationSeed: Identifiable {
     let id = UUID()
     let title: String
     let subtitle: String
