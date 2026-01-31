@@ -13,7 +13,7 @@ import SwiftData
 struct InspirationSeedPickerView: View {
     @Environment(\.dismiss) private var dismiss
 
-    /// Used for building "Für dich" seeds.
+    /// Used for building "Für dich" seeds from the local library.
     @Query private var books: [Book]
 
     let onSelect: (String) -> Void
@@ -42,7 +42,7 @@ struct InspirationSeedPickerView: View {
             return "Basierend auf deiner Bibliothek – sobald du Bücher als „Lese ich“ oder „Gelesen“ markierst, wird das hier noch treffsicherer."
         }
 
-        return "Basierend auf deinen gelesenen & aktuellen Büchern."
+        return "Basierend auf deinen gelesenen & aktuellen Büchern – inkl. smarter Kombis."
     }
 
     var body: some View {
@@ -81,7 +81,7 @@ struct InspirationSeedPickerView: View {
                                 .foregroundStyle(.secondary)
 
                             LazyVGrid(columns: columns, spacing: 12) {
-                                ForEach(Array(forYouSeeds.prefix(6))) { seed in
+                                ForEach(Array(forYouSeeds.prefix(8))) { seed in
                                     SeedTile(seed: seed) {
                                         pick(seed)
                                     }
@@ -155,7 +155,7 @@ struct InspirationSeedPickerView: View {
             .init(title: "Thriller", subtitle: "Spannung pur", systemImage: "bolt.fill", query: "subject:thriller"),
             .init(title: "Krimi", subtitle: "Ermitteln & rätseln", systemImage: "magnifyingglass", query: "subject:crime"),
             .init(title: "Fantasy", subtitle: "Magie & Welten", systemImage: "wand.and.stars", query: "subject:fantasy"),
-            .init(title: "Sci-Fi", subtitle: "Zukunft & Tech", systemImage: "sparkles.square.filled.on.square", query: "subject:\"science fiction\""),
+            .init(title: "Sci-Fi", subtitle: "Zukunft & Tech", systemImage: "sparkles.square.filled.on.square", query: #"subject:"science fiction""#),
             .init(title: "Horror", subtitle: "Dunkel & creepy", systemImage: "theatermasks", query: "subject:horror"),
             .init(title: "Romance", subtitle: "Herzklopfen", systemImage: "heart.fill", query: "subject:romance"),
             .init(title: "Humor", subtitle: "Leicht & witzig", systemImage: "face.smiling", query: "humor romane"),
@@ -166,7 +166,7 @@ struct InspirationSeedPickerView: View {
     private var nonFictionSeeds: [InspirationSeed] {
         [
             .init(title: "Biografien", subtitle: "Menschen & Leben", systemImage: "person.text.rectangle", query: "subject:biography"),
-            .init(title: "True Crime", subtitle: "Echte Fälle", systemImage: "handcuffs", query: "\"true crime\""),
+            .init(title: "True Crime", subtitle: "Echte Fälle", systemImage: "handcuffs", query: #""true crime""#),
             .init(title: "Psychologie", subtitle: "Kopf & Verhalten", systemImage: "brain", query: "subject:psychology"),
             .init(title: "Business", subtitle: "Strategie & Growth", systemImage: "briefcase.fill", query: "subject:business"),
             .init(title: "Produktivität", subtitle: "Gewohnheiten & Fokus", systemImage: "checklist", query: "produktivität gewohnheiten"),
@@ -195,6 +195,7 @@ struct InspirationSeedPickerView: View {
 
 // MARK: - UI Components
 
+/// Keep this non-private so ForYouSeedBuilder can construct seeds.
 struct InspirationSeed: Identifiable {
     let id = UUID()
     let title: String
@@ -241,9 +242,11 @@ private struct SeedTile: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(seed.title)
                         .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
                     Text(seed.subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
 
                 Spacer(minLength: 0)
