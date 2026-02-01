@@ -234,26 +234,38 @@ private struct SeedTile: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
+            // Allow multi-line text in the grid tiles.
+            // With 2 columns on iPhone, a strict `.lineLimit(1)` truncates too aggressively.
+            HStack(alignment: .top, spacing: 10) {
                 Image(systemName: seed.systemImage)
                     .font(.title3.weight(.semibold))
                     .frame(width: 26)
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(seed.title)
                         .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .minimumScaleFactor(0.9)
+
                     Text(seed.subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .minimumScaleFactor(0.9)
                 }
+                // Ensure the text gets width before the chevron compresses it.
+                .layoutPriority(1)
+                .fixedSize(horizontal: false, vertical: true)
 
                 Spacer(minLength: 0)
 
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .padding(.top, 2)
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
