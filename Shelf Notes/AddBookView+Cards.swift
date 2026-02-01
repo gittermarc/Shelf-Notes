@@ -128,7 +128,8 @@ extension AddBookView {
 
     var importActionsCard: some View {
         AddBookCard(title: "Import") {
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+            // One tile per row so titles don't get cramped and truncated.
+            VStack(spacing: 12) {
                 AddBookActionTile(
                     title: "Google Books Suche",
                     subtitle: "Suchen",

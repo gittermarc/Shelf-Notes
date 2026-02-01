@@ -46,7 +46,8 @@ struct AddBookActionTile: View {
                     Text(title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
-                        .lineLimit(2)
+                        // Allow wrapping so longer titles are always fully readable.
+                        .fixedSize(horizontal: false, vertical: true)
 
                     Text(subtitle)
                         .font(.caption)
