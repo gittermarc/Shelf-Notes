@@ -158,6 +158,23 @@ final class BookImportViewModel: ObservableObject {
 
     private var undoHideTask: Task<Void, Never>?
 
+    // MARK: - Search task management (cancel + debounce)
+
+    /// Debounced refresh triggered by filter changes.
+    private var debouncedRefreshTask: Task<Void, Never>?
+
+    /// The currently running "main" search task (initial search or filter refresh).
+    private var searchTask: Task<Void, Never>?
+
+    /// The currently running pagination task (load more).
+    private var loadMoreTask: Task<Void, Never>?
+
+    /// Monotonically increasing generation counter used to ignore stale async responses.
+    private var searchGeneration: UInt64 = 0
+
+    /// Debounce delay for filter-driven refreshes.
+    private let filterRefreshDebounceNanos: UInt64 = 350_000_000
+
     private var addedVolumeIDs: Set<String> = []
     private var sessionQuickAddCount: Int = 0
     private var didTriggerQuickAddCallback: Bool = false
@@ -189,6 +206,24 @@ final class BookImportViewModel: ObservableObject {
     func cancelTasks() {
         undoHideTask?.cancel()
         undoHideTask = nil
+
+        cancelSearchWork(resetLoadingState: true)
+    }
+
+    private func cancelSearchWork(resetLoadingState: Bool) {
+        debouncedRefreshTask?.cancel()
+        debouncedRefreshTask = nil
+
+        searchTask?.cancel()
+        searchTask = nil
+
+        loadMoreTask?.cancel()
+        loadMoreTask = nil
+
+        if resetLoadingState {
+            isLoading = false
+            isLoadingMore = false
+        }
     }
 
     // MARK: - Public helpers for UI
@@ -284,6 +319,12 @@ final class BookImportViewModel: ObservableObject {
     }
 
     func clearQueryAndResults() {
+        // If a request is currently in-flight and the user clears the query,
+        // we must cancel it to avoid stale results re-appearing.
+        cancelSearchWork(resetLoadingState: false)
+        // Invalidate any async responses that might still arrive.
+        searchGeneration &+= 1
+
         queryText = ""
         errorMessage = nil
 
@@ -331,16 +372,39 @@ final class BookImportViewModel: ObservableObject {
     // MARK: - Search
 
     func search() async {
-        await performSearch(addToHistory: true, keepCurrentResults: false)
+        // User explicitly started a new search -> cancel any pending filter refresh.
+        debouncedRefreshTask?.cancel()
+        debouncedRefreshTask = nil
+
+        await startSearch(addToHistory: true, keepCurrentResults: false)
     }
 
-    private func refreshFromFilters() async {
-        await performSearch(addToHistory: false, keepCurrentResults: true)
+    private func startSearch(addToHistory: Bool, keepCurrentResults: Bool) async {
+        // Cancel any in-flight work that could mutate the same state.
+        loadMoreTask?.cancel()
+        loadMoreTask = nil
+
+        searchTask?.cancel()
+
+        // New generation -> stale async results get ignored.
+        searchGeneration &+= 1
+        let generation = searchGeneration
+
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.performSearch(addToHistory: addToHistory, keepCurrentResults: keepCurrentResults, generation: generation)
+        }
+
+        searchTask = task
+        await task.value
     }
 
-    private func performSearch(addToHistory: Bool, keepCurrentResults: Bool) async {
+    private func performSearch(addToHistory: Bool, keepCurrentResults: Bool, generation: UInt64) async {
         let trimmed = queryText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+
+        guard !Task.isCancelled else { return }
+        guard generation == searchGeneration else { return }
 
         if addToHistory {
             history = historyStore.add(trimmed)
@@ -369,7 +433,7 @@ final class BookImportViewModel: ObservableObject {
             lastDebugInfo = nil
         }
 
-        await fetchPage(startIndex: 0, append: false)
+        await fetchPage(startIndex: 0, append: false, generation: generation)
     }
 
     func loadMore() async {
@@ -379,9 +443,19 @@ final class BookImportViewModel: ObservableObject {
         isLoadingMore = true
         errorMessage = nil
 
-        await fetchPage(startIndex: nextStartIndex, append: true)
+        let generation = searchGeneration
 
-        isLoadingMore = false
+        loadMoreTask?.cancel()
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.fetchPage(startIndex: self.nextStartIndex, append: true, generation: generation)
+        }
+        loadMoreTask = task
+        await task.value
+
+        if generation == searchGeneration {
+            isLoadingMore = false
+        }
     }
 
     // MARK: - Add
@@ -476,7 +550,20 @@ final class BookImportViewModel: ObservableObject {
     private func triggerSearchIfActive() {
         guard !isBootstrapping else { return }
         guard !activeQuery.isEmpty else { return }
-        Task { await refreshFromFilters() }
+        scheduleDebouncedRefresh()
+    }
+
+    private func scheduleDebouncedRefresh() {
+        debouncedRefreshTask?.cancel()
+
+        debouncedRefreshTask = Task { [weak self] in
+            guard let self else { return }
+            // Debounce rapid filter changes.
+            try? await Task.sleep(nanoseconds: self.filterRefreshDebounceNanos)
+            guard !Task.isCancelled else { return }
+
+            await self.startSearch(addToHistory: false, keepCurrentResults: true)
+        }
     }
 
     private func currentQueryOptions() -> GoogleBooksQueryOptions {
@@ -484,14 +571,21 @@ final class BookImportViewModel: ObservableObject {
         return builder.makeQueryOptions(language: language, sortOption: sortOption, apiFilter: apiFilter)
     }
 
-    private func fetchPage(startIndex: Int, append: Bool) async {
+    private func fetchPage(startIndex: Int, append: Bool, generation: UInt64) async {
         do {
+            // If a newer search was started, don't waste cycles.
+            guard generation == searchGeneration else { return }
+            guard !Task.isCancelled else { return }
+
             let res = try await GoogleBooksClient.shared.searchVolumesWithDebug(
                 query: activeQuery,
                 startIndex: startIndex,
                 maxResults: pageSize,
                 options: currentQueryOptions()
             )
+
+            guard !Task.isCancelled else { return }
+            guard generation == searchGeneration else { return }
 
             lastDebugInfo = res.debug
             totalItems = res.totalItems
@@ -519,6 +613,17 @@ final class BookImportViewModel: ObservableObject {
 
             isLoading = false
         } catch {
+            // Cancellation is expected when the user tweaks filters quickly.
+            if error is CancellationError {
+                if generation == searchGeneration {
+                    isLoading = false
+                    isLoadingMore = false
+                }
+                return
+            }
+
+            guard generation == searchGeneration else { return }
+
             errorMessage = error.localizedDescription
             isLoading = false
             if !append { didReachEnd = true }
