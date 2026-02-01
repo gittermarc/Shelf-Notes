@@ -215,6 +215,16 @@ extension StatisticsView {
         return weeks
     }
 
+    private struct WeekKey: Hashable, Comparable {
+        let year: Int
+        let week: Int
+
+        static func < (lhs: WeekKey, rhs: WeekKey) -> Bool {
+            if lhs.year != rhs.year { return lhs.year < rhs.year }
+            return lhs.week < rhs.week
+        }
+    }
+
     struct HeatmapStats {
         let activeDays: Int
         let maxCount: Int
@@ -238,9 +248,15 @@ extension StatisticsView {
         var bestDay: Date? = nil
         var bestDayCount: Int = 0
         for (d, c) in counts where c > 0 {
-            if c > bestDayCount || (c == bestDayCount && (bestDay == nil || d < bestDay!)) {
+            if c > bestDayCount {
                 bestDay = d
                 bestDayCount = c
+            } else if c == bestDayCount {
+                if let currentBest = bestDay {
+                    if d < currentBest { bestDay = d }
+                } else {
+                    bestDay = d
+                }
             }
         }
         let bestDayLabel: String
@@ -261,33 +277,41 @@ extension StatisticsView {
         }
 
         let bestWeekdayIdx = weekdaySums.enumerated().max(by: { $0.element < $1.element })?.offset
-        let bestWeekdayLabel = (bestWeekdayIdx != nil && weekdaySums[bestWeekdayIdx!] > 0)
-            ? "\(weekdayLabels[bestWeekdayIdx!]) • \(formatInt(weekdaySums[bestWeekdayIdx!]))\(unitSuffix)"
-            : "–"
+        let bestWeekdayLabel: String
+        if let idx = bestWeekdayIdx, weekdaySums[idx] > 0 {
+            bestWeekdayLabel = "\(weekdayLabels[idx]) • \(formatInt(weekdaySums[idx]))\(unitSuffix)"
+        } else {
+            bestWeekdayLabel = "–"
+        }
 
         // best week (ISO KW)
-        var weekSums: [String: Int] = [:]
+        var weekSums: [WeekKey: Int] = [:]
         for (d, c) in counts where c > 0 {
             let comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: d)
             let y = comps.yearForWeekOfYear ?? selectedYear
             let w = comps.weekOfYear ?? 0
-            let key = "\(y)-\(w)"
+            let key = WeekKey(year: y, week: w)
             weekSums[key, default: 0] += c
         }
-        var bestWeekKey: String? = nil
+
+        var bestWeekKey: WeekKey? = nil
         var bestWeekSum = 0
         for (k, s) in weekSums {
             if s > bestWeekSum {
                 bestWeekSum = s
                 bestWeekKey = k
+            } else if s == bestWeekSum {
+                if let current = bestWeekKey {
+                    if k < current { bestWeekKey = k }
+                } else {
+                    bestWeekKey = k
+                }
             }
         }
+
         let bestWeekLabel: String
         if let bestWeekKey, bestWeekSum > 0 {
-            let parts = bestWeekKey.split(separator: "-")
-            let y = parts.first.map(String.init) ?? "\(selectedYear)"
-            let w = parts.dropFirst().first.map(String.init) ?? "?"
-            bestWeekLabel = "KW \(w) (\(y)) • \(formatInt(bestWeekSum))\(unitSuffix)"
+            bestWeekLabel = "KW \(bestWeekKey.week) (\(bestWeekKey.year)) • \(formatInt(bestWeekSum))\(unitSuffix)"
         } else {
             bestWeekLabel = "–"
         }
