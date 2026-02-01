@@ -23,7 +23,9 @@ struct AddBookView: View {
                 VStack(spacing: 14) {
                     heroCard
                     importActionsCard
-                    basicsCard
+                    if vm.shouldShowDetailsCard {
+                        basicsCard
+                    }
 
                     if vm.hasAnyImportedMetadata {
                         metadataCard
@@ -84,6 +86,12 @@ struct AddBookView: View {
             case .inspiration:
                 InspirationSeedPickerView(onSelect: { query in
                     vm.queueImportAfterDismiss(query: query)
+                })
+
+            case .manualAdd:
+                ManualBookAddSheet(onBookAdded: {
+                    // Manual import is a "Notfall" flow – after saving, we can close the whole add screen.
+                    dismiss()
                 })
             }
         }

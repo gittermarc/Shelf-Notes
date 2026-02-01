@@ -13,6 +13,7 @@ enum AddBookSheet: Identifiable, Equatable {
     case importBooks(initialQuery: String?)
     case scanner
     case inspiration
+    case manualAdd
 
     var id: String {
         switch self {
@@ -22,6 +23,8 @@ enum AddBookSheet: Identifiable, Equatable {
             return "scanner"
         case .inspiration:
             return "inspiration"
+        case .manualAdd:
+            return "manualAdd"
         }
     }
 

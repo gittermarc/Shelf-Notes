@@ -152,7 +152,14 @@ extension AddBookView {
                 ) {
                     vm.openInspiration()
                 }
-                .gridCellColumns(2)
+
+                AddBookActionTile(
+                    title: "Buch manuell hinzufügen",
+                    subtitle: "Titel, Autor & ISBN",
+                    systemImage: "square.and.pencil"
+                ) {
+                    vm.openManualAdd()
+                }
             }
         }
     }

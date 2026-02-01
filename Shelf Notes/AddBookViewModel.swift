@@ -35,6 +35,11 @@ final class AddBookViewModel: ObservableObject {
         present(.inspiration)
     }
 
+    func openManualAdd() {
+        queuedImportQueryAfterDismiss = nil
+        present(.manualAdd)
+    }
+
     func queueImportAfterDismiss(query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -202,6 +207,13 @@ final class AddBookViewModel: ObservableObject {
         || pdfAcsTokenLink != nil
         || saleability != nil
         || isEbook
+    }
+
+    /// `AddBookView` can start as an "Import Hub".
+    /// We only show the editable details card once we either imported something
+    /// or the user already has entered any details (e.g. after manual add).
+    var shouldShowDetailsCard: Bool {
+        hasAnyImportedMetadata || !trimmedTitle.isEmpty || !trimmedAuthor.isEmpty
     }
 
     var hasAvailabilityChips: Bool {
