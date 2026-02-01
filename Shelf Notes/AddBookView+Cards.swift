@@ -128,8 +128,13 @@ extension AddBookView {
 
     var importActionsCard: some View {
         AddBookCard(title: "Import") {
-            // One tile per row so titles don't get cramped and truncated.
-            VStack(spacing: 12) {
+            // Responsive: 1 column on iPhone, 2 columns on iPad (and wider).
+            // The adaptive grid automatically falls back to a single column in narrow split views.
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 340), spacing: 12, alignment: .topLeading)],
+                alignment: .leading,
+                spacing: 12
+            ) {
                 AddBookActionTile(
                     title: "Google Books Suche",
                     subtitle: "Suchen",
