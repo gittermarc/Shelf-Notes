@@ -27,11 +27,12 @@ struct BookImportQueryBuilder {
         return trimmed
     }
 
-    /// Builds the effective query string using scope (intitle/inauthor) and category (subject:).
+    /// Builds the effective query string using scope (intitle/inauthor) and a robust category fragment.
     ///
     /// Notes:
     /// - If the user already uses advanced operators, we avoid rewriting and only append the category when safe.
     /// - We never append category for `isbn:` queries (Google ignores / behaves inconsistently there).
+    /// - Category fragments are expanded via `BookImportCategoryNormalizer` to prevent "0 results" traps.
     func buildEffectiveQuery(from base: String) -> String {
         let trimmed = base.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return trimmed }
@@ -55,7 +56,12 @@ struct BookImportQueryBuilder {
 
         let cat = category.trimmingCharacters(in: .whitespacesAndNewlines)
         if !cat.isEmpty && !isISBNQuery {
-            q += " subject:\(quoteIfNeeded(cat))"
+            if let fragment = BookImportCategoryNormalizer.queryFragment(forSelectedCategory: cat), !fragment.isEmpty {
+                q += " \(fragment)"
+            } else {
+                // Defensive fallback.
+                q += " subject:\(quoteIfNeeded(cat))"
+            }
         }
 
         return q

@@ -95,47 +95,11 @@ struct BookImportFilterEngine {
     // MARK: - Categories
 
     static func computeAvailableCategories(from volumes: [GoogleBookVolume], includeSelected selected: String) -> [String] {
-        var map: [String: (display: String, count: Int)] = [:]
-
-        func add(_ raw: String) {
-            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return }
-            let key = trimmed.lowercased()
-            if let existing = map[key] {
-                map[key] = (existing.display, existing.count + 1)
-            } else {
-                map[key] = (trimmed, 1)
-            }
-        }
-
-        for v in volumes {
-            for c in v.allCategories { add(c) }
-        }
-
-        let trimmedSelected = selected.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedSelected.isEmpty {
-            add(trimmedSelected)
-        }
-
-        return map.values
-            .sorted { a, b in
-                if a.count != b.count { return a.count > b.count }
-                return a.display.localizedCaseInsensitiveCompare(b.display) == .orderedAscending
-            }
-            .map { $0.display }
+        BookImportCategoryNormalizer.computeAvailableCategoryDisplays(from: volumes.map { $0.allCategories }, includeSelected: selected)
     }
 
     private func volumeHasCategory(_ volume: GoogleBookVolume, matching selected: String) -> Bool {
-        let needle = selected.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !needle.isEmpty else { return true }
-
-        for c in volume.allCategories {
-            let hay = c.lowercased()
-            if hay == needle { return true }
-            if hay.contains(needle) { return true }
-        }
-
-        return false
+        BookImportCategoryNormalizer.matches(volumeCategories: volume.allCategories, selectedCategory: selected)
     }
 
     // MARK: - Google filter preview
