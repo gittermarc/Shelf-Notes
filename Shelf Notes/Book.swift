@@ -89,7 +89,7 @@ enum ReadingStatusMigrator {
             }
 
             if didChange {
-                try modelContext.save()
+                _ = modelContext.saveWithDiagnostics()
             }
 
             defaults.set(true, forKey: migrationKey)

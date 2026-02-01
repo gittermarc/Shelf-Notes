@@ -140,7 +140,7 @@ struct BookDetailView: View {
         }
         .sheet(isPresented: $showingNotesSheet) {
             NotesEditorSheet(notes: $book.notes) {
-                try? modelContext.save()
+                _ = modelContext.saveWithDiagnostics()
             }
         }
         .sheet(isPresented: $showingCollectionsSheet) {
@@ -154,7 +154,7 @@ struct BookDetailView: View {
             RatingEditorSheet(
                 book: book,
                 onReset: { resetUserRating() },
-                onSave: { try? modelContext.save() }
+                onSave: { _ = modelContext.saveWithDiagnostics() }
             )
         }
         .sheet(isPresented: $showingAllSessionsSheet) {
@@ -199,7 +199,7 @@ struct BookDetailView: View {
         }
         #endif
         .onDisappear {
-            try? modelContext.save()
+            _ = modelContext.saveWithDiagnostics()
         }
     }
 }

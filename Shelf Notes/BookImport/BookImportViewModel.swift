@@ -140,6 +140,9 @@ final class BookImportViewModel: ObservableObject {
     /// Debug info for the last Google request (helps verify filters are applied).
     @Published private(set) var lastDebugInfo: GoogleBooksDebugInfo?
 
+    /// True when we temporarily ignore `langRestrict` to avoid 0-result traps.
+    @Published private(set) var didRelaxLanguageFilterThisSearch: Bool = false
+
     // Search history for chips
     @Published private(set) var history: [String] = []
 
@@ -149,6 +152,12 @@ final class BookImportViewModel: ObservableObject {
     // MARK: - Private State
 
     private var fetchedVolumes: [GoogleBookVolume] = []
+
+    /// Signature of the current search (language + effective query).
+    private var searchKeyForCurrentQuery: String = ""
+
+    /// Memo: for which searches we already had to relax language once (avoids repeating the first failing request).
+    private var languageRelaxedKeys: Set<String> = []
 
     private var activeQuery: String = ""
     private var compositeQueries: [String] = []
@@ -277,6 +286,12 @@ final class BookImportViewModel: ObservableObject {
         if collapseDuplicates { parts.append("Duplikate reduziert") }
 
         return parts.joined(separator: " • ")
+    }
+
+    /// Shown in the results meta section when we relaxed language to avoid an empty list.
+    var languageRelaxedHint: String? {
+        guard didRelaxLanguageFilterThisSearch, language != .any else { return nil }
+        return "Sprache gelockert, um Ergebnisse zu finden."
     }
 
     var categoryPickerOptions: [String] {
@@ -441,6 +456,11 @@ final class BookImportViewModel: ObservableObject {
         isCompositeQuery = false
         compositeQueries = []
         activeQuery = effective
+
+        // Language-relaxation memo: if this query already needed a fallback once, start relaxed to avoid a double-request.
+        searchKeyForCurrentQuery = makeSearchKey(language: language, effectiveQuery: effective, compositeQueries: [])
+        didRelaxLanguageFilterThisSearch = (language != .any) && languageRelaxedKeys.contains(searchKeyForCurrentQuery)
+
         totalItems = 0
         nextStartIndex = 0
         didReachEnd = false
@@ -470,6 +490,10 @@ final class BookImportViewModel: ObservableObject {
                 isCompositeQuery = true
                 compositeQueries = effectiveParts
                 activeQuery = effectiveParts.first ?? ""
+
+                // Composite searches also get a signature (language + all parts).
+                searchKeyForCurrentQuery = makeSearchKey(language: language, effectiveQuery: "", compositeQueries: effectiveParts)
+                didRelaxLanguageFilterThisSearch = (language != .any) && languageRelaxedKeys.contains(searchKeyForCurrentQuery)
 
                 await fetchCompositeFirstPage(queries: effectiveParts, generation: generation)
                 return
@@ -611,7 +635,8 @@ final class BookImportViewModel: ObservableObject {
 
     private func currentQueryOptions() -> GoogleBooksQueryOptions {
         let builder = BookImportQueryBuilder(scope: scope, category: category)
-        return builder.makeQueryOptions(language: language, sortOption: sortOption, apiFilter: apiFilter)
+        let effectiveLanguage: BookImportLanguageOption = didRelaxLanguageFilterThisSearch ? .any : language
+        return builder.makeQueryOptions(language: effectiveLanguage, sortOption: sortOption, apiFilter: apiFilter)
     }
 
     /// Splits a query of the form "A OR B" (outside quotes) into its parts.
@@ -658,6 +683,18 @@ final class BookImportViewModel: ObservableObject {
         return parts.count >= 2 ? parts : nil
     }
 
+    private func makeSearchKey(
+        language: BookImportLanguageOption,
+        effectiveQuery: String,
+        compositeQueries: [String]
+    ) -> String {
+        if !compositeQueries.isEmpty {
+            return "lang=\(language.rawValue)|composite=\(compositeQueries.joined(separator: "||"))"
+        }
+        return "lang=\(language.rawValue)|q=\(effectiveQuery)"
+    }
+
+
     private func interleavingUniqueVolumes(lists: [[GoogleBookVolume]]) -> [GoogleBookVolume] {
         guard !lists.isEmpty else { return [] }
 
@@ -692,6 +729,8 @@ final class BookImportViewModel: ObservableObject {
             guard !list.isEmpty else { return }
 
             // Fetch each query's first page.
+            let baseOptions = currentQueryOptions()
+
             var responses: [GoogleBooksSearchResult] = []
             responses.reserveCapacity(list.count)
 
@@ -700,7 +739,7 @@ final class BookImportViewModel: ObservableObject {
                     query: q,
                     startIndex: 0,
                     maxResults: pageSize,
-                    options: currentQueryOptions()
+                    options: baseOptions
                 )
                 responses.append(res)
             }
@@ -709,16 +748,46 @@ final class BookImportViewModel: ObservableObject {
             guard generation == searchGeneration else { return }
 
             // Prefer showing a mixed feed (interleave) instead of dumping all from the first query.
-            let volumeLists = responses.map { $0.volumes }
-            let merged = interleavingUniqueVolumes(lists: volumeLists)
+            var finalResponses = responses
+            var finalMerged = interleavingUniqueVolumes(lists: responses.map { $0.volumes })
 
-            lastDebugInfo = responses.first?.debug
-            totalItems = merged.count
-            fetchedVolumes = merged
+            // If the strict language restriction yields 0 hits overall, retry once without `langRestrict`.
+            if finalMerged.isEmpty, !didRelaxLanguageFilterThisSearch {
+                if let lang = baseOptions.langRestrict?.trimmingCharacters(in: .whitespacesAndNewlines), !lang.isEmpty {
+                    var relaxedOptions = baseOptions
+                    relaxedOptions.langRestrict = nil
+
+                    var relaxedResponses: [GoogleBooksSearchResult] = []
+                    relaxedResponses.reserveCapacity(list.count)
+                    for q in list {
+                        let r = try await GoogleBooksClient.shared.searchVolumesWithDebug(
+                            query: q,
+                            startIndex: 0,
+                            maxResults: pageSize,
+                            options: relaxedOptions
+                        )
+                        relaxedResponses.append(r)
+                    }
+
+                    let relaxedMerged = interleavingUniqueVolumes(lists: relaxedResponses.map { $0.volumes })
+                    if !relaxedMerged.isEmpty {
+                        finalResponses = relaxedResponses
+                        finalMerged = relaxedMerged
+                        didRelaxLanguageFilterThisSearch = true
+                        if !searchKeyForCurrentQuery.isEmpty {
+                            languageRelaxedKeys.insert(searchKeyForCurrentQuery)
+                        }
+                    }
+                }
+            }
+
+            lastDebugInfo = finalResponses.first?.debug
+            totalItems = finalMerged.count
+            fetchedVolumes = finalMerged
 
             applyLocalFilters()
 
-            nextStartIndex = merged.count
+            nextStartIndex = finalMerged.count
             didReachEnd = true
             isLoading = false
             isLoadingMore = false
@@ -743,13 +812,36 @@ final class BookImportViewModel: ObservableObject {
             // If a newer search was started, don't waste cycles.
             guard generation == searchGeneration else { return }
             guard !Task.isCancelled else { return }
-
-            let res = try await GoogleBooksClient.shared.searchVolumesWithDebug(
+            var options = currentQueryOptions()
+            var res = try await GoogleBooksClient.shared.searchVolumesWithDebug(
                 query: activeQuery,
                 startIndex: startIndex,
                 maxResults: pageSize,
-                options: currentQueryOptions()
+                options: options
             )
+
+            // If the strict language restriction yields 0 hits, retry once without `langRestrict`.
+            if startIndex == 0, !append, !didRelaxLanguageFilterThisSearch {
+                if let lang = options.langRestrict?.trimmingCharacters(in: .whitespacesAndNewlines), !lang.isEmpty {
+                    if res.totalItems == 0 || res.volumes.isEmpty {
+                        options.langRestrict = nil
+                        let relaxedRes = try await GoogleBooksClient.shared.searchVolumesWithDebug(
+                            query: activeQuery,
+                            startIndex: startIndex,
+                            maxResults: pageSize,
+                            options: options
+                        )
+
+                        if relaxedRes.totalItems > 0 || !relaxedRes.volumes.isEmpty {
+                            res = relaxedRes
+                            didRelaxLanguageFilterThisSearch = true
+                            if !searchKeyForCurrentQuery.isEmpty {
+                                languageRelaxedKeys.insert(searchKeyForCurrentQuery)
+                            }
+                        }
+                    }
+                }
+            }
 
             guard !Task.isCancelled else { return }
             guard generation == searchGeneration else { return }
@@ -800,7 +892,7 @@ final class BookImportViewModel: ObservableObject {
     private func applyLocalFilters() {
         let input = BookImportFilterEngine.Input(
             volumes: fetchedVolumes,
-            language: language,
+            language: (didRelaxLanguageFilterThisSearch ? .any : language),
             apiFilter: apiFilter,
             category: category,
             onlyWithCover: onlyWithCover,

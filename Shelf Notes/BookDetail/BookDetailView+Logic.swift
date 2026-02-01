@@ -20,7 +20,7 @@ extension BookDetailView {
                     if book.readFrom == nil { book.readFrom = Date() }
                     if book.readTo == nil { book.readTo = book.readFrom }
                 }
-                try? modelContext.save()
+                _ = modelContext.saveWithDiagnostics()
             }
         )
     }
@@ -94,7 +94,7 @@ extension BookDetailView {
         book.userRatingAtmosphere = 0
         book.userRatingGenreFit = 0
         book.userRatingPresentation = 0
-        try? modelContext.save()
+        _ = modelContext.saveWithDiagnostics()
     }
 
     var prettyViewability: String? {
@@ -320,7 +320,7 @@ extension BookDetailView {
         }
         book.userCoverFileName = nil
         book.userCoverData = nil
-        try? modelContext.save()
+        _ = modelContext.saveWithDiagnostics()
 
         Task { @MainActor in
             await CoverThumbnailer.backfillThumbnailIfNeeded(for: book, modelContext: modelContext)
@@ -336,7 +336,7 @@ extension BookDetailView {
         }
 
         modelContext.delete(book)
-        try? modelContext.save()
+        _ = modelContext.saveWithDiagnostics()
         dismiss()
     }
 
@@ -390,7 +390,7 @@ extension BookDetailView {
 
         book.tags = out
         tagsText = out.joined(separator: ", ")
-        try? modelContext.save()
+        _ = modelContext.saveWithDiagnostics()
     }
 
     func addTagsFromDraft() {
@@ -425,7 +425,7 @@ extension BookDetailView {
         book.tags = out
         tagsText = out.joined(separator: ", ")
         tagDraft = ""
-        try? modelContext.save()
+        _ = modelContext.saveWithDiagnostics()
     }
 
     func removeTag(_ tag: String) {
@@ -444,7 +444,7 @@ extension BookDetailView {
 
         book.tags = out
         tagsText = out.joined(separator: ", ")
-        try? modelContext.save()
+        _ = modelContext.saveWithDiagnostics()
     }
 
     func parseTags(_ input: String) -> [String] {
@@ -507,7 +507,7 @@ extension BookDetailView {
         collection.booksSafe = books
         collection.updatedAt = Date()
 
-        try? modelContext.save()
+        _ = modelContext.saveWithDiagnostics()
     }
 
     func createAndAttachCollection(named name: String) {

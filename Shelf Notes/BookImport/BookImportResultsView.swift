@@ -53,6 +53,12 @@ struct BookImportResultsView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
 
+            if let hint = vm.languageRelaxedHint {
+                Text(hint)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
             if let dbg = vm.lastRequestDebugSummary {
                 Text(dbg)
                     .font(.caption2)

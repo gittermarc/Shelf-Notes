@@ -89,7 +89,7 @@ extension BookDetailView {
                         set: { newValue in
                             book.readFrom = newValue
                             if let to = book.readTo, to < newValue { book.readTo = newValue }
-                            try? modelContext.save()
+                            _ = modelContext.saveWithDiagnostics()
                         }
                     ),
                     displayedComponents: [.date]
@@ -102,7 +102,7 @@ extension BookDetailView {
                         set: { newValue in
                             book.readTo = newValue
                             if let from = book.readFrom, from > newValue { book.readFrom = newValue }
-                            try? modelContext.save()
+                            _ = modelContext.saveWithDiagnostics()
                         }
                     ),
                     in: (book.readFrom ?? Date.distantPast)...Date(),
