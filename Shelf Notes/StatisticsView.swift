@@ -20,6 +20,13 @@ struct StatisticsView: View {
     @State var scope: Scope = .all
     @State var activityMetric: ActivityMetric = .readingDays
 
+    // Cached aggregations to avoid re-computing expensive stats on every UI update
+    // (e.g. expanding/collapsing DisclosureGroups).
+    @State var statsCache: StatsCache? = nil
+    @State var heatmapCache: HeatmapCache? = nil
+    @State var isUpdatingStatsCache: Bool = false
+    @State var isUpdatingHeatmapCache: Bool = false
+
     enum Scope: String, CaseIterable, Identifiable {
         case all = "Alle"
         case finished = "Gelesen"
@@ -45,6 +52,10 @@ struct StatisticsView: View {
     }
 
     var body: some View {
+        let signature = booksSignature(books)
+        let statsKey = makeStatsCacheKey(signature: signature)
+        let heatmapKey = makeHeatmapCacheKey(signature: signature)
+
         Group {
             if books.isEmpty {
                 ContentUnavailableView(
@@ -72,5 +83,32 @@ struct StatisticsView: View {
         }
         .navigationTitle("Statistiken")
         .navigationBarTitleDisplayMode(.inline)
+
+        // Recompute caches only when their inputs change.
+        .task(id: statsKey) {
+            guard !books.isEmpty else {
+                statsCache = nil
+                return
+            }
+
+            isUpdatingStatsCache = true
+            defer { isUpdatingStatsCache = false }
+
+            // Let the UI render first; then crunch numbers.
+            await Task.yield()
+            statsCache = computeStatsCache(for: statsKey)
+        }
+        .task(id: heatmapKey) {
+            guard !books.isEmpty else {
+                heatmapCache = nil
+                return
+            }
+
+            isUpdatingHeatmapCache = true
+            defer { isUpdatingHeatmapCache = false }
+
+            await Task.yield()
+            heatmapCache = computeHeatmapCache(for: heatmapKey)
+        }
     }
 }

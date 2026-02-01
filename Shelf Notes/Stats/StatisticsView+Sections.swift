@@ -113,18 +113,34 @@ extension StatisticsView {
     // MARK: - Charts
 
     var readingChartsCard: some View {
-        let months = monthsForSelectedYear
-        let series = monthlySeriesForFinishedSelectedYear(months: months)
+        let key = makeStatsCacheKey()
+        let cache = statsCache
+        let isValid = (cache?.key == key)
+        let effective = isValid ? cache : nil
+
+        let monthsCount = monthsForSelectedYear.count
+        let series = effective?.monthlySeries ?? []
 
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Lesen pro Monat (\(selectedYear))")
                     .font(.headline)
                 Spacer()
-                Text("\(months.count) Monate")
+                if !isValid && isUpdatingStatsCache {
+                    ProgressView()
+                        .controlSize(.mini)
+                }
+
+                Text("\(monthsCount) Monate")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
+            }
+
+            if !isValid {
+                Text("Berechne Monats-Statistiken …")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             #if canImport(Charts)
@@ -188,10 +204,22 @@ extension StatisticsView {
     // MARK: - Activity Heatmap & Streaks
 
     var activityHeatmapCard: some View {
-        let range = heatmapRangeForSelectedYear()
-        let counts = activityDailyCounts(metric: activityMetric, range: range)
-        let stats = heatmapStats(counts: counts, range: range, metric: activityMetric)
-        let weeks = heatmapWeeks(counts: counts, range: range)
+        let key = makeHeatmapCacheKey()
+        let cache = heatmapCache
+        let isValid = (cache?.key == key)
+        let effective = isValid ? cache : nil
+
+        let range = effective?.range ?? heatmapRangeForSelectedYear()
+        let stats = effective?.stats ?? HeatmapStats(
+            activeDays: 0,
+            maxCount: 0,
+            currentStreak: 0,
+            longestStreak: 0,
+            bestDayLabel: "–",
+            bestWeekdayLabel: "–",
+            bestWeekLabel: "–"
+        )
+        let weeks = effective?.weeks ?? []
 
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
@@ -206,6 +234,17 @@ extension StatisticsView {
                     }
                 }
                 .pickerStyle(.menu)
+
+                if !isValid && isUpdatingHeatmapCache {
+                    ProgressView()
+                        .controlSize(.mini)
+                }
+            }
+
+            if !isValid {
+                Text("Berechne Aktivitäts-Heatmap …")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
@@ -288,51 +327,63 @@ extension StatisticsView {
             Text("Top-Listen")
                 .font(.headline)
 
-            let topGenres = topGenresList(scopedBooks, limit: 8)
-            let topSubgenres = topSubgenresList(scopedBooks, limit: 8)
-            let topAuthors = topAuthorsList(scopedBooks, limit: 8)
-            let topPublishers = topPublishersList(scopedBooks, limit: 8)
-            let topLanguages = topLanguagesList(scopedBooks, limit: 8)
-            let topTags = topTagsList(scopedBooks, limit: 10)
+            let signature = booksSignature(books)
+            let canUseCache = (statsCache?.key.scope == scope && statsCache?.key.booksSignature == signature)
 
-            if topGenres.isEmpty && topSubgenres.isEmpty && topAuthors.isEmpty && topPublishers.isEmpty && topTags.isEmpty {
-                Text("Noch nicht genug Metadaten — gib Büchern Kategorien/Verlage/Tags, dann wird’s hier richtig gut.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            if !canUseCache {
+                HStack(spacing: 8) {
+                    if isUpdatingStatsCache { ProgressView().controlSize(.mini) }
+                    Text("Berechne Top-Listen …")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             } else {
-                if !topGenres.isEmpty {
-                    DisclosureGroup("Genres / Kategorien") {
-                        TopListView(items: topGenres, valueLabel: "Bücher")
-                    }
-                }
+                let topGenres = statsCache?.topGenres ?? []
+                let topSubgenres = statsCache?.topSubgenres ?? []
+                let topAuthors = statsCache?.topAuthors ?? []
+                let topPublishers = statsCache?.topPublishers ?? []
+                let topLanguages = statsCache?.topLanguages ?? []
+                let topTags = statsCache?.topTags ?? []
 
-                if !topSubgenres.isEmpty {
-                    DisclosureGroup("Subgenres") {
-                        TopListView(items: topSubgenres, valueLabel: "Bücher")
+                if topGenres.isEmpty && topSubgenres.isEmpty && topAuthors.isEmpty && topPublishers.isEmpty && topTags.isEmpty {
+                    Text("Noch nicht genug Metadaten — gib Büchern Kategorien/Verlage/Tags, dann wird’s hier richtig gut.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    if !topGenres.isEmpty {
+                        DisclosureGroup("Genres / Kategorien") {
+                            TopListView(items: topGenres, valueLabel: "Bücher")
+                        }
                     }
-                }
 
-                if !topAuthors.isEmpty {
-                    DisclosureGroup("Autoren") {
-                        TopListView(items: topAuthors, valueLabel: "Bücher")
+                    if !topSubgenres.isEmpty {
+                        DisclosureGroup("Subgenres") {
+                            TopListView(items: topSubgenres, valueLabel: "Bücher")
+                        }
                     }
-                }
 
-                if !topPublishers.isEmpty {
-                    DisclosureGroup("Verlage") {
-                        TopListView(items: topPublishers, valueLabel: "Bücher")
+                    if !topAuthors.isEmpty {
+                        DisclosureGroup("Autoren") {
+                            TopListView(items: topAuthors, valueLabel: "Bücher")
+                        }
                     }
-                }
 
-                if !topLanguages.isEmpty {
-                    DisclosureGroup("Sprachen") {
-                        TopListView(items: topLanguages, valueLabel: "Bücher")
+                    if !topPublishers.isEmpty {
+                        DisclosureGroup("Verlage") {
+                            TopListView(items: topPublishers, valueLabel: "Bücher")
+                        }
                     }
-                }
 
-                if !topTags.isEmpty {
-                    DisclosureGroup("Tags") {
-                        TopListView(items: topTags, valueLabel: "Treffer")
+                    if !topLanguages.isEmpty {
+                        DisclosureGroup("Sprachen") {
+                            TopListView(items: topLanguages, valueLabel: "Bücher")
+                        }
+                    }
+
+                    if !topTags.isEmpty {
+                        DisclosureGroup("Tags") {
+                            TopListView(items: topTags, valueLabel: "Treffer")
+                        }
                     }
                 }
             }
@@ -345,16 +396,28 @@ extension StatisticsView {
     // MARK: - Nerd corner
 
     var nerdCornerCard: some View {
-        let fin = finishedInSelectedYear
+        let key = makeStatsCacheKey()
+        let canUseCache = (statsCache?.key == key)
 
-        let fastest = fastestBook(fin)
-        let slowest = slowestBook(fin)
-        let biggest = biggestBook(fin)
-        let highestRated = highestRatedBook(scopedBooks)
+        let fastest = canUseCache ? statsCache?.fastest : nil
+        let slowest = canUseCache ? statsCache?.slowest : nil
+        let biggest = canUseCache ? statsCache?.biggest : nil
+        let highestRated = canUseCache ? statsCache?.highestRated : nil
+
+        let fin = finishedInSelectedYear
 
         return VStack(alignment: .leading, spacing: 12) {
             Text("Nerd Corner")
                 .font(.headline)
+
+            if !canUseCache && isUpdatingStatsCache {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.mini)
+                    Text("Aktualisiere Nerd-Stats …")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             NerdStatRow(
                 title: "Schnellstes Buch",

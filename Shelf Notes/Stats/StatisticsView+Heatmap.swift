@@ -21,18 +21,23 @@ extension StatisticsView {
     }
 
     func heatmapRangeForSelectedYear() -> HeatmapRange {
+        heatmapRange(for: selectedYear)
+    }
+
+    /// Parameterized variant used by caching so we don't depend on the view's current state.
+    func heatmapRange(for year: Int) -> HeatmapRange {
         var cal = Calendar(identifier: .iso8601)
         cal.timeZone = .current
 
-        let start = cal.date(from: DateComponents(year: selectedYear, month: 1, day: 1)) ?? Date.distantPast
+        let start = cal.date(from: DateComponents(year: year, month: 1, day: 1)) ?? Date.distantPast
         let startDay = cal.startOfDay(for: start)
 
-        let endExclusive = cal.date(from: DateComponents(year: selectedYear + 1, month: 1, day: 1)) ?? Date.distantFuture
+        let endExclusive = cal.date(from: DateComponents(year: year + 1, month: 1, day: 1)) ?? Date.distantFuture
         let endOfYear = cal.date(byAdding: .day, value: -1, to: endExclusive) ?? Date.distantFuture
         let today = cal.startOfDay(for: Date())
 
         let endDay: Date
-        if cal.component(.year, from: today) == selectedYear {
+        if cal.component(.year, from: today) == year {
             endDay = min(today, cal.startOfDay(for: endOfYear))
         } else {
             endDay = cal.startOfDay(for: endOfYear)
@@ -59,6 +64,11 @@ extension StatisticsView {
     }
 
     func activityDailyCounts(metric: ActivityMetric, range: HeatmapRange) -> [Date: Int] {
+        activityDailyCounts(metric: metric, range: range, books: scopedBooks)
+    }
+
+    /// Parameterized variant used by caching so we can compute counts for an explicit book slice.
+    func activityDailyCounts(metric: ActivityMetric, range: HeatmapRange, books: [Book]) -> [Date: Int] {
         var cal = Calendar(identifier: .iso8601)
         cal.timeZone = .current
 
@@ -113,7 +123,7 @@ extension StatisticsView {
                 }
             }
 
-            for b in scopedBooks {
+            for b in books {
                 for s in b.readingSessionsSafe {
                     addSession(start: s.startedAt, end: s.endedAt)
                 }
@@ -128,14 +138,14 @@ extension StatisticsView {
             return minutes
 
         case .completions:
-            for b in scopedBooks where b.status == .finished {
+            for b in books where b.status == .finished {
                 if let d = b.readTo ?? b.readFrom {
                     addDay(d)
                 }
             }
 
         case .readingDays:
-            for b in scopedBooks {
+            for b in books {
                 switch b.status {
                 case .finished:
                     if let from = b.readFrom, let to = b.readTo {
@@ -235,9 +245,16 @@ extension StatisticsView {
         let bestWeekLabel: String
     }
 
-    func heatmapStats(counts: [Date: Int], range: HeatmapRange, metric: ActivityMetric) -> HeatmapStats {
+    func heatmapStats(
+        counts: [Date: Int],
+        range: HeatmapRange,
+        metric: ActivityMetric,
+        fallbackYear: Int? = nil
+    ) -> HeatmapStats {
         var cal = Calendar(identifier: .iso8601)
         cal.timeZone = .current
+
+        let fallback = fallbackYear ?? selectedYear
 
         let maxCount = counts.values.max() ?? 0
         let activeDays = counts.values.filter { $0 > 0 }.count
@@ -288,7 +305,7 @@ extension StatisticsView {
         var weekSums: [WeekKey: Int] = [:]
         for (d, c) in counts where c > 0 {
             let comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: d)
-            let y = comps.yearForWeekOfYear ?? selectedYear
+            let y = comps.yearForWeekOfYear ?? fallback
             let w = comps.weekOfYear ?? 0
             let key = WeekKey(year: y, week: w)
             weekSums[key, default: 0] += c
