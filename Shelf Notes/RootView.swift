@@ -22,29 +22,40 @@ struct RootView: View {
     @AppStorage("did_offer_csv_import_v1") private var didOfferCSVImport: Bool = false
     @State private var showingCSVFirstRun = false
 
+    // MARK: - Appearance
+    @AppStorage("appearance_use_system_text_color_v1") private var useSystemTextColor: Bool = true
+    @AppStorage("appearance_text_color_hex_v1") private var textColorHex: String = "#007AFF"
+
     var body: some View {
+        let appTextColor = resolvedTextColor
+
         TabView {
             LibraryView()
+                .foregroundStyle(appTextColor)
                 .tabItem {
                     Label("Bibliothek", systemImage: "books.vertical")
                 }
 
             ProgressHubView()
+                .foregroundStyle(appTextColor)
                 .tabItem {
                     Label("Fortschritt", systemImage: "chart.line.uptrend.xyaxis")
                 }
 
             CollectionsView()
+                .foregroundStyle(appTextColor)
                 .tabItem {
                     Label("Listen", systemImage: "rectangle.stack")
                 }
 
             TagsView()
+                .foregroundStyle(appTextColor)
                 .tabItem {
                     Label("Tags", systemImage: "tag")
                 }
 
             SettingsView()
+                .foregroundStyle(appTextColor)
                 .tabItem {
                     Label("Einstellungen", systemImage: "gear")
                 }
@@ -89,6 +100,13 @@ struct RootView: View {
             )
             .environmentObject(timer)
         }
+    }
+
+    private var resolvedTextColor: Color {
+        guard !useSystemTextColor, let color = Color(hex: textColorHex) else {
+            return .primary
+        }
+        return color
     }
 
     private func bookForPending(_ pending: ReadingTimerManager.PendingCompletion) -> Book? {

@@ -37,6 +37,18 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("Darstellung") {
+                    NavigationLink {
+                        AppearanceSettingsView()
+                    } label: {
+                        Label("Darstellung", systemImage: "paintpalette")
+                    }
+
+                    Text("Passe die Textfarbe der App an. Tipp: Im Dark Mode können sehr dunkle Farben schwer lesbar sein.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section("Import / Export") {
                     NavigationLink {
                         CSVImportExportView(showExportSection: true, showDoneButton: false)
