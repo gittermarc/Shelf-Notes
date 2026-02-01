@@ -151,6 +151,8 @@ final class BookImportViewModel: ObservableObject {
     private var fetchedVolumes: [GoogleBookVolume] = []
 
     private var activeQuery: String = ""
+    private var compositeQueries: [String] = []
+    private var isCompositeQuery: Bool = false
     private var nextStartIndex: Int = 0
     private var didReachEnd: Bool = false
 
@@ -426,14 +428,18 @@ final class BookImportViewModel: ObservableObject {
         }
 
         // Freeze query for paging (user may edit the text field while results are on screen)
-        let base = BookImportQueryBuilder.normalizedQuery(trimmed)
+        let baseRaw = BookImportQueryBuilder.normalizedQuery(trimmed)
+        let base = BookImportSeedQueryOptimizer.optimize(query: baseRaw, language: language)
         let builder = BookImportQueryBuilder(scope: scope, category: category)
-        let effective = builder.buildEffectiveQuery(from: base)
+        let orParts = splitTopLevelOR(base)
+        let effective = (orParts == nil) ? builder.buildEffectiveQuery(from: base) : ""
 
         errorMessage = nil
         isLoading = true
 
         // Reset paging (but optionally keep the existing list on screen while we refresh)
+        isCompositeQuery = false
+        compositeQueries = []
         activeQuery = effective
         totalItems = 0
         nextStartIndex = 0
@@ -446,6 +452,28 @@ final class BookImportViewModel: ObservableObject {
             results = []
             availableCategories = []
             lastDebugInfo = nil
+        }
+
+        // Composite queries (e.g. "A OR B") are common for "Für dich" seeds.
+        // Google Books API's q semantics are AND-centric, so we run each side separately and merge.
+        if let orParts {
+            let parts = orParts
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+
+            if parts.count >= 2 {
+                let effectiveParts = parts
+                    .prefix(4)
+                    .map { builder.buildEffectiveQuery(from: $0) }
+                    .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+                isCompositeQuery = true
+                compositeQueries = effectiveParts
+                activeQuery = effectiveParts.first ?? ""
+
+                await fetchCompositeFirstPage(queries: effectiveParts, generation: generation)
+                return
+            }
         }
 
         await fetchPage(startIndex: 0, append: false, generation: generation)
@@ -584,6 +612,130 @@ final class BookImportViewModel: ObservableObject {
     private func currentQueryOptions() -> GoogleBooksQueryOptions {
         let builder = BookImportQueryBuilder(scope: scope, category: category)
         return builder.makeQueryOptions(language: language, sortOption: sortOption, apiFilter: apiFilter)
+    }
+
+    /// Splits a query of the form "A OR B" (outside quotes) into its parts.
+    ///
+    /// We use this for certain "Für dich" seeds to avoid relying on undocumented OR parsing.
+    private func splitTopLevelOR(_ query: String) -> [String]? {
+        let needle = " OR "
+        guard query.contains(needle) else { return nil }
+
+        var parts: [String] = []
+        var current = ""
+        var inQuotes = false
+
+        var i = query.startIndex
+        while i < query.endIndex {
+            let ch = query[i]
+            if ch == "\"" {
+                inQuotes.toggle()
+                current.append(ch)
+                i = query.index(after: i)
+                continue
+            }
+
+            if !inQuotes, query[i...].hasPrefix(needle) {
+                let trimmed = current.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    parts.append(trimmed)
+                }
+                current = ""
+                i = query.index(i, offsetBy: needle.count)
+                continue
+            }
+
+            current.append(ch)
+            i = query.index(after: i)
+        }
+
+        let last = current.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !last.isEmpty {
+            parts.append(last)
+        }
+
+        // Valid OR split requires at least 2 non-empty parts.
+        return parts.count >= 2 ? parts : nil
+    }
+
+    private func interleavingUniqueVolumes(lists: [[GoogleBookVolume]]) -> [GoogleBookVolume] {
+        guard !lists.isEmpty else { return [] }
+
+        var out: [GoogleBookVolume] = []
+        out.reserveCapacity(lists.reduce(0) { $0 + $1.count })
+
+        var seen: Set<String> = []
+        let maxLen = lists.map { $0.count }.max() ?? 0
+
+        for i in 0..<maxLen {
+            for list in lists {
+                guard i < list.count else { continue }
+                let v = list[i]
+                if seen.insert(v.id).inserted {
+                    out.append(v)
+                }
+            }
+        }
+
+        return out
+    }
+
+    private func fetchCompositeFirstPage(queries: [String], generation: UInt64) async {
+        do {
+            guard generation == searchGeneration else { return }
+            guard !Task.isCancelled else { return }
+            let list = queries
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .prefix(4)
+
+            guard !list.isEmpty else { return }
+
+            // Fetch each query's first page.
+            var responses: [GoogleBooksSearchResult] = []
+            responses.reserveCapacity(list.count)
+
+            for q in list {
+                let res = try await GoogleBooksClient.shared.searchVolumesWithDebug(
+                    query: q,
+                    startIndex: 0,
+                    maxResults: pageSize,
+                    options: currentQueryOptions()
+                )
+                responses.append(res)
+            }
+
+            guard !Task.isCancelled else { return }
+            guard generation == searchGeneration else { return }
+
+            // Prefer showing a mixed feed (interleave) instead of dumping all from the first query.
+            let volumeLists = responses.map { $0.volumes }
+            let merged = interleavingUniqueVolumes(lists: volumeLists)
+
+            lastDebugInfo = responses.first?.debug
+            totalItems = merged.count
+            fetchedVolumes = merged
+
+            applyLocalFilters()
+
+            nextStartIndex = merged.count
+            didReachEnd = true
+            isLoading = false
+            isLoadingMore = false
+        } catch {
+            if error is CancellationError {
+                if generation == searchGeneration {
+                    isLoading = false
+                    isLoadingMore = false
+                }
+                return
+            }
+
+            guard generation == searchGeneration else { return }
+            errorMessage = error.localizedDescription
+            isLoading = false
+            didReachEnd = true
+        }
     }
 
     private func fetchPage(startIndex: Int, append: Bool, generation: UInt64) async {
