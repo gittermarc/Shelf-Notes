@@ -139,12 +139,16 @@ final class GoogleBooksClient {
         options: GoogleBooksQueryOptions? = nil
     ) async throws -> GoogleBooksSearchResult {
 
-        // Resolve default options *inside* async context (safe even if init/default is MainActor-isolated).
+        // Resolve default options *inside* async context.
+        // If the caller doesn't specify options, we apply the user's Settings preference
+        // for the default search language (langRestrict).
         let resolvedOptions: GoogleBooksQueryOptions
         if let options {
             resolvedOptions = options
         } else {
-            resolvedOptions = await MainActor.run { GoogleBooksQueryOptions.default }
+            var opt = await MainActor.run { GoogleBooksQueryOptions.default }
+            opt.langRestrict = BookSearchLanguagePreference.load().resolvedAPILangRestrict()
+            resolvedOptions = opt
         }
 
         var comps = URLComponents(string: "https://www.googleapis.com/books/v1/volumes")

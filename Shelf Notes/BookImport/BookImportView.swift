@@ -29,6 +29,8 @@ struct BookImportView: View {
     @StateObject private var vm: BookImportViewModel
     @FocusState private var searchFocused: Bool
 
+    @State private var didApplyDefaultLanguagePreference: Bool = false
+
     init(
         onPick: @escaping (ImportedBook) -> Void,
         initialQuery: String? = nil,
@@ -94,6 +96,11 @@ struct BookImportView: View {
                 }
             }
             .onAppear {
+                if !didApplyDefaultLanguagePreference {
+                    vm.applyDefaultLanguagePreferenceIfNeeded()
+                    didApplyDefaultLanguagePreference = true
+                }
+
                 vm.updateExistingBooks(existingBooks)
 
                 // 1) initialQuery => auto-search

@@ -203,6 +203,21 @@ final class BookImportViewModel: ObservableObject {
 
     // MARK: - Lifecycle
 
+    /// Applies the app-wide default language preference from Settings.
+    ///
+    /// This should be called once when the search sheet appears, before an auto-search runs.
+    func applyDefaultLanguagePreferenceIfNeeded() {
+        // Only preselect when the user hasn't chosen a language yet (default is .any).
+        guard language == .any else { return }
+
+        let pref = BookSearchLanguagePreference.load()
+        let desired = pref.resolvedImportLanguageOption()
+        guard desired != .any else { return }
+
+        language = desired
+    }
+
+
     func cancelTasks() {
         undoHideTask?.cancel()
         undoHideTask = nil

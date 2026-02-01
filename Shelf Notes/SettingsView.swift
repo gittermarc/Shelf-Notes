@@ -34,6 +34,20 @@ struct SettingsView: View {
     @AppStorage("session_autostop_enabled_v1") private var autoStopEnabled: Bool = true
     @AppStorage("session_autostop_minutes_v1") private var autoStopMinutes: Int = 45
 
+    // ✅ Buchsuche: Standardsprache für Google Books
+    @AppStorage(BookSearchLanguagePreference.storageKey) private var bookSearchLanguagePreferenceRaw: String = BookSearchLanguagePreference.device.rawValue
+
+    private var bookSearchLanguagePreference: BookSearchLanguagePreference {
+        BookSearchLanguagePreference(rawValue: bookSearchLanguagePreferenceRaw) ?? .device
+    }
+
+    private var bookSearchLanguageBinding: Binding<BookSearchLanguagePreference> {
+        Binding(
+            get: { BookSearchLanguagePreference(rawValue: bookSearchLanguagePreferenceRaw) ?? .device },
+            set: { bookSearchLanguagePreferenceRaw = $0.rawValue }
+        )
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -45,6 +59,29 @@ struct SettingsView: View {
                     }
 
                     Text("Passe die Textfarbe der App an. Tipp: Im Dark Mode können sehr dunkle Farben schwer lesbar sein.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("Buchsuche") {
+                    Picker("Standardsprache", selection: bookSearchLanguageBinding) {
+                        ForEach(BookSearchLanguagePreference.allCases) { opt in
+                            Text(opt.title).tag(opt)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    if bookSearchLanguagePreference == .device {
+                        HStack {
+                            Text("Gerät")
+                            Spacer()
+                            Text(BookSearchLanguagePreference.resolvedDeviceLanguageOptionTitle())
+                                .foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                    }
+
+                    Text("Diese Einstellung setzt die Standardsprache für die Google-Books-Suche. Beim Öffnen der Suche ist der Sprachfilter direkt passend voreingestellt – du kannst ihn dort aber jederzeit ändern.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -199,6 +236,3 @@ struct SettingsView: View {
         coverCacheSizeText = text
     }
 }
-
-
-// MARK: - UI: removable chip
