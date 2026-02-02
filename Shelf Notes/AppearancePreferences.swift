@@ -27,6 +27,8 @@ enum AppearanceStorageKey {
     static let tintColorHex = "appearance_tint_color_hex_v1"
 
     // Library / list rows (v1)
+    static let libraryLayoutMode = "appearance_library_layout_mode_v1"
+
     static let libraryShowCovers = "appearance_library_show_covers_v1"
     static let libraryCoverSize = "appearance_library_cover_size_v1"
     static let libraryCoverCornerRadius = "appearance_library_cover_corner_radius_v1"
@@ -74,6 +76,29 @@ enum AppColorSchemeOption: String, CaseIterable, Identifiable {
         case .system: return nil
         case .light: return .light
         case .dark: return .dark
+        }
+    }
+}
+
+// MARK: - Library Layout
+
+enum LibraryLayoutModeOption: String, CaseIterable, Identifiable {
+    case list
+    case grid
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .list: return "Liste"
+        case .grid: return "Grid"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .list: return "list.bullet"
+        case .grid: return "square.grid.2x2"
         }
     }
 }

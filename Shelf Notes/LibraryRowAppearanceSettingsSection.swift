@@ -11,6 +11,9 @@ import SwiftUI
 ///
 /// Stored via `@AppStorage` so changes apply immediately app-wide.
 struct LibraryRowAppearanceSettingsSection: View {
+    // Layout mode
+    @AppStorage(AppearanceStorageKey.libraryLayoutMode) private var layoutModeRaw: String = LibraryLayoutModeOption.list.rawValue
+
     // Header style
     @AppStorage(AppearanceStorageKey.libraryHeaderStyle) private var headerStyleRaw: String = LibraryHeaderStyleOption.standard.rawValue
     @AppStorage(AppearanceStorageKey.libraryHeaderDefaultExpanded) private var headerDefaultExpanded: Bool = false
@@ -36,6 +39,17 @@ struct LibraryRowAppearanceSettingsSection: View {
     // Row spacing
     @AppStorage(AppearanceStorageKey.libraryRowVerticalInset) private var rowVerticalInset: Double = 8
     @AppStorage(AppearanceStorageKey.libraryRowContentSpacing) private var rowContentSpacing: Double = 2
+
+    private var layoutModeBinding: Binding<LibraryLayoutModeOption> {
+        Binding(
+            get: { LibraryLayoutModeOption(rawValue: layoutModeRaw) ?? .list },
+            set: { layoutModeRaw = $0.rawValue }
+        )
+    }
+
+    private var resolvedLayoutMode: LibraryLayoutModeOption {
+        LibraryLayoutModeOption(rawValue: layoutModeRaw) ?? .list
+    }
 
     private var coverSizeBinding: Binding<LibraryCoverSizeOption> {
         Binding(
@@ -83,6 +97,24 @@ struct LibraryRowAppearanceSettingsSection: View {
 
     var body: some View {
         Section {
+            // MARK: Layout
+
+            Picker("Ansicht", selection: layoutModeBinding) {
+                ForEach(LibraryLayoutModeOption.allCases) { opt in
+                    Label(opt.title, systemImage: opt.systemImage)
+                        .tag(opt)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            if resolvedLayoutMode == .grid {
+                Text("Hinweis: Im Grid gibt’s kein Swipe-to-Delete. Du kannst ein Buch per Long-Press über das Kontextmenü löschen.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+
             // MARK: Header
 
             Picker("Header", selection: headerStyleBinding) {
@@ -107,7 +139,7 @@ struct LibraryRowAppearanceSettingsSection: View {
             // MARK: Cover style
 
             Toggle(isOn: $showCovers) {
-                Label("Cover in Listen anzeigen", systemImage: "photo")
+                Label("Cover anzeigen", systemImage: "photo")
             }
 
             Picker("Cover-Größe", selection: coverSizeBinding) {
@@ -262,6 +294,8 @@ struct LibraryRowAppearanceSettingsSection: View {
     }
 
     private func resetToDefaults() {
+        layoutModeRaw = LibraryLayoutModeOption.list.rawValue
+
         headerStyleRaw = LibraryHeaderStyleOption.standard.rawValue
         headerDefaultExpanded = false
 

@@ -35,6 +35,9 @@ struct LibraryView: View {
     @State var selectedTag: String? = nil
     @State var onlyWithNotes: Bool = false
 
+    // Grid delete (LazyVGrid has no swipe-to-delete)
+    @State var bookToDelete: Book? = nil
+
     // Sorting (persisted)
     @AppStorage("library_sort_field") var sortFieldRaw: String = SortField.createdAt.rawValue
     @AppStorage("library_sort_ascending") var sortAscending: Bool = false
@@ -44,6 +47,7 @@ struct LibraryView: View {
     @AppStorage(AppearanceStorageKey.libraryHeaderStyle) var libraryHeaderStyleRaw: String = LibraryHeaderStyleOption.standard.rawValue
     @AppStorage(AppearanceStorageKey.libraryHeaderDefaultExpanded) var libraryHeaderDefaultExpanded: Bool = false
     @AppStorage(AppearanceStorageKey.libraryRowVerticalInset) var libraryRowVerticalInset: Double = 8
+    @AppStorage(AppearanceStorageKey.libraryLayoutMode) var libraryLayoutModeRaw: String = LibraryLayoutModeOption.list.rawValue
 
     // A–Z hint logic (only show when it’s actually helpful)
     static let alphaIndexHintThreshold: Int = 30
@@ -60,16 +64,19 @@ struct LibraryView: View {
                 if shouldShowAlphaIndexHint {
                     alphaIndexHint
                 }
-
                 Group {
                     if displayedBooks.isEmpty {
                         emptyState
                     } else {
-                        // Alphabet index makes most sense for title sort
-                        if sortField == .title {
-                            alphaIndexedList
+                        if libraryLayoutMode == .grid {
+                            gridView
                         } else {
-                            plainList
+                            // Alphabet index makes most sense for title sort
+                            if sortField == .title {
+                                alphaIndexedList
+                            } else {
+                                plainList
+                            }
                         }
                     }
                 }
@@ -105,10 +112,29 @@ struct LibraryView: View {
             .sheet(isPresented: $showingAddSheet) {
                 AddBookView()
             }
+            .alert("Buch löschen?", isPresented: Binding(
+                get: { bookToDelete != nil },
+                set: { if !$0 { bookToDelete = nil } }
+            ), presenting: bookToDelete) { book in
+                Button("Löschen", role: .destructive) {
+                    deleteBook(book)
+                    bookToDelete = nil
+                }
+                Button("Abbrechen", role: .cancel) {
+                    bookToDelete = nil
+                }
+            } message: { book in
+                Text("\"\(bestTitle(book))\" wird aus deiner Bibliothek gelöscht.")
+            }
         }
     }
 
     var libraryHeaderStyle: LibraryHeaderStyleOption {
         LibraryHeaderStyleOption(rawValue: libraryHeaderStyleRaw) ?? .standard
+    }
+
+
+    var libraryLayoutMode: LibraryLayoutModeOption {
+        LibraryLayoutModeOption(rawValue: libraryLayoutModeRaw) ?? .list
     }
 }

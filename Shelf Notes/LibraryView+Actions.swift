@@ -30,6 +30,11 @@ extension LibraryView {
 
     // MARK: - Delete
 
+    func deleteBook(_ book: Book) {
+        modelContext.delete(book)
+        modelContext.saveWithDiagnostics()
+    }
+
     func deleteBooks(at offsets: IndexSet) {
         for index in offsets {
             modelContext.delete(displayedBooks[index])

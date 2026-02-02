@@ -168,6 +168,6 @@ extension LibraryView {
 
     // A–Z hint logic (only show when it’s actually helpful)
     var shouldShowAlphaIndexHint: Bool {
-        sortField == .title && displayedBooks.count >= Self.alphaIndexHintThreshold
+        libraryLayoutMode == .list && sortField == .title && displayedBooks.count >= Self.alphaIndexHintThreshold
     }
 }

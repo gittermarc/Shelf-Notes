@@ -13,6 +13,19 @@ extension LibraryView {
         ToolbarItemGroup(placement: .topBarTrailing) {
 
             Menu {
+                // --- View mode ---
+                Section("Ansicht") {
+                    Picker("Layout", selection: Binding(
+                        get: { libraryLayoutMode },
+                        set: { libraryLayoutModeRaw = $0.rawValue }
+                    )) {
+                        ForEach(LibraryLayoutModeOption.allCases) { opt in
+                            Label(opt.title, systemImage: opt.systemImage)
+                                .tag(opt)
+                        }
+                    }
+                }
+
                 // --- Sort ---
                 Section("Sortieren") {
                     Picker("Feld", selection: Binding(
