@@ -28,6 +28,7 @@ struct LibraryRowAppearanceSettingsSection: View {
 
     // Row spacing
     @AppStorage(AppearanceStorageKey.libraryRowVerticalInset) private var rowVerticalInset: Double = 8
+    @AppStorage(AppearanceStorageKey.libraryRowContentSpacing) private var rowContentSpacing: Double = 2
 
     private var coverSizeBinding: Binding<LibraryCoverSizeOption> {
         Binding(
@@ -95,7 +96,7 @@ struct LibraryRowAppearanceSettingsSection: View {
 
             Divider()
 
-            // MARK: Row spacing
+            // MARK: Row layout
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -107,6 +108,22 @@ struct LibraryRowAppearanceSettingsSection: View {
                 }
 
                 Slider(value: $rowVerticalInset, in: 2...14, step: 1)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Inhalt-Abstand")
+                    Spacer()
+                    Text("\(Int(rowContentSpacing.rounded()))")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+
+                Slider(value: $rowContentSpacing, in: 0...10, step: 1)
+
+                Text("Steuert den vertikalen Abstand innerhalb einer Buchzeile (Titel/Autor/Info/Tags).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Divider()
@@ -162,7 +179,8 @@ struct LibraryRowAppearanceSettingsSection: View {
                     showReadDate: showReadDate,
                     showRating: showRating,
                     showTags: showTags,
-                    maxTags: maxTags
+                    maxTags: maxTags,
+                    rowContentSpacing: rowContentSpacing
                 )
                 .padding(12)
                 .background(
@@ -192,6 +210,7 @@ struct LibraryRowAppearanceSettingsSection: View {
         coverShadowEnabled = false
 
         rowVerticalInset = 8
+        rowContentSpacing = 2
 
         showAuthor = true
         showStatus = true
@@ -215,6 +234,8 @@ private struct LibraryRowSettingsPreview: View {
     let showRating: Bool
     let showTags: Bool
     let maxTags: Int
+    let rowContentSpacing: Double
+
 
     private enum MetaPart {
         case status(String)
@@ -242,7 +263,7 @@ private struct LibraryRowSettingsPreview: View {
                 cover
             }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: CGFloat(rowContentSpacing)) {
                 Text("Beispielbuch")
                     .font(.headline)
 

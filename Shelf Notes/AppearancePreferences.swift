@@ -39,6 +39,7 @@ enum AppearanceStorageKey {
 
     // Row spacing / insets
     static let libraryRowVerticalInset = "appearance_library_row_vertical_inset_v1"
+    static let libraryRowContentSpacing = "appearance_library_row_content_spacing_v1"
 }
 
 // MARK: - Font Design

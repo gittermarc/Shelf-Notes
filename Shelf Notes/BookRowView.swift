@@ -25,6 +25,7 @@ struct BookRowView: View {
     @AppStorage(AppearanceStorageKey.libraryRowShowRating) private var showRating: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowShowTags) private var showTags: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowMaxTags) private var maxTags: Int = 2
+    @AppStorage(AppearanceStorageKey.libraryRowContentSpacing) private var rowContentSpacing: Double = 2
 
     private enum MetaPart {
         case status(String)
@@ -38,7 +39,7 @@ struct BookRowView: View {
                 cover
             }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: CGFloat(rowContentSpacing)) {
                 Text(book.title.isEmpty ? "Ohne Titel" : book.title)
                     .font(.headline)
 
