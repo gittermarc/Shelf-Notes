@@ -21,6 +21,10 @@ import UIKit
 
 // MARK: - Settings
 struct SettingsView: View {
+    private enum SettingsRoute: String, Hashable, Codable {
+        case appearance
+    }
+
     @EnvironmentObject private var pro: ProManager
     @State private var showingPaywall = false
 
@@ -37,6 +41,15 @@ struct SettingsView: View {
     // ✅ Buchsuche: Standardsprache für Google Books
     @AppStorage(BookSearchLanguagePreference.storageKey) private var bookSearchLanguagePreferenceRaw: String = BookSearchLanguagePreference.device.rawValue
 
+    // Keep Settings navigation stable across global appearance updates.
+    // Some appearance changes trigger a rebuild of the tab hierarchy; without an explicit path,
+    // the NavigationStack may reset and pop back to the root.
+    @State private var path = NavigationPath()
+
+    // IMPORTANT: SceneStorage works reliably with non-optional storage types.
+    // We use empty Data() as "no stored path".
+    @SceneStorage("settings_nav_path_data_v1") private var pathData: Data = Data()
+
     private var bookSearchLanguagePreference: BookSearchLanguagePreference {
         BookSearchLanguagePreference(rawValue: bookSearchLanguagePreferenceRaw) ?? .device
     }
@@ -49,12 +62,10 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 Section("Darstellung") {
-                    NavigationLink {
-                        AppearanceSettingsView()
-                    } label: {
+                    NavigationLink(value: SettingsRoute.appearance) {
                         Label("Darstellung", systemImage: "paintpalette")
                     }
 
@@ -201,6 +212,18 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Einstellungen")
+            .navigationDestination(for: SettingsRoute.self) { route in
+                switch route {
+                case .appearance:
+                    AppearanceSettingsView()
+                }
+            }
+            .onAppear {
+                restoreNavigationPathIfPossible()
+            }
+            .onChange(of: path) { _, newValue in
+                persistNavigationPath(newValue)
+            }
             .alert("Cover-Cache löschen?", isPresented: $confirmClearCoverCache) {
                 Button("Löschen", role: .destructive) {
                     ImageDiskCache.shared.clearAll()
@@ -225,6 +248,30 @@ struct SettingsView: View {
                 await sync.refreshIfStale()
             }
         }
+    }
+
+    // MARK: - Navigation persistence
+
+    private func restoreNavigationPathIfPossible() {
+        guard path.isEmpty else { return }
+        guard !pathData.isEmpty else { return }
+
+        guard let representation = try? JSONDecoder().decode(NavigationPath.CodableRepresentation.self, from: pathData) else {
+            // Stored data is invalid -> reset
+            pathData = Data()
+            return
+        }
+
+        path = NavigationPath(representation)
+    }
+
+    private func persistNavigationPath(_ path: NavigationPath) {
+        guard let representation = path.codable else {
+            pathData = Data()
+            return
+        }
+
+        pathData = (try? JSONEncoder().encode(representation)) ?? Data()
     }
 
     @MainActor
