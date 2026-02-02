@@ -14,11 +14,12 @@ enum AppearanceStorageKey {
     static let useSystemTextColor = "appearance_use_system_text_color_v1"
     static let textColorHex = "appearance_text_color_hex_v1"
 
-    // New (v1)
+    // Typography / density (v1)
     static let fontDesign = "appearance_font_design_v1"
     static let textSize = "appearance_text_size_v1"
     static let density = "appearance_density_v1"
 
+    // Accent / tint (v1)
     static let useSystemTint = "appearance_use_system_tint_v1"
     static let tintColorHex = "appearance_tint_color_hex_v1"
 }
@@ -113,6 +114,80 @@ enum AppDensityOption: String, CaseIterable, Identifiable {
         case .compact: return 38
         case .standard: return 44
         case .comfortable: return 52
+        }
+    }
+}
+
+// MARK: - Presets
+
+enum AppAppearancePreset: String, CaseIterable, Identifiable {
+    case classic
+    case cozy
+    case compact
+    case midnight
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .classic: return "Classic"
+        case .cozy: return "Cozy"
+        case .compact: return "Kompakt"
+        case .midnight: return "Midnight"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .classic: return "System-Schrift, Standard, System-Akzent"
+        case .cozy: return "Serif, größer & luftig, warmer Akzent"
+        case .compact: return "Kleiner & dichter, frischer Akzent"
+        case .midnight: return "Rounded, Fokus, violetter Akzent"
+        }
+    }
+
+    /// Presets apply only to the P0 controls: font design, text size, density and tint.
+    /// Text color stays untouched on purpose.
+    var fontDesign: AppFontDesignOption {
+        switch self {
+        case .classic: return .system
+        case .cozy: return .serif
+        case .compact: return .system
+        case .midnight: return .rounded
+        }
+    }
+
+    var textSize: AppTextSizeOption {
+        switch self {
+        case .classic: return .standard
+        case .cozy: return .large
+        case .compact: return .small
+        case .midnight: return .standard
+        }
+    }
+
+    var density: AppDensityOption {
+        switch self {
+        case .classic: return .standard
+        case .cozy: return .comfortable
+        case .compact: return .compact
+        case .midnight: return .standard
+        }
+    }
+
+    var useSystemTint: Bool {
+        switch self {
+        case .classic: return true
+        case .cozy, .compact, .midnight: return false
+        }
+    }
+
+    var tintHex: String {
+        switch self {
+        case .classic: return "#007AFF" // unused when system tint
+        case .cozy: return "#FF9500" // warm orange
+        case .compact: return "#34C759" // green
+        case .midnight: return "#AF52DE" // purple
         }
     }
 }

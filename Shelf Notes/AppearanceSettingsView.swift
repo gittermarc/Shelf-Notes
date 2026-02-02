@@ -10,17 +10,25 @@ import SwiftUI
 /// Settings screen for basic UI customization.
 ///
 /// v1: Custom text color (global foreground style) via ColorPicker.
+/// v2: Typography + density + tint (accent) + presets.
 struct AppearanceSettingsView: View {
+    // Existing: Text color
     @AppStorage(AppearanceStorageKey.useSystemTextColor) private var useSystemTextColor: Bool = true
     @AppStorage(AppearanceStorageKey.textColorHex) private var textColorHex: String = "#007AFF"
 
-    // MARK: - New customization options
+    // New: Typography / density
     @AppStorage(AppearanceStorageKey.fontDesign) private var fontDesignRaw: String = AppFontDesignOption.system.rawValue
     @AppStorage(AppearanceStorageKey.textSize) private var textSizeRaw: String = AppTextSizeOption.standard.rawValue
     @AppStorage(AppearanceStorageKey.density) private var densityRaw: String = AppDensityOption.standard.rawValue
 
+    // New: Tint
     @AppStorage(AppearanceStorageKey.useSystemTint) private var useSystemTint: Bool = true
     @AppStorage(AppearanceStorageKey.tintColorHex) private var tintColorHex: String = "#007AFF"
+
+    // Presets (UI state only)
+    @State private var selectedPreset: AppAppearancePreset = .classic
+
+    // MARK: - Resolved values
 
     private var effectiveTextColor: Color {
         guard !useSystemTextColor, let color = Color(hex: textColorHex) else {
@@ -34,6 +42,21 @@ struct AppearanceSettingsView: View {
             return .accentColor
         }
         return color
+    }
+
+    private var currentPresetMatch: AppAppearancePreset? {
+        let currentDesign = AppFontDesignOption(rawValue: fontDesignRaw) ?? .system
+        let currentSize = AppTextSizeOption(rawValue: textSizeRaw) ?? .standard
+        let currentDensity = AppDensityOption(rawValue: densityRaw) ?? .standard
+
+        return AppAppearancePreset.allCases.first(where: { preset in
+            guard preset.fontDesign == currentDesign else { return false }
+            guard preset.textSize == currentSize else { return false }
+            guard preset.density == currentDensity else { return false }
+            guard preset.useSystemTint == useSystemTint else { return false }
+            if preset.useSystemTint { return true }
+            return preset.tintHex.uppercased() == tintColorHex.uppercased()
+        })
     }
 
     private var colorPickerBinding: Binding<Color> {
@@ -96,8 +119,41 @@ struct AppearanceSettingsView: View {
         AppDensityOption(rawValue: densityRaw) ?? .standard
     }
 
+    // MARK: - Body
+
     var body: some View {
         List {
+            Section {
+                Picker("Preset", selection: $selectedPreset) {
+                    ForEach(AppAppearancePreset.allCases) { preset in
+                        Text(preset.title).tag(preset)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Text(selectedPreset.subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Text("Aktuell")
+                    Spacer()
+                    Text(currentPresetMatch?.title ?? "Benutzerdefiniert")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Button {
+                    applyPreset(selectedPreset)
+                } label: {
+                    Label("Preset anwenden", systemImage: "sparkles")
+                }
+            } header: {
+                Text("Presets")
+            } footer: {
+                Text("Presets setzen Schriftart, Schriftgröße, Textdichte und Akzentfarbe. Deine Textfarbe bleibt bewusst unberührt.")
+            }
+
             Section {
                 Toggle(isOn: $useSystemTextColor) {
                     Label("Systemfarbe verwenden", systemImage: "circle.lefthalf.filled")
@@ -223,6 +279,23 @@ struct AppearanceSettingsView: View {
             }
         }
         .navigationTitle("Darstellung")
+        .onAppear {
+            // Make the picker feel "right" when entering the screen.
+            selectedPreset = currentPresetMatch ?? .classic
+        }
+    }
+
+    // MARK: - Preset application
+
+    private func applyPreset(_ preset: AppAppearancePreset) {
+        fontDesignRaw = preset.fontDesign.rawValue
+        textSizeRaw = preset.textSize.rawValue
+        densityRaw = preset.density.rawValue
+
+        useSystemTint = preset.useSystemTint
+        if !preset.useSystemTint {
+            tintColorHex = preset.tintHex
+        }
     }
 }
 
