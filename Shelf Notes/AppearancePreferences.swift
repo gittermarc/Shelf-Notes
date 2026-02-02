@@ -22,6 +22,23 @@ enum AppearanceStorageKey {
     // Accent / tint (v1)
     static let useSystemTint = "appearance_use_system_tint_v1"
     static let tintColorHex = "appearance_tint_color_hex_v1"
+
+    // Library / list rows (v1)
+    static let libraryShowCovers = "appearance_library_show_covers_v1"
+    static let libraryCoverSize = "appearance_library_cover_size_v1"
+    static let libraryCoverCornerRadius = "appearance_library_cover_corner_radius_v1"
+    static let libraryCoverContentMode = "appearance_library_cover_content_mode_v1"
+    static let libraryCoverShadowEnabled = "appearance_library_cover_shadow_enabled_v1"
+
+    static let libraryRowShowAuthor = "appearance_library_row_show_author_v1"
+    static let libraryRowShowStatus = "appearance_library_row_show_status_v1"
+    static let libraryRowShowReadDate = "appearance_library_row_show_read_date_v1"
+    static let libraryRowShowRating = "appearance_library_row_show_rating_v1"
+    static let libraryRowShowTags = "appearance_library_row_show_tags_v1"
+    static let libraryRowMaxTags = "appearance_library_row_max_tags_v1"
+
+    // Row spacing / insets
+    static let libraryRowVerticalInset = "appearance_library_row_vertical_inset_v1"
 }
 
 // MARK: - Font Design
@@ -114,6 +131,54 @@ enum AppDensityOption: String, CaseIterable, Identifiable {
         case .compact: return 38
         case .standard: return 44
         case .comfortable: return 52
+        }
+    }
+}
+
+// MARK: - Library Cover Style
+
+enum LibraryCoverSizeOption: String, CaseIterable, Identifiable {
+    case small
+    case standard
+    case large
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .small: return "Klein"
+        case .standard: return "Standard"
+        case .large: return "Groß"
+        }
+    }
+
+    /// Target row thumbnail size (in points)
+    var size: CGSize {
+        switch self {
+        case .small: return CGSize(width: 38, height: 56)
+        case .standard: return CGSize(width: 44, height: 66)
+        case .large: return CGSize(width: 52, height: 78)
+        }
+    }
+}
+
+enum LibraryCoverContentModeOption: String, CaseIterable, Identifiable {
+    case fit
+    case fill
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .fit: return "Einpassen"
+        case .fill: return "Füllen"
+        }
+    }
+
+    var contentMode: ContentMode {
+        switch self {
+        case .fit: return .fit
+        case .fill: return .fill
         }
     }
 }

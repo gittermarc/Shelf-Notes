@@ -67,6 +67,14 @@ extension LibraryView {
                                 } label: {
                                     BookRowView(book: book)
                                 }
+                                .listRowInsets(
+                                    EdgeInsets(
+                                        top: CGFloat(libraryRowVerticalInset),
+                                        leading: 16,
+                                        bottom: CGFloat(libraryRowVerticalInset),
+                                        trailing: 16
+                                    )
+                                )
                             }
                             .onDelete { offsets in
                                 deleteBooksInSection(section.books, offsets: offsets)

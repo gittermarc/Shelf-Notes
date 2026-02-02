@@ -39,6 +39,10 @@ struct LibraryView: View {
     @AppStorage("library_sort_field") var sortFieldRaw: String = SortField.createdAt.rawValue
     @AppStorage("library_sort_ascending") var sortAscending: Bool = false
 
+    // Appearance (Library-specific)
+    // Note: Must be non-private to be accessible from the split extension files.
+    @AppStorage(AppearanceStorageKey.libraryRowVerticalInset) var libraryRowVerticalInset: Double = 8
+
     // A–Z hint logic (only show when it’s actually helpful)
     static let alphaIndexHintThreshold: Int = 30
 

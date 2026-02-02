@@ -256,6 +256,8 @@ struct AppearanceSettingsView: View {
                 Text("Die Akzentfarbe (Tint) beeinflusst Buttons, Links, Toggles, Progress und Highlights – also quasi alles, was „klick mich“ schreit.")
             }
 
+            LibraryRowAppearanceSettingsSection()
+
             Section("Vorschau") {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Shelf Notes")
