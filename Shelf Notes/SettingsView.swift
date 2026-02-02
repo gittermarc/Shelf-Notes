@@ -58,7 +58,7 @@ struct SettingsView: View {
                         Label("Darstellung", systemImage: "paintpalette")
                     }
 
-                    Text("Passe die Textfarbe der App an. Tipp: Im Dark Mode können sehr dunkle Farben schwer lesbar sein.")
+                    Text("Passe Schrift, Textdichte sowie Text- und Akzentfarben an. Tipp: Im Dark Mode können sehr dunkle Farben schwer lesbar sein.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

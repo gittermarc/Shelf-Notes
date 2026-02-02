@@ -23,42 +23,57 @@ struct RootView: View {
     @State private var showingCSVFirstRun = false
 
     // MARK: - Appearance
-    @AppStorage("appearance_use_system_text_color_v1") private var useSystemTextColor: Bool = true
-    @AppStorage("appearance_text_color_hex_v1") private var textColorHex: String = "#007AFF"
+    @AppStorage(AppearanceStorageKey.useSystemTextColor) private var useSystemTextColor: Bool = true
+    @AppStorage(AppearanceStorageKey.textColorHex) private var textColorHex: String = "#007AFF"
+
+    @AppStorage(AppearanceStorageKey.fontDesign) private var fontDesignRaw: String = AppFontDesignOption.system.rawValue
+    @AppStorage(AppearanceStorageKey.textSize) private var textSizeRaw: String = AppTextSizeOption.standard.rawValue
+    @AppStorage(AppearanceStorageKey.density) private var densityRaw: String = AppDensityOption.standard.rawValue
+
+    @AppStorage(AppearanceStorageKey.useSystemTint) private var useSystemTint: Bool = true
+    @AppStorage(AppearanceStorageKey.tintColorHex) private var tintColorHex: String = "#007AFF"
 
     var body: some View {
         let appTextColor = resolvedTextColor
+        let design = resolvedFontDesignOption.fontDesign
+        let textSize = resolvedTextSizeOption.dynamicTypeSize
+        let density = resolvedDensityOption
+        let tintColor = resolvedTintColor
 
         TabView {
             LibraryView()
-                .foregroundStyle(appTextColor)
                 .tabItem {
                     Label("Bibliothek", systemImage: "books.vertical")
                 }
 
             ProgressHubView()
-                .foregroundStyle(appTextColor)
                 .tabItem {
                     Label("Fortschritt", systemImage: "chart.line.uptrend.xyaxis")
                 }
 
             CollectionsView()
-                .foregroundStyle(appTextColor)
                 .tabItem {
                     Label("Listen", systemImage: "rectangle.stack")
                 }
 
             TagsView()
-                .foregroundStyle(appTextColor)
                 .tabItem {
                     Label("Tags", systemImage: "tag")
                 }
 
             SettingsView()
-                .foregroundStyle(appTextColor)
                 .tabItem {
                     Label("Einstellungen", systemImage: "gear")
                 }
+        }
+        // Global look & feel
+        .foregroundStyle(appTextColor)
+        .fontDesign(design)
+        .dynamicTypeSize(textSize)
+        .environment(\.controlSize, density.controlSize)
+        .environment(\.defaultMinListRowHeight, density.minListRowHeight)
+        .applyIf(tintColor != nil) { view in
+            view.tint(tintColor!)
         }
         .environmentObject(pro)
         .environmentObject(timer)
@@ -105,6 +120,25 @@ struct RootView: View {
     private var resolvedTextColor: Color {
         guard !useSystemTextColor, let color = Color(hex: textColorHex) else {
             return .primary
+        }
+        return color
+    }
+
+    private var resolvedFontDesignOption: AppFontDesignOption {
+        AppFontDesignOption(rawValue: fontDesignRaw) ?? .system
+    }
+
+    private var resolvedTextSizeOption: AppTextSizeOption {
+        AppTextSizeOption(rawValue: textSizeRaw) ?? .standard
+    }
+
+    private var resolvedDensityOption: AppDensityOption {
+        AppDensityOption(rawValue: densityRaw) ?? .standard
+    }
+
+    private var resolvedTintColor: Color? {
+        guard !useSystemTint, let color = Color(hex: tintColorHex) else {
+            return nil
         }
         return color
     }
