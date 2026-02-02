@@ -217,6 +217,24 @@ extension BookDetailView {
                         }
                     }
 
+                if !tagAutocompleteSuggestions.isEmpty {
+                    Text("Vorschläge")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
+                        spacing: 8
+                    ) {
+                        ForEach(tagAutocompleteSuggestions, id: \.self) { suggestion in
+                            TagSuggestionPill(text: suggestion) {
+                                acceptTagSuggestion(suggestion)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+
                 if !topTagCounts30.isEmpty {
                     Divider().opacity(0.5)
 

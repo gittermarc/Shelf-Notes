@@ -75,6 +75,38 @@ struct TagPickPill: View {
     }
 }
 
+struct TagSuggestionPill: View {
+    let text: String
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 6) {
+                Text(text)
+                    .font(.caption)
+                    .lineLimit(1)
+
+                Image(systemName: "plus")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(AnyShapeStyle(.ultraThinMaterial.opacity(0.55)))
+            .overlay(
+                Capsule().strokeBorder(
+                    Color.secondary.opacity(0.18),
+                    lineWidth: 1
+                )
+            )
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Vorschlag \(text)"))
+        .accessibilityHint(Text("Tippen zum Hinzufügen"))
+    }
+}
+
 // MARK: - Inline New Collection Sheet
 
 struct InlineNewCollectionSheet: View {

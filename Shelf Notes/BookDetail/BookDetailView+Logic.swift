@@ -342,25 +342,62 @@ extension BookDetailView {
 
     // MARK: - Tags
 
-    var topTagCounts30: [(tag: String, count: Int)] {
-        var counts: [String: Int] = [:]
+    /// Alle bekannten Tags (case-insensitive dedupliziert) mit Nutzungsanzahl,
+    /// sortiert nach Häufigkeit (desc) und Name (asc).
+    private var tagCountsSorted: [(tag: String, count: Int)] {
+        var counts: [String: (display: String, count: Int)] = [:]
 
         for b in allBooks {
             for t in b.tags {
                 let n = normalizeTagString(t)
-                guard !n.isEmpty else { continue }
-                counts[n, default: 0] += 1
+                let key = n.lowercased()
+                guard !key.isEmpty else { continue }
+
+                if var existing = counts[key] {
+                    existing.count += 1
+                    counts[key] = existing
+                } else {
+                    counts[key] = (display: n, count: 1)
+                }
             }
         }
 
-        let sorted = counts
-            .map { (tag: $0.key, count: $0.value) }
+        return counts
+            .values
+            .map { (tag: $0.display, count: $0.count) }
             .sorted { a, b in
                 if a.count != b.count { return a.count > b.count }
                 return a.tag.localizedCaseInsensitiveCompare(b.tag) == .orderedAscending
             }
+    }
 
-        return Array(sorted.prefix(30))
+    /// Query-String für Autocomplete (aktueller Text im Tag-Field).
+    private var tagDraftQuery: String {
+        normalizeTagString(tagDraft)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Vorschläge passend zur aktuellen Eingabe.
+    /// - Priorität: Prefix-Matches vor Contains-Matches.
+    /// - Excludes: Tags, die am Buch bereits gesetzt sind.
+    var tagAutocompleteSuggestions: [String] {
+        let q = tagDraftQuery.lowercased()
+        guard !q.isEmpty else { return [] }
+
+        let selected = Set(book.tags.map { normalizeTagString($0).lowercased() })
+        let ordered = tagCountsSorted.filter { !selected.contains($0.tag.lowercased()) }
+
+        let prefix = ordered.filter { $0.tag.lowercased().hasPrefix(q) }
+        let contains = ordered.filter {
+            let low = $0.tag.lowercased()
+            return !low.hasPrefix(q) && low.contains(q)
+        }
+
+        return Array((prefix + contains).prefix(8)).map { $0.tag }
+    }
+
+    var topTagCounts30: [(tag: String, count: Int)] {
+        Array(tagCountsSorted.prefix(30))
     }
 
     func isTagSelected(_ tag: String) -> Bool {
@@ -415,6 +452,29 @@ extension BookDetailView {
             }
         }
 
+        var out: [String] = []
+        for t in current {
+            if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
+                out.append(t)
+            }
+        }
+
+        book.tags = out
+        tagsText = out.joined(separator: ", ")
+        tagDraft = ""
+        _ = modelContext.saveWithDiagnostics()
+    }
+
+    func acceptTagSuggestion(_ suggestion: String) {
+        let n = normalizeTagString(suggestion)
+        guard !n.isEmpty else { return }
+
+        var current = book.tags.map(normalizeTagString).filter { !$0.isEmpty }
+        if !current.contains(where: { $0.caseInsensitiveCompare(n) == .orderedSame }) {
+            current.append(n)
+        }
+
+        // dedupe case-insensitive, preserve order
         var out: [String] = []
         for t in current {
             if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
