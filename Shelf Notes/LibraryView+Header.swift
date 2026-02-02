@@ -81,9 +81,21 @@ extension LibraryView {
 
     // MARK: Header UI
 
+    @ViewBuilder
     var filterBar: some View {
+        switch libraryHeaderStyle {
+        case .hidden:
+            EmptyView()
+        case .compact:
+            compactFilterBar
+        case .standard:
+            standardFilterBar
+        }
+    }
+
+    private var standardFilterBar: some View {
         VStack(alignment: .leading, spacing: headerExpanded ? 10 : 8) {
-            headerTopRow
+            headerTopRowStandard
 
             if headerExpanded {
                 expandedHeaderContent
@@ -96,7 +108,27 @@ extension LibraryView {
         .background(.ultraThinMaterial)
     }
 
-    private var headerTopRow: some View {
+    private var compactFilterBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            headerTopRowCompact
+
+            if shouldShowQuickSortSegment {
+                Picker("", selection: quickSortModeBinding) {
+                    Text(QuickSortMode.added.rawValue).tag(QuickSortMode.added)
+                    Text(QuickSortMode.read.rawValue).tag(QuickSortMode.read)
+                }
+                .pickerStyle(.segmented)
+            }
+
+            activeFilterChips
+            countLine
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.thinMaterial)
+    }
+
+    private var headerTopRowStandard: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Meine Bücher")
@@ -133,6 +165,31 @@ extension LibraryView {
         }
     }
 
+    private var headerTopRowCompact: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Meine Bücher")
+                    .font(.headline.weight(.semibold))
+
+                Text(heroSubtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            Button {
+                showingAddSheet = true
+            } label: {
+                Image(systemName: "plus.circle.fill")
+                    .font(.title3)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Buch hinzufügen")
+        }
+    }
+
     private var collapsedHeaderContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Count line (always visible)
@@ -147,10 +204,6 @@ extension LibraryView {
             }
 
             activeFilterChips
-
-            if shouldShowAlphaIndexHint {
-                alphaIndexHint
-            }
         }
     }
 
@@ -199,10 +252,6 @@ extension LibraryView {
             activeFilterChips
 
             countLine
-
-            if shouldShowAlphaIndexHint {
-                alphaIndexHint
-            }
 
             if shouldShowQuickSortSegment {
                 Picker("", selection: quickSortModeBinding) {

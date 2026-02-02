@@ -12,6 +12,9 @@ import SwiftUI
 /// v1: Custom text color (global foreground style) via ColorPicker.
 /// v2: Typography + density + tint (accent) + presets.
 struct AppearanceSettingsView: View {
+    // Color scheme
+    @AppStorage(AppearanceStorageKey.colorScheme) private var colorSchemeRaw: String = AppColorSchemeOption.system.rawValue
+
     // Existing: Text color
     @AppStorage(AppearanceStorageKey.useSystemTextColor) private var useSystemTextColor: Bool = true
     @AppStorage(AppearanceStorageKey.textColorHex) private var textColorHex: String = "#007AFF"
@@ -93,6 +96,13 @@ struct AppearanceSettingsView: View {
         )
     }
 
+    private var colorSchemeBinding: Binding<AppColorSchemeOption> {
+        Binding(
+            get: { AppColorSchemeOption(rawValue: colorSchemeRaw) ?? .system },
+            set: { colorSchemeRaw = $0.rawValue }
+        )
+    }
+
     private var textSizeBinding: Binding<AppTextSizeOption> {
         Binding(
             get: { AppTextSizeOption(rawValue: textSizeRaw) ?? .standard },
@@ -159,6 +169,25 @@ struct AppearanceSettingsView: View {
                 Text("Presets")
             } footer: {
                 Text("Presets setzen Schriftart, Schriftgröße, Textdichte und Akzentfarbe. Deine Textfarbe bleibt bewusst unberührt.")
+            }
+
+            Section {
+                Picker("Farbschema", selection: colorSchemeBinding) {
+                    ForEach(AppColorSchemeOption.allCases) { opt in
+                        Text(opt.title).tag(opt)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Button {
+                    colorSchemeRaw = AppColorSchemeOption.system.rawValue
+                } label: {
+                    Label("Auf System zurücksetzen", systemImage: "arrow.uturn.backward")
+                }
+            } header: {
+                Text("Farbschema")
+            } footer: {
+                Text("Damit kannst du Hell/Dunkel unabhängig vom System erzwingen. System ist die vernünftige Standardwahl – aber hey, wir sind hier nicht bei einer Steuererklärung 😄")
             }
 
             Section {

@@ -41,6 +41,8 @@ struct LibraryView: View {
 
     // Appearance (Library-specific)
     // Note: Must be non-private to be accessible from the split extension files.
+    @AppStorage(AppearanceStorageKey.libraryHeaderStyle) var libraryHeaderStyleRaw: String = LibraryHeaderStyleOption.standard.rawValue
+    @AppStorage(AppearanceStorageKey.libraryHeaderDefaultExpanded) var libraryHeaderDefaultExpanded: Bool = false
     @AppStorage(AppearanceStorageKey.libraryRowVerticalInset) var libraryRowVerticalInset: Double = 8
 
     // A–Z hint logic (only show when it’s actually helpful)
@@ -76,12 +78,37 @@ struct LibraryView: View {
             .searchable(text: $searchText, prompt: "Suche Titel, Autor, Tag …")
             .toolbar { libraryToolbar }
             .onAppear {
+                if libraryHeaderStyle == .standard {
+                    headerExpanded = libraryHeaderDefaultExpanded
+                } else {
+                    headerExpanded = false
+                }
+
                 if books.isEmpty { headerExpanded = true }
                 enforceRatingRuleIfNeeded()
+            }
+            .onChange(of: libraryHeaderStyleRaw) { _, _ in
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    if libraryHeaderStyle == .standard {
+                        headerExpanded = libraryHeaderDefaultExpanded
+                    } else {
+                        headerExpanded = false
+                    }
+                }
+            }
+            .onChange(of: libraryHeaderDefaultExpanded) { _, newValue in
+                guard libraryHeaderStyle == .standard else { return }
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    headerExpanded = newValue
+                }
             }
             .sheet(isPresented: $showingAddSheet) {
                 AddBookView()
             }
         }
+    }
+
+    var libraryHeaderStyle: LibraryHeaderStyleOption {
+        LibraryHeaderStyleOption(rawValue: libraryHeaderStyleRaw) ?? .standard
     }
 }

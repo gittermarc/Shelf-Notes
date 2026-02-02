@@ -10,6 +10,9 @@ import SwiftUI
 // MARK: - Storage Keys
 
 enum AppearanceStorageKey {
+    // App color scheme (v1)
+    static let colorScheme = "appearance_color_scheme_v1"
+
     // Existing (v1)
     static let useSystemTextColor = "appearance_use_system_text_color_v1"
     static let textColorHex = "appearance_text_color_hex_v1"
@@ -30,6 +33,10 @@ enum AppearanceStorageKey {
     static let libraryCoverContentMode = "appearance_library_cover_content_mode_v1"
     static let libraryCoverShadowEnabled = "appearance_library_cover_shadow_enabled_v1"
 
+    // Library header (v1)
+    static let libraryHeaderStyle = "appearance_library_header_style_v1"
+    static let libraryHeaderDefaultExpanded = "appearance_library_header_default_expanded_v1"
+
     static let libraryRowShowAuthor = "appearance_library_row_show_author_v1"
     static let libraryRowShowStatus = "appearance_library_row_show_status_v1"
     static let libraryRowShowReadDate = "appearance_library_row_show_read_date_v1"
@@ -37,9 +44,72 @@ enum AppearanceStorageKey {
     static let libraryRowShowTags = "appearance_library_row_show_tags_v1"
     static let libraryRowMaxTags = "appearance_library_row_max_tags_v1"
 
+    // Library tags (v1)
+    static let libraryTagStyle = "appearance_library_tag_style_v1"
+
     // Row spacing / insets
     static let libraryRowVerticalInset = "appearance_library_row_vertical_inset_v1"
     static let libraryRowContentSpacing = "appearance_library_row_content_spacing_v1"
+}
+
+// MARK: - App Color Scheme
+
+enum AppColorSchemeOption: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Hell"
+        case .dark: return "Dunkel"
+        }
+    }
+
+    var preferredColorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
+// MARK: - Library Header
+
+enum LibraryHeaderStyleOption: String, CaseIterable, Identifiable {
+    case standard
+    case compact
+    case hidden
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .standard: return "Standard"
+        case .compact: return "Kompakt"
+        case .hidden: return "Aus"
+        }
+    }
+}
+
+// MARK: - Library Tag Style
+
+enum LibraryTagStyleOption: String, CaseIterable, Identifiable {
+    case hashtags
+    case chips
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .hashtags: return "Hashtags"
+        case .chips: return "Chips"
+        }
+    }
 }
 
 // MARK: - Font Design

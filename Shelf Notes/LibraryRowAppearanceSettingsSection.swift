@@ -11,6 +11,10 @@ import SwiftUI
 ///
 /// Stored via `@AppStorage` so changes apply immediately app-wide.
 struct LibraryRowAppearanceSettingsSection: View {
+    // Header style
+    @AppStorage(AppearanceStorageKey.libraryHeaderStyle) private var headerStyleRaw: String = LibraryHeaderStyleOption.standard.rawValue
+    @AppStorage(AppearanceStorageKey.libraryHeaderDefaultExpanded) private var headerDefaultExpanded: Bool = false
+
     // Cover style
     @AppStorage(AppearanceStorageKey.libraryShowCovers) private var showCovers: Bool = true
     @AppStorage(AppearanceStorageKey.libraryCoverSize) private var coverSizeRaw: String = LibraryCoverSizeOption.standard.rawValue
@@ -26,6 +30,9 @@ struct LibraryRowAppearanceSettingsSection: View {
     @AppStorage(AppearanceStorageKey.libraryRowShowTags) private var showTags: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowMaxTags) private var maxTags: Int = 2
 
+    // Tag style
+    @AppStorage(AppearanceStorageKey.libraryTagStyle) private var tagStyleRaw: String = LibraryTagStyleOption.hashtags.rawValue
+
     // Row spacing
     @AppStorage(AppearanceStorageKey.libraryRowVerticalInset) private var rowVerticalInset: Double = 8
     @AppStorage(AppearanceStorageKey.libraryRowContentSpacing) private var rowContentSpacing: Double = 2
@@ -35,6 +42,28 @@ struct LibraryRowAppearanceSettingsSection: View {
             get: { LibraryCoverSizeOption(rawValue: coverSizeRaw) ?? .standard },
             set: { coverSizeRaw = $0.rawValue }
         )
+    }
+
+    private var headerStyleBinding: Binding<LibraryHeaderStyleOption> {
+        Binding(
+            get: { LibraryHeaderStyleOption(rawValue: headerStyleRaw) ?? .standard },
+            set: { headerStyleRaw = $0.rawValue }
+        )
+    }
+
+    private var tagStyleBinding: Binding<LibraryTagStyleOption> {
+        Binding(
+            get: { LibraryTagStyleOption(rawValue: tagStyleRaw) ?? .hashtags },
+            set: { tagStyleRaw = $0.rawValue }
+        )
+    }
+
+    private var resolvedHeaderStyle: LibraryHeaderStyleOption {
+        LibraryHeaderStyleOption(rawValue: headerStyleRaw) ?? .standard
+    }
+
+    private var resolvedTagStyle: LibraryTagStyleOption {
+        LibraryTagStyleOption(rawValue: tagStyleRaw) ?? .hashtags
     }
 
     private var coverContentModeBinding: Binding<LibraryCoverContentModeOption> {
@@ -54,6 +83,27 @@ struct LibraryRowAppearanceSettingsSection: View {
 
     var body: some View {
         Section {
+            // MARK: Header
+
+            Picker("Header", selection: headerStyleBinding) {
+                ForEach(LibraryHeaderStyleOption.allCases) { opt in
+                    Text(opt.title).tag(opt)
+                }
+            }
+            .pickerStyle(.menu)
+
+            if resolvedHeaderStyle == .standard {
+                Toggle(isOn: $headerDefaultExpanded) {
+                    Label("Header standardmäßig ausgeklappt", systemImage: "chevron.down")
+                }
+            } else {
+                Text("Im kompakten oder ausgeschalteten Header ist der Klappzustand irrelevant.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+
             // MARK: Cover style
 
             Toggle(isOn: $showCovers) {
@@ -150,6 +200,14 @@ struct LibraryRowAppearanceSettingsSection: View {
                 Label("Tags anzeigen", systemImage: "number")
             }
 
+            Picker("Tag-Stil", selection: tagStyleBinding) {
+                ForEach(LibraryTagStyleOption.allCases) { opt in
+                    Text(opt.title).tag(opt)
+                }
+            }
+            .pickerStyle(.menu)
+            .disabled(!showTags)
+
             Stepper(value: $maxTags, in: 1...4, step: 1) {
                 HStack {
                     Text("Max. Tags")
@@ -179,6 +237,7 @@ struct LibraryRowAppearanceSettingsSection: View {
                     showReadDate: showReadDate,
                     showRating: showRating,
                     showTags: showTags,
+                    tagStyle: resolvedTagStyle,
                     maxTags: maxTags,
                     rowContentSpacing: rowContentSpacing
                 )
@@ -203,6 +262,9 @@ struct LibraryRowAppearanceSettingsSection: View {
     }
 
     private func resetToDefaults() {
+        headerStyleRaw = LibraryHeaderStyleOption.standard.rawValue
+        headerDefaultExpanded = false
+
         showCovers = true
         coverSizeRaw = LibraryCoverSizeOption.standard.rawValue
         coverCornerRadius = 8
@@ -217,6 +279,7 @@ struct LibraryRowAppearanceSettingsSection: View {
         showReadDate = true
         showRating = true
         showTags = true
+        tagStyleRaw = LibraryTagStyleOption.hashtags.rawValue
         maxTags = 2
     }
 }
@@ -233,6 +296,7 @@ private struct LibraryRowSettingsPreview: View {
     let showReadDate: Bool
     let showRating: Bool
     let showTags: Bool
+    let tagStyle: LibraryTagStyleOption
     let maxTags: Int
     let rowContentSpacing: Double
 
@@ -255,6 +319,16 @@ private struct LibraryRowSettingsPreview: View {
         let tags = ["thriller", "nyc", "crime", "biografie"]
         let n = max(1, min(maxTags, tags.count))
         return tags.prefix(n).map { "#\($0)" }.joined(separator: " ")
+    }
+
+    private var tagsList: [String] {
+        let tags = ["thriller", "nyc", "crime", "biografie"]
+        let n = max(1, min(maxTags, tags.count))
+        return Array(tags.prefix(n))
+    }
+
+    private var tagsRemainingCount: Int {
+        max(0, ["thriller", "nyc", "crime", "biografie"].count - tagsList.count)
     }
 
     var body: some View {
@@ -306,9 +380,14 @@ private struct LibraryRowSettingsPreview: View {
                 }
 
                 if showTags {
-                    Text(tagsText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    switch tagStyle {
+                    case .hashtags:
+                        Text(tagsText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    case .chips:
+                        TagPillsRow(tags: tagsList, remainingCount: tagsRemainingCount)
+                    }
                 }
             }
         }

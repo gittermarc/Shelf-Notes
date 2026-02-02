@@ -25,7 +25,12 @@ struct BookRowView: View {
     @AppStorage(AppearanceStorageKey.libraryRowShowRating) private var showRating: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowShowTags) private var showTags: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowMaxTags) private var maxTags: Int = 2
+    @AppStorage(AppearanceStorageKey.libraryTagStyle) private var tagStyleRaw: String = LibraryTagStyleOption.hashtags.rawValue
     @AppStorage(AppearanceStorageKey.libraryRowContentSpacing) private var rowContentSpacing: Double = 2
+
+    private var resolvedTagStyle: LibraryTagStyleOption {
+        LibraryTagStyleOption(rawValue: tagStyleRaw) ?? .hashtags
+    }
 
     private enum MetaPart {
         case status(String)
@@ -85,9 +90,17 @@ struct BookRowView: View {
                 // Tags eine Zeile tiefer
                 if showTags, !book.tags.isEmpty, maxTags > 0 {
                     let n = max(1, min(maxTags, book.tags.count))
-                    Text(book.tags.prefix(n).map { "#\($0)" }.joined(separator: " "))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    let visible = Array(book.tags.prefix(n))
+                    let remaining = max(0, book.tags.count - visible.count)
+
+                    switch resolvedTagStyle {
+                    case .hashtags:
+                        Text(visible.map { "#\($0)" }.joined(separator: " "))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    case .chips:
+                        TagPillsRow(tags: visible, remainingCount: remaining)
+                    }
                 }
             }
         }

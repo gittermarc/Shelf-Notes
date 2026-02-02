@@ -23,6 +23,7 @@ struct RootView: View {
     @State private var showingCSVFirstRun = false
 
     // MARK: - Appearance
+    @AppStorage(AppearanceStorageKey.colorScheme) private var colorSchemeRaw: String = AppColorSchemeOption.system.rawValue
     @AppStorage(AppearanceStorageKey.useSystemTextColor) private var useSystemTextColor: Bool = true
     @AppStorage(AppearanceStorageKey.textColorHex) private var textColorHex: String = "#007AFF"
 
@@ -40,6 +41,7 @@ struct RootView: View {
 
     var body: some View {
         let appTextColor = resolvedTextColor
+        let preferredScheme = resolvedColorSchemeOption.preferredColorScheme
         let design = resolvedFontDesignOption.fontDesign
         let textSize = resolvedTextSizeOption.dynamicTypeSize
         let density = resolvedDensityOption
@@ -77,6 +79,7 @@ struct RootView: View {
                 .tag(4)
         }
         // Global look & feel
+        .preferredColorScheme(preferredScheme)
         .foregroundStyle(appTextColor)
         .fontDesign(design)
         .dynamicTypeSize(textSize)
@@ -126,6 +129,10 @@ struct RootView: View {
             )
             .environmentObject(timer)
         }
+    }
+
+    private var resolvedColorSchemeOption: AppColorSchemeOption {
+        AppColorSchemeOption(rawValue: colorSchemeRaw) ?? .system
     }
 
     private var resolvedTextColor: Color {
