@@ -11,6 +11,7 @@ import SwiftUI
 ///
 /// v1: Custom text color (global foreground style) via ColorPicker.
 /// v2: Typography + density + tint (accent) + presets.
+/// v3: Better structure (scan-friendly) via grouped sections + disclosure groups.
 struct AppearanceSettingsView: View {
     // Color scheme
     @AppStorage(AppearanceStorageKey.colorScheme) private var colorSchemeRaw: String = AppColorSchemeOption.system.rawValue
@@ -19,17 +20,26 @@ struct AppearanceSettingsView: View {
     @AppStorage(AppearanceStorageKey.useSystemTextColor) private var useSystemTextColor: Bool = true
     @AppStorage(AppearanceStorageKey.textColorHex) private var textColorHex: String = "#007AFF"
 
-    // New: Typography / density
+    // Typography / density
     @AppStorage(AppearanceStorageKey.fontDesign) private var fontDesignRaw: String = AppFontDesignOption.system.rawValue
     @AppStorage(AppearanceStorageKey.textSize) private var textSizeRaw: String = AppTextSizeOption.standard.rawValue
     @AppStorage(AppearanceStorageKey.density) private var densityRaw: String = AppDensityOption.standard.rawValue
 
-    // New: Tint
+    // Tint
     @AppStorage(AppearanceStorageKey.useSystemTint) private var useSystemTint: Bool = true
     @AppStorage(AppearanceStorageKey.tintColorHex) private var tintColorHex: String = "#007AFF"
 
+    // Library (for summary only)
+    @AppStorage(AppearanceStorageKey.libraryLayoutMode) private var libraryLayoutModeRaw: String = LibraryLayoutModeOption.list.rawValue
+    @AppStorage(AppearanceStorageKey.libraryShowCovers) private var libraryShowCovers: Bool = true
+
     // Presets (UI state only)
     @State private var selectedPreset: AppAppearancePreset = .classic
+
+    // Collapsible groups
+    @State private var textColorExpanded: Bool = false
+    @State private var tintExpanded: Bool = false
+    @State private var typographyExpanded: Bool = false
 
     // MARK: - Resolved values
 
@@ -129,68 +139,96 @@ struct AppearanceSettingsView: View {
         AppDensityOption(rawValue: densityRaw) ?? .standard
     }
 
+    private var typographySummaryText: String {
+        let design = (AppFontDesignOption(rawValue: fontDesignRaw) ?? .system).title
+        let size = (AppTextSizeOption(rawValue: textSizeRaw) ?? .standard).title
+        let density = (AppDensityOption(rawValue: densityRaw) ?? .standard).title
+        return "\(design) · \(size) · \(density)"
+    }
+
+    private var librarySummaryText: String {
+        let mode = LibraryLayoutModeOption(rawValue: libraryLayoutModeRaw) ?? .list
+        let covers = libraryShowCovers ? "Covers" : "Ohne Covers"
+        return "\(mode.title) · \(covers)"
+    }
+
     // MARK: - Body
 
     var body: some View {
-        List {
-            Section {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("Aktuell")
-                        Spacer()
-                        Text(currentPresetMatch?.title ?? "Benutzerdefiniert")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+        Form {
+            presetsSection
+            colorsSection
+            typographySection
+            librarySection
+            previewSection
+        }
+        .navigationTitle("Darstellung")
+        .onAppear {
+            // Make the preset cards feel "right" when entering the screen.
+            selectedPreset = currentPresetMatch ?? .classic
+        }
+    }
 
-                    let columns = [GridItem(.flexible()), GridItem(.flexible())]
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(AppAppearancePreset.allCases) { preset in
-                            Button {
-                                selectedPreset = preset
-                                applyPreset(preset)
-                            } label: {
-                                PresetCard(
-                                    preset: preset,
-                                    isSelected: selectedPreset == preset,
-                                    isActive: currentPresetMatch == preset
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
+    // MARK: - Sections
 
-                    Text((currentPresetMatch ?? selectedPreset).subtitle)
+    @ViewBuilder
+    private var presetsSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Aktuell")
+                    Spacer()
+                    Text(currentPresetMatch?.title ?? "Benutzerdefiniert")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .padding(.vertical, 2)
-            } header: {
-                Text("Presets")
-            } footer: {
-                Text("Presets setzen Schriftart, Schriftgröße, Textdichte und Akzentfarbe. Deine Textfarbe bleibt bewusst unberührt.")
-            }
 
-            Section {
-                Picker("Farbschema", selection: colorSchemeBinding) {
-                    ForEach(AppColorSchemeOption.allCases) { opt in
-                        Text(opt.title).tag(opt)
+                let columns = [GridItem(.flexible()), GridItem(.flexible())]
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach(AppAppearancePreset.allCases) { preset in
+                        Button {
+                            selectedPreset = preset
+                            applyPreset(preset)
+                        } label: {
+                            PresetCard(
+                                preset: preset,
+                                isSelected: selectedPreset == preset,
+                                isActive: currentPresetMatch == preset
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .pickerStyle(.segmented)
 
-                Button {
-                    colorSchemeRaw = AppColorSchemeOption.system.rawValue
-                } label: {
-                    Label("Auf System zurücksetzen", systemImage: "arrow.uturn.backward")
+                Text((currentPresetMatch ?? selectedPreset).subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 2)
+        } header: {
+            Text("Presets")
+        } footer: {
+            Text("Presets setzen Schriftart, Schriftgröße, Textdichte und Akzentfarbe. Deine Textfarbe bleibt bewusst unberührt.")
+        }
+    }
+
+    @ViewBuilder
+    private var colorsSection: some View {
+        Section {
+            Picker("Farbschema", selection: colorSchemeBinding) {
+                ForEach(AppColorSchemeOption.allCases) { opt in
+                    Text(opt.title).tag(opt)
                 }
-            } header: {
-                Text("Farbschema")
-            } footer: {
-                Text("Damit kannst du Hell/Dunkel unabhängig vom System erzwingen. System ist die vernünftige Standardwahl – aber hey, wir sind hier nicht bei einer Steuererklärung 😄")
+            }
+            .pickerStyle(.segmented)
+
+            Button {
+                colorSchemeRaw = AppColorSchemeOption.system.rawValue
+            } label: {
+                Label("Farbschema zurücksetzen", systemImage: "arrow.uturn.backward")
             }
 
-            Section {
+            DisclosureGroup(isExpanded: $textColorExpanded) {
                 Toggle(isOn: $useSystemTextColor) {
                     Label("Systemfarbe verwenden", systemImage: "circle.lefthalf.filled")
                 }
@@ -212,15 +250,70 @@ struct AppearanceSettingsView: View {
                 Button {
                     useSystemTextColor = true
                 } label: {
-                    Label("Auf Systemfarbe zurücksetzen", systemImage: "arrow.uturn.backward")
+                    Label("Textfarbe zurücksetzen", systemImage: "arrow.uturn.backward")
                 }
-            } header: {
-                Text("Text")
-            } footer: {
+
                 Text("Hinweis: Diese Einstellung setzt die Standard-Textfarbe über die App hinweg. Elemente, die bewusst .secondary oder eine explizite Farbe nutzen, bleiben unverändert. Im Dark Mode können sehr dunkle Farben schlecht lesbar sein – also nicht komplett eskalieren 😄")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } label: {
+                disclosureLabel(
+                    title: "Textfarbe",
+                    systemImage: "textformat",
+                    usesSystem: useSystemTextColor,
+                    hex: textColorHex,
+                    color: effectiveTextColor
+                )
             }
 
-            Section {
+            DisclosureGroup(isExpanded: $tintExpanded) {
+                Toggle(isOn: $useSystemTint) {
+                    Label("System-Akzent verwenden", systemImage: "paintbrush")
+                }
+
+                ColorPicker("Akzentfarbe", selection: tintPickerBinding, supportsOpacity: false)
+                    .disabled(useSystemTint)
+
+                if !useSystemTint {
+                    HStack {
+                        Text("Aktuell")
+                        Spacer()
+                        Text(tintColorHex)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospaced()
+                    }
+                }
+
+                Button {
+                    useSystemTint = true
+                } label: {
+                    Label("Akzent zurücksetzen", systemImage: "arrow.uturn.backward")
+                }
+
+                Text("Die Akzentfarbe (Tint) beeinflusst Buttons, Links, Toggles, Progress und Highlights – also quasi alles, was „klick mich“ schreit.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } label: {
+                disclosureLabel(
+                    title: "Akzentfarbe",
+                    systemImage: "paintpalette",
+                    usesSystem: useSystemTint,
+                    hex: tintColorHex,
+                    color: effectiveTintColor
+                )
+            }
+        } header: {
+            Text("Farben & Theme")
+        } footer: {
+            Text("System ist die vernünftige Standardwahl – aber hey, wir sind hier nicht bei einer Steuererklärung 😄")
+        }
+    }
+
+    @ViewBuilder
+    private var typographySection: some View {
+        Section {
+            DisclosureGroup(isExpanded: $typographyExpanded) {
                 Picker("Schriftgröße", selection: textSizeBinding) {
                     ForEach(AppTextSizeOption.allCases) { opt in
                         Text(opt.title).tag(opt)
@@ -249,77 +342,103 @@ struct AppearanceSettingsView: View {
                 } label: {
                     Label("Schrift & Dichte zurücksetzen", systemImage: "arrow.uturn.backward")
                 }
-            } header: {
-                Text("Schrift & Layout")
-            } footer: {
+
                 Text("Diese Optionen wirken app-intern: Schriftgröße (über Dynamic Type), Schriftart (System/Serif/Rounded) und eine etwas kompaktere bzw. luftigere Darstellung in Listen & Formularen.")
-            }
-
-            Section {
-                Toggle(isOn: $useSystemTint) {
-                    Label("System-Akzent verwenden", systemImage: "paintbrush")
-                }
-
-                ColorPicker("Akzentfarbe", selection: tintPickerBinding, supportsOpacity: false)
-                    .disabled(useSystemTint)
-
-                if !useSystemTint {
-                    HStack {
-                        Text("Aktuell")
-                        Spacer()
-                        Text(tintColorHex)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .monospaced()
-                    }
-                }
-
-                Button {
-                    useSystemTint = true
-                } label: {
-                    Label("Auf System-Akzent zurücksetzen", systemImage: "arrow.uturn.backward")
-                }
-            } header: {
-                Text("Akzent")
-            } footer: {
-                Text("Die Akzentfarbe (Tint) beeinflusst Buttons, Links, Toggles, Progress und Highlights – also quasi alles, was „klick mich“ schreit.")
-            }
-
-            LibraryRowAppearanceSettingsSection()
-
-            Section("Vorschau") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Shelf Notes")
-                        .font(.headline)
-                        .foregroundStyle(effectiveTextColor)
-
-                    Text("Ein kurzer Beispieltext, um die Wirkung zu sehen. Sekundärtext bleibt weiterhin sekundär.")
-                        .foregroundStyle(effectiveTextColor)
-
-                    Text("Sekundärtext (bleibt secondary)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } label: {
+                HStack {
+                    Label("Schrift & Layout", systemImage: "textformat.size")
+                    Spacer()
+                    Text(typographySummaryText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-
-                    Button {
-                        // no-op
-                    } label: {
-                        Label("Beispiel-Button", systemImage: "sparkles")
-                    }
-
-                    Toggle("Beispiel-Toggle", isOn: .constant(true))
                 }
-                .padding(.vertical, 4)
-                .fontDesign(resolvedDesign)
-                .dynamicTypeSize(resolvedTextSize)
-                .environment(\.controlSize, resolvedDensity.controlSize)
-                .environment(\.defaultMinListRowHeight, resolvedDensity.minListRowHeight)
-                .tint(effectiveTintColor)
             }
         }
-        .navigationTitle("Darstellung")
-        .onAppear {
-            // Make the preset cards feel "right" when entering the screen.
-            selectedPreset = currentPresetMatch ?? .classic
+    }
+
+    @ViewBuilder
+    private var librarySection: some View {
+        Section {
+            NavigationLink {
+                LibraryAppearanceSettingsView()
+            } label: {
+                HStack {
+                    Label("Bibliothek", systemImage: "books.vertical")
+                    Spacer()
+                    Text(librarySummaryText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text("Cover-Darstellung, Zeilen-Details, Tags, Abstände – alles, was die Bibliothek hübsch (oder maximal effizient) macht.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } header: {
+            Text("Bibliothek")
+        }
+    }
+
+    @ViewBuilder
+    private var previewSection: some View {
+        Section("Vorschau") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Shelf Notes")
+                    .font(.headline)
+                    .foregroundStyle(effectiveTextColor)
+
+                Text("Ein kurzer Beispieltext, um die Wirkung zu sehen. Sekundärtext bleibt weiterhin sekundär.")
+                    .foregroundStyle(effectiveTextColor)
+
+                Text("Sekundärtext (bleibt secondary)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Button {
+                    // no-op
+                } label: {
+                    Label("Beispiel-Button", systemImage: "sparkles")
+                }
+
+                Toggle("Beispiel-Toggle", isOn: .constant(true))
+            }
+            .padding(.vertical, 4)
+            .fontDesign(resolvedDesign)
+            .dynamicTypeSize(resolvedTextSize)
+            .environment(\.controlSize, resolvedDensity.controlSize)
+            .environment(\.defaultMinListRowHeight, resolvedDensity.minListRowHeight)
+            .tint(effectiveTintColor)
+        }
+    }
+
+    @ViewBuilder
+    private func disclosureLabel(
+        title: String,
+        systemImage: String,
+        usesSystem: Bool,
+        hex: String,
+        color: Color
+    ) -> some View {
+        HStack {
+            Label(title, systemImage: systemImage)
+            Spacer()
+
+            if usesSystem {
+                Text("System")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Circle()
+                    .fill(color)
+                    .frame(width: 12, height: 12)
+
+                Text(hex)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospaced()
+            }
         }
     }
 
