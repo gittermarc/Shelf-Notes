@@ -75,20 +75,32 @@ struct BookImportSearchPanel: View {
 
     private var filtersSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Button {
-                withAnimation(.snappy) { vm.showFilters.toggle() }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "line.3.horizontal.decrease.circle")
-                    Text("Filter & Qualität")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
-                    Image(systemName: vm.showFilters ? "chevron.up" : "chevron.down")
-                        .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                Button {
+                    withAnimation(.snappy) { vm.showFilters.toggle() }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                        Text("Filter & Qualität")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Image(systemName: vm.showFilters ? "chevron.up" : "chevron.down")
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 6)
                 }
-                .padding(.vertical, 6)
+                .buttonStyle(.plain)
+
+                Button {
+                    vm.resetFiltersToDefaults()
+                } label: {
+                    Text("Zurücksetzen")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityLabel("Filter zurücksetzen")
             }
-            .buttonStyle(.plain)
 
             if vm.showFilters {
                 VStack(alignment: .leading, spacing: 12) {

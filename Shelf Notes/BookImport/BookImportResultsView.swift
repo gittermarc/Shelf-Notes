@@ -134,11 +134,74 @@ struct BookImportResultsView: View {
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
             .padding(.horizontal, 8)
+
+            if !vm.queryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Divider()
+                    .padding(.top, 6)
+
+                emptyStateDiagnostics
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(18)
         .background(.thinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+
+
+    private var emptyStateDiagnostics: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(vm.activeFiltersSummary)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+
+            if let dbg = vm.lastRequestDebugSummary {
+                Text(dbg)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            let ti = vm.lastResponseParsedTotalItems ?? vm.totalItems
+            Text("totalItems: \(ti)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            if let hasError = vm.lastResponseHasErrorObject {
+                Text("error: \(hasError ? "ja" : "nein")")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let url = vm.lastRequestURLSanitized {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("URL (ohne Key):")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(url)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .lineLimit(5)
+                }
+                .padding(.top, 2)
+            }
+
+            if let snippet = vm.lastResponseSnippet, !snippet.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Antwort (Snippet):")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(snippet)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .lineLimit(6)
+                }
+                .padding(.top, 2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func errorCard(_ message: String) -> some View {

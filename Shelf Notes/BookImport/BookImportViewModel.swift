@@ -303,17 +303,39 @@ final class BookImportViewModel: ObservableObject {
         lastDebugInfo?.requestURL
     }
 
+    var lastRequestURLSanitized: String? {
+        guard let raw = lastDebugInfo?.requestURL else { return nil }
+        return Self.sanitizeURLRemovingKey(raw)
+    }
+
+    var lastResponseSnippet: String? {
+        lastDebugInfo?.responseBodySnippet
+    }
+
+    var lastResponseHasErrorObject: Bool? {
+        lastDebugInfo?.hasErrorObject
+    }
+
+    var lastResponseParsedTotalItems: Int? {
+        lastDebugInfo?.parsedTotalItems
+    }
+
+    var lastRequestUsedApiKey: Bool? {
+        lastDebugInfo?.usedApiKey
+    }
+
     var lastRequestDebugSummary: String? {
         guard let d = lastDebugInfo else { return nil }
         var parts: [String] = []
         if let status = d.httpStatus {
             parts.append("HTTP \(status)")
         }
-        if d.responseBytes > 0 {
-            let kb = Double(d.responseBytes) / 1024.0
-            parts.append(String(format: "%.0f KB", kb))
+        parts.append(Self.formatBytes(d.responseBytes))
+        if let ti = d.parsedTotalItems {
+            parts.append("totalItems \(ti)")
         }
-        return parts.isEmpty ? nil : ("Google: " + parts.joined(separator: " • "))
+        parts.append(d.usedApiKey ? "key" : "no-key")
+        return "Google: " + parts.joined(separator: " • ")
     }
 
     var totalItemsText: String {
@@ -331,6 +353,29 @@ final class BookImportViewModel: ObservableObject {
 
         return true
     }
+
+
+    private static func formatBytes(_ bytes: Int) -> String {
+        if bytes <= 0 { return "0 B" }
+        if bytes < 1024 { return "\(bytes) B" }
+
+        let kb = Double(bytes) / 1024.0
+        if kb < 1024.0 {
+            return String(format: "%.1f KB", kb)
+        }
+
+        let mb = kb / 1024.0
+        return String(format: "%.1f MB", mb)
+    }
+
+    private static func sanitizeURLRemovingKey(_ urlString: String) -> String {
+        guard var comps = URLComponents(string: urlString) else { return urlString }
+        if let items = comps.queryItems, !items.isEmpty {
+            comps.queryItems = items.filter { $0.name.lowercased() != "key" }
+        }
+        return comps.url?.absoluteString ?? urlString
+    }
+
 
     func updateExistingBooks(_ books: [Book]) {
         // index: volumeIDs
@@ -384,6 +429,41 @@ final class BookImportViewModel: ObservableObject {
         queryText = term
         await search()
     }
+
+
+    /// Resets all filter / quality toggles in the search panel back to their defaults.
+    /// Keeps the current query text. If a query is present, triggers a fresh search once.
+    func resetFiltersToDefaults() {
+        // Avoid triggering multiple debounced refreshes while we flip many toggles.
+        isBootstrapping = true
+        defer { isBootstrapping = false }
+
+        scope = .any
+        language = .any
+        sortOption = .relevance
+        apiFilter = .none
+        category = ""
+
+        onlyWithCover = false
+        onlyWithISBN = false
+        onlyWithDescription = false
+        hideAlreadyInLibrary = false
+        collapseDuplicates = true
+
+        // Reset the "auto relaxed language" mechanism as well.
+        didRelaxLanguageFilterThisSearch = false
+        languageRelaxedKeys.removeAll()
+
+        // Clear debug meta, so the next request is clearly attributable.
+        lastDebugInfo = nil
+
+        applyLocalFilters()
+
+        let trimmed = queryText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        Task { await search() }
+    }
+
 
     // MARK: - Infinite scroll hook
 

@@ -11,7 +11,18 @@ struct GoogleBooksDebugInfo {
     let requestURL: String
     let httpStatus: Int?
     let responseBytes: Int
-    let errorBodySnippet: String?
+
+    /// First ~400 chars of the response body (normalized to a single line) for debugging.
+    let responseBodySnippet: String?
+
+    /// Whether the top-level JSON object contained an `error` field (if detectable).
+    let hasErrorObject: Bool?
+
+    /// totalItems as present in the top-level JSON (if detectable).
+    let parsedTotalItems: Int?
+
+    /// Whether an API key was included in the request.
+    let usedApiKey: Bool
 }
 
 struct GoogleBooksSearchResult {
@@ -179,8 +190,12 @@ final class GoogleBooksClient {
         }
 
         // Key is optional for testing; if present we send it.
+        let didUseKey: Bool
         if let apiKey, !apiKey.isEmpty {
+            didUseKey = true
             items.append(URLQueryItem(name: "key", value: apiKey))
+        } else {
+            didUseKey = false
         }
 
         comps?.queryItems = items
@@ -198,11 +213,38 @@ final class GoogleBooksClient {
 
         let http = response as? HTTPURLResponse
 
+        // Keep a small response preview for debugging (especially helpful for "HTTP 200 but totalItems=0").
+        let rawBody = String(data: data, encoding: .utf8)
+        let normalized = rawBody?
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\t", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let bodySnippet = normalized.map { String($0.prefix(420)) }
+
+        var hasErrorObject: Bool? = nil
+        var parsedTotalItems: Int? = nil
+
+        if let raw = rawBody,
+           let first = raw.first(where: { !$0.isWhitespace }),
+           first == "{",
+           data.count <= 512_000 {
+            if let obj = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+                hasErrorObject = (obj["error"] != nil)
+                if let ti = obj["totalItems"] as? Int {
+                    parsedTotalItems = ti
+                }
+            }
+        }
+
         let debugBase = GoogleBooksDebugInfo(
             requestURL: url.absoluteString,
             httpStatus: http?.statusCode,
             responseBytes: data.count,
-            errorBodySnippet: nil
+            responseBodySnippet: bodySnippet,
+            hasErrorObject: hasErrorObject,
+            parsedTotalItems: parsedTotalItems,
+            usedApiKey: didUseKey
         )
 
         guard let http else {
@@ -224,7 +266,10 @@ final class GoogleBooksClient {
             requestURL: debugBase.requestURL,
             httpStatus: debugBase.httpStatus,
             responseBytes: debugBase.responseBytes,
-            errorBodySnippet: nil
+            responseBodySnippet: debugBase.responseBodySnippet,
+            hasErrorObject: debugBase.hasErrorObject,
+            parsedTotalItems: decoded.totalItems ?? debugBase.parsedTotalItems,
+            usedApiKey: debugBase.usedApiKey
         )
 
         return GoogleBooksSearchResult(
