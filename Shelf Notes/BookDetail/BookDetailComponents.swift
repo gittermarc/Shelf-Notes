@@ -106,6 +106,8 @@ struct OnlineCoverPickerSheet: View {
 // MARK: - Apple-Books-ish UI Components
 
 struct BookHeroHeaderParallax: View {
+    @Environment(\.modelContext) private var modelContext
+
     @Bindable var book: Book
     let hasUserRating: Bool
     let displayedOverallRating: Double?
@@ -122,14 +124,15 @@ struct BookHeroHeaderParallax: View {
 
             ZStack(alignment: .bottomLeading) {
                 // Background: big cover + blur + gradient
-                BookCoverThumbnailView(
+                LibraryRowCoverView(
                     book: book,
                     size: CGSize(width: geo.size.width, height: height),
-                    cornerRadius: 22
+                    cornerRadius: 0,
+                    contentMode: .fill,
+                    prefersHighResCover: true
                 )
-                .scaledToFill()
                 .frame(width: geo.size.width, height: height)
-                .clipped()
+                .clipped() // keep blur bounds predictable
                 .blur(radius: 18)
                 .scaleEffect(stretch > 0 ? (1.0 + (stretch / 700.0)) : 1.0)
                 .overlay(
@@ -148,10 +151,12 @@ struct BookHeroHeaderParallax: View {
 
                 // Foreground content
                 HStack(alignment: .bottom, spacing: 14) {
-                    BookCoverThumbnailView(
+                    LibraryRowCoverView(
                         book: book,
                         size: CGSize(width: 120, height: 180),
-                        cornerRadius: 16
+                        cornerRadius: 16,
+                        contentMode: .fit,
+                        prefersHighResCover: true
                     )
                     .shadow(radius: 12, y: 6)
                     .offset(y: stretch > 0 ? (-stretch * 0.15) : 0) // subtle parallax
@@ -197,6 +202,22 @@ struct BookHeroHeaderParallax: View {
             }
         }
         .frame(height: baseHeight)
+        .task(id: book.id) {
+            #if canImport(UIKit)
+            // Keep the synced thumbnail healthy (used across the app), but prefer high-res for display.
+            if let data = book.userCoverData {
+                if CoverThumbnailer.isLowResSyncedThumbnail(data) {
+                    await CoverThumbnailer.refreshSyncedThumbnailIfNeeded(
+                        for: book,
+                        resolvedURLString: book.thumbnailURL,
+                        modelContext: modelContext
+                    )
+                }
+            } else {
+                await CoverThumbnailer.backfillThumbnailIfNeeded(for: book, modelContext: modelContext)
+            }
+            #endif
+        }
     }
 }
 

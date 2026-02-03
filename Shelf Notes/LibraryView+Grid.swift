@@ -128,7 +128,8 @@ private struct LibraryGridItemView: View {
                     book: book,
                     size: coverSize,
                     cornerRadius: resolvedCoverRadius,
-                    contentMode: resolvedContentMode
+                    contentMode: resolvedContentMode,
+                    prefersHighResCover: true
                 )
                 .shadow(
                     color: coverShadowEnabled ? .black.opacity(0.12) : .clear,

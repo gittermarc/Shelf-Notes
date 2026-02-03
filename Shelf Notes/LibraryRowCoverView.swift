@@ -61,10 +61,20 @@ struct LibraryRowCoverView: View {
     var cornerRadius: CGFloat
     var contentMode: ContentMode = .fit
 
+    /// When `true`, we prefer loading a higher-resolution remote cover (zoom-upgraded when possible)
+    /// and use the synced thumbnail only as a fallback/placeholder.
+    ///
+    /// This is intended for **Grid** tiles and **Detail** surfaces where the cover is physically larger.
+    /// The synced thumbnail is optimized for fast list scrolling + CloudKit payload size and can look soft
+    /// when scaled up.
+    var prefersHighResCover: Bool = false
+
     var body: some View {
         Group {
             #if canImport(UIKit)
-            if let data = book.userCoverData {
+            if prefersHighResCover {
+                highResCandidatesView
+            } else if let data = book.userCoverData {
                 SyncedThumbnailImage(
                     bookID: book.id,
                     data: data,
@@ -84,6 +94,63 @@ struct LibraryRowCoverView: View {
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 
+    /// High-resolution cover rendering:
+    /// - tries remote candidates with a best-effort zoom upgrade (Google Books)
+    /// - keeps the view **side-effect free** (no SwiftData saves)
+    /// - uses the synced thumbnail while the high-res image is loading
+    @ViewBuilder
+    private var highResCandidatesView: some View {
+        let candidates = Self.displayCandidates(from: book.coverCandidatesAll)
+        let preferred = Self.preferredHighResURLString(for: book)
+
+        if !candidates.isEmpty {
+            CoverCandidatesImage(
+                urlStrings: candidates,
+                preferredURLString: preferred,
+                contentMode: contentMode,
+                onResolvedURL: nil
+            ) { image in
+                image
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: contentMode)
+            } placeholder: {
+                #if canImport(UIKit)
+                if let data = book.userCoverData {
+                    SyncedThumbnailImage(
+                        bookID: book.id,
+                        data: data,
+                        targetSize: size,
+                        contentMode: contentMode,
+                        cornerRadius: cornerRadius
+                    )
+                } else {
+                    BookCoverPlaceholder(cornerRadius: cornerRadius)
+                }
+                #else
+                BookCoverPlaceholder(cornerRadius: cornerRadius)
+                #endif
+            }
+        } else {
+            // No candidates at all → fall back to thumbnail if present, else placeholder.
+            #if canImport(UIKit)
+            if let data = book.userCoverData {
+                SyncedThumbnailImage(
+                    bookID: book.id,
+                    data: data,
+                    targetSize: size,
+                    contentMode: contentMode,
+                    cornerRadius: cornerRadius
+                )
+            } else {
+                BookCoverPlaceholder(cornerRadius: cornerRadius)
+            }
+            #else
+            BookCoverPlaceholder(cornerRadius: cornerRadius)
+            #endif
+        }
+    }
+
     @ViewBuilder
     private var readOnlyCandidatesFallback: some View {
         // `coverCandidatesAll` can include a local file URL (user cover). That is okay here:
@@ -99,6 +166,7 @@ struct LibraryRowCoverView: View {
             ) { image in
                 image
                     .resizable()
+                    .interpolation(.high)
                     .aspectRatio(contentMode: contentMode)
             } placeholder: {
                 BookCoverPlaceholder(cornerRadius: cornerRadius)
@@ -135,6 +203,7 @@ private struct SyncedThumbnailImage: View {
             if let uiImage {
                 Image(uiImage: uiImage)
                     .resizable()
+                    .interpolation(.high)
                     .aspectRatio(contentMode: contentMode)
             } else {
                 BookCoverPlaceholder(cornerRadius: cornerRadius)
@@ -223,3 +292,65 @@ private struct SyncedThumbnailImage: View {
     }
 }
 #endif
+
+// MARK: - High-res candidate helpers
+
+extension LibraryRowCoverView {
+
+    /// Creates a best-effort list of display candidates:
+    /// - For remote URLs we add a zoom-upgraded variant (Google Books) **before** the original.
+    /// - File URLs are kept as-is.
+    /// - Deduped, order preserved.
+    static func displayCandidates(from raw: [String]) -> [String] {
+        var out: [String] = []
+
+        func add(_ s: String) {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty else { return }
+            if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
+                out.append(t)
+            }
+        }
+
+        for s in raw {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty else { continue }
+
+            if let u = URL(string: t), u.isFileURL {
+                add(t)
+                continue
+            }
+
+            // Prefer upgraded display variant first (for crisp Grid/Detail covers), but keep original as fallback.
+            let upgraded = CoverThumbnailer.upgradedRemoteURLString(t, target: .display)
+            if upgraded.caseInsensitiveCompare(t) == .orderedSame {
+                add(t)
+            } else {
+                add(upgraded)
+                add(t)
+            }
+        }
+
+        return out
+    }
+
+    /// Picks a preferred starting URL for high-res rendering.
+    /// - User photo cover (local file) wins.
+    /// - Otherwise we prefer the upgraded display variant of the persisted primary URL.
+    static func preferredHighResURLString(for book: Book) -> String? {
+        if let name = book.userCoverFileName,
+           let fileURL = UserCoverStore.fileURL(for: name) {
+            return fileURL.absoluteString
+        }
+
+        if let s = book.thumbnailURL?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            return CoverThumbnailer.upgradedRemoteURLString(s, target: .display)
+        }
+
+        if let s = book.coverURLCandidates.first?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            return CoverThumbnailer.upgradedRemoteURLString(s, target: .display)
+        }
+
+        return nil
+    }
+}
