@@ -62,6 +62,11 @@ final class BookImportViewModel: ObservableObject {
 
     @Published var queryText: String = ""
 
+    /// The effective Google `q` value used for the current results.
+    ///
+    /// This is shown in the UI to make the search transparent (no hidden rewrites).
+    @Published private(set) var effectiveQueryForUI: String = ""
+
     @Published var isLoading: Bool = false
     @Published var isLoadingMore: Bool = false
     @Published var errorMessage: String?
@@ -140,9 +145,6 @@ final class BookImportViewModel: ObservableObject {
     /// Debug info for the last Google request (helps verify filters are applied).
     @Published private(set) var lastDebugInfo: GoogleBooksDebugInfo?
 
-    /// True when we temporarily ignore `langRestrict` to avoid 0-result traps.
-    @Published private(set) var didRelaxLanguageFilterThisSearch: Bool = false
-
     // Search history for chips
     @Published private(set) var history: [String] = []
 
@@ -153,11 +155,16 @@ final class BookImportViewModel: ObservableObject {
 
     private var fetchedVolumes: [GoogleBookVolume] = []
 
-    /// Signature of the current search (language + effective query).
-    private var searchKeyForCurrentQuery: String = ""
+    /// Remembers where the current/active query originated from.
+    /// We keep this stable across filter toggles (so the behavior does not silently change).
+    private var activeSearchOrigin: BookImportSearchOrigin = .userTyped
 
-    /// Memo: for which searches we already had to relax language once (avoids repeating the first failing request).
-    private var languageRelaxedKeys: Set<String> = []
+    /// Used for one-off searches (e.g. seed picker -> auto-search on appear).
+    private var nextSearchOrigin: BookImportSearchOrigin? = nil
+
+    /// The trimmed query text that produced the currently displayed results.
+    /// Used to detect when a "filter refresh" is actually running against newly typed text.
+    private var lastSearchedInputText: String = ""
 
     private var activeQuery: String = ""
     private var compositeQueries: [String] = []
@@ -228,6 +235,13 @@ final class BookImportViewModel: ObservableObject {
         language = desired
     }
 
+    /// Marks the next explicit search as coming from a seed (or user typing).
+    ///
+    /// This allows us to apply seed-specific optimizations without touching user-entered queries.
+    func setNextSearchOrigin(_ origin: BookImportSearchOrigin) {
+        nextSearchOrigin = origin
+    }
+
 
     func cancelTasks() {
         undoHideTask?.cancel()
@@ -255,6 +269,33 @@ final class BookImportViewModel: ObservableObject {
     // MARK: - Public helpers for UI
 
     var resultsCount: Int { results.count }
+
+    /// Number of volumes returned by Google (after merging pages), before local quality filters are applied.
+    var fetchedVolumesCount: Int { fetchedVolumes.count }
+
+    /// totalItems as reported by the API (or parsed from debug JSON).
+    /// Useful to distinguish "Google returned 0" vs "Google had hits but local filters hide them".
+    var lastReportedTotalItems: Int {
+        if let parsed = lastResponseParsedTotalItems { return parsed }
+        return totalItems
+    }
+
+    /// True when the API returned volumes, but local quality filters removed all of them.
+    var isEmptyBecauseOfLocalFilters: Bool {
+        let hasQuery = !queryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return hasQuery && !isLoading && errorMessage == nil && results.isEmpty && fetchedVolumesCount > 0
+    }
+
+    /// A compact list of active local quality filters that can hide results.
+    var activeLocalQualityFilters: [String] {
+        var parts: [String] = []
+        if onlyWithCover { parts.append("Nur mit Cover") }
+        if onlyWithISBN { parts.append("Nur mit ISBN") }
+        if onlyWithDescription { parts.append("Nur mit Beschreibung") }
+        if hideAlreadyInLibrary { parts.append("Ohne vorhandene") }
+        if collapseDuplicates { parts.append("Duplikate reduziert") }
+        return parts
+    }
 
     /// A compact description of the currently active filters/sorting.
     var activeFiltersSummary: String {
@@ -286,12 +327,6 @@ final class BookImportViewModel: ObservableObject {
         if collapseDuplicates { parts.append("Duplikate reduziert") }
 
         return parts.joined(separator: " • ")
-    }
-
-    /// Shown in the results meta section when we relaxed language to avoid an empty list.
-    var languageRelaxedHint: String? {
-        guard didRelaxLanguageFilterThisSearch, language != .any else { return nil }
-        return "Sprache gelockert, um Ergebnisse zu finden."
     }
 
     var categoryPickerOptions: [String] {
@@ -413,6 +448,10 @@ final class BookImportViewModel: ObservableObject {
 
         // Reset paging
         activeQuery = ""
+        effectiveQueryForUI = ""
+        activeSearchOrigin = .userTyped
+        nextSearchOrigin = nil
+        lastSearchedInputText = ""
         totalItems = 0
         nextStartIndex = 0
         didReachEnd = false
@@ -449,10 +488,6 @@ final class BookImportViewModel: ObservableObject {
         onlyWithDescription = false
         hideAlreadyInLibrary = false
         collapseDuplicates = true
-
-        // Reset the "auto relaxed language" mechanism as well.
-        didRelaxLanguageFilterThisSearch = false
-        languageRelaxedKeys.removeAll()
 
         // Clear debug meta, so the next request is clearly attributable.
         lastDebugInfo = nil
@@ -522,10 +557,34 @@ final class BookImportViewModel: ObservableObject {
             history = historyStore.add(trimmed)
         }
 
-        // Freeze query for paging (user may edit the text field while results are on screen)
+        // Determine where this search came from.
+        // - For explicit searches (user hit Search / enter / auto-seed), we use `nextSearchOrigin`.
+        // - For filter refreshes, we keep the previously active origin to avoid silent behavior changes.
+        let origin: BookImportSearchOrigin
+        if keepCurrentResults {
+            // If the user edited the text field since the last search,
+            // treat this as user input (not a seed) to avoid applying seed-only optimizations.
+            if trimmed != lastSearchedInputText {
+                origin = .userTyped
+                activeSearchOrigin = origin
+            } else {
+                origin = activeSearchOrigin
+            }
+        } else {
+            origin = nextSearchOrigin ?? .userTyped
+            activeSearchOrigin = origin
+            nextSearchOrigin = nil
+            lastSearchedInputText = trimmed
+        }
+
+        // Freeze query for paging (user may edit the text field while results are on screen).
         let baseRaw = BookImportQueryBuilder.normalizedQuery(trimmed)
-        let base = BookImportSeedQueryOptimizer.optimize(query: baseRaw, language: language)
+        let base = (origin == .seed)
+            ? BookImportSeedQueryOptimizer.optimize(query: baseRaw, language: language)
+            : baseRaw
+
         let builder = BookImportQueryBuilder(scope: scope, category: category)
+
         let orParts = splitTopLevelOR(base)
         let effective = (orParts == nil) ? builder.buildEffectiveQuery(from: base) : ""
 
@@ -536,10 +595,7 @@ final class BookImportViewModel: ObservableObject {
         isCompositeQuery = false
         compositeQueries = []
         activeQuery = effective
-
-        // Language-relaxation memo: if this query already needed a fallback once, start relaxed to avoid a double-request.
-        searchKeyForCurrentQuery = makeSearchKey(language: language, effectiveQuery: effective, compositeQueries: [])
-        didRelaxLanguageFilterThisSearch = (language != .any) && languageRelaxedKeys.contains(searchKeyForCurrentQuery)
+        effectiveQueryForUI = effective
 
         totalItems = 0
         nextStartIndex = 0
@@ -570,10 +626,7 @@ final class BookImportViewModel: ObservableObject {
                 isCompositeQuery = true
                 compositeQueries = effectiveParts
                 activeQuery = effectiveParts.first ?? ""
-
-                // Composite searches also get a signature (language + all parts).
-                searchKeyForCurrentQuery = makeSearchKey(language: language, effectiveQuery: "", compositeQueries: effectiveParts)
-                didRelaxLanguageFilterThisSearch = (language != .any) && languageRelaxedKeys.contains(searchKeyForCurrentQuery)
+                effectiveQueryForUI = effectiveParts.joined(separator: "\nOR\n")
 
                 await fetchCompositeFirstPage(queries: effectiveParts, generation: generation)
                 return
@@ -715,8 +768,7 @@ final class BookImportViewModel: ObservableObject {
 
     private func currentQueryOptions() -> GoogleBooksQueryOptions {
         let builder = BookImportQueryBuilder(scope: scope, category: category)
-        let effectiveLanguage: BookImportLanguageOption = didRelaxLanguageFilterThisSearch ? .any : language
-        return builder.makeQueryOptions(language: effectiveLanguage, sortOption: sortOption, apiFilter: apiFilter)
+        return builder.makeQueryOptions(language: language, sortOption: sortOption, apiFilter: apiFilter)
     }
 
     /// Splits a query of the form "A OR B" (outside quotes) into its parts.
@@ -762,18 +814,6 @@ final class BookImportViewModel: ObservableObject {
         // Valid OR split requires at least 2 non-empty parts.
         return parts.count >= 2 ? parts : nil
     }
-
-    private func makeSearchKey(
-        language: BookImportLanguageOption,
-        effectiveQuery: String,
-        compositeQueries: [String]
-    ) -> String {
-        if !compositeQueries.isEmpty {
-            return "lang=\(language.rawValue)|composite=\(compositeQueries.joined(separator: "||"))"
-        }
-        return "lang=\(language.rawValue)|q=\(effectiveQuery)"
-    }
-
 
     private func interleavingUniqueVolumes(lists: [[GoogleBookVolume]]) -> [GoogleBookVolume] {
         guard !lists.isEmpty else { return [] }
@@ -831,36 +871,6 @@ final class BookImportViewModel: ObservableObject {
             var finalResponses = responses
             var finalMerged = interleavingUniqueVolumes(lists: responses.map { $0.volumes })
 
-            // If the strict language restriction yields 0 hits overall, retry once without `langRestrict`.
-            if finalMerged.isEmpty, !didRelaxLanguageFilterThisSearch {
-                if let lang = baseOptions.langRestrict?.trimmingCharacters(in: .whitespacesAndNewlines), !lang.isEmpty {
-                    var relaxedOptions = baseOptions
-                    relaxedOptions.langRestrict = nil
-
-                    var relaxedResponses: [GoogleBooksSearchResult] = []
-                    relaxedResponses.reserveCapacity(list.count)
-                    for q in list {
-                        let r = try await GoogleBooksClient.shared.searchVolumesWithDebug(
-                            query: q,
-                            startIndex: 0,
-                            maxResults: pageSize,
-                            options: relaxedOptions
-                        )
-                        relaxedResponses.append(r)
-                    }
-
-                    let relaxedMerged = interleavingUniqueVolumes(lists: relaxedResponses.map { $0.volumes })
-                    if !relaxedMerged.isEmpty {
-                        finalResponses = relaxedResponses
-                        finalMerged = relaxedMerged
-                        didRelaxLanguageFilterThisSearch = true
-                        if !searchKeyForCurrentQuery.isEmpty {
-                            languageRelaxedKeys.insert(searchKeyForCurrentQuery)
-                        }
-                    }
-                }
-            }
-
             lastDebugInfo = finalResponses.first?.debug
             totalItems = finalMerged.count
             fetchedVolumes = finalMerged
@@ -892,36 +902,14 @@ final class BookImportViewModel: ObservableObject {
             // If a newer search was started, don't waste cycles.
             guard generation == searchGeneration else { return }
             guard !Task.isCancelled else { return }
-            var options = currentQueryOptions()
-            var res = try await GoogleBooksClient.shared.searchVolumesWithDebug(
+
+            let options = currentQueryOptions()
+            let res = try await GoogleBooksClient.shared.searchVolumesWithDebug(
                 query: activeQuery,
                 startIndex: startIndex,
                 maxResults: pageSize,
                 options: options
             )
-
-            // If the strict language restriction yields 0 hits, retry once without `langRestrict`.
-            if startIndex == 0, !append, !didRelaxLanguageFilterThisSearch {
-                if let lang = options.langRestrict?.trimmingCharacters(in: .whitespacesAndNewlines), !lang.isEmpty {
-                    if res.totalItems == 0 || res.volumes.isEmpty {
-                        options.langRestrict = nil
-                        let relaxedRes = try await GoogleBooksClient.shared.searchVolumesWithDebug(
-                            query: activeQuery,
-                            startIndex: startIndex,
-                            maxResults: pageSize,
-                            options: options
-                        )
-
-                        if relaxedRes.totalItems > 0 || !relaxedRes.volumes.isEmpty {
-                            res = relaxedRes
-                            didRelaxLanguageFilterThisSearch = true
-                            if !searchKeyForCurrentQuery.isEmpty {
-                                languageRelaxedKeys.insert(searchKeyForCurrentQuery)
-                            }
-                        }
-                    }
-                }
-            }
 
             guard !Task.isCancelled else { return }
             guard generation == searchGeneration else { return }
@@ -972,9 +960,7 @@ final class BookImportViewModel: ObservableObject {
     private func applyLocalFilters() {
         let input = BookImportFilterEngine.Input(
             volumes: fetchedVolumes,
-            language: (didRelaxLanguageFilterThisSearch ? .any : language),
-            apiFilter: apiFilter,
-            category: category,
+            selectedCategory: category,
             onlyWithCover: onlyWithCover,
             onlyWithISBN: onlyWithISBN,
             onlyWithDescription: onlyWithDescription,

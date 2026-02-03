@@ -80,3 +80,14 @@ enum BookImportSortOption: String, CaseIterable, Identifiable {
         }
     }
 }
+
+/// Where a search query came from.
+///
+/// - userTyped: the user entered the text in the search field (or scanned an ISBN).
+/// - seed: the query originated from the Inspiration/"Magie" seed picker.
+enum BookImportSearchOrigin: String, CaseIterable, Identifiable {
+    case userTyped
+    case seed
+
+    var id: String { rawValue }
+}

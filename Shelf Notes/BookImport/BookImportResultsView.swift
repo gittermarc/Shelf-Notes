@@ -53,10 +53,17 @@ struct BookImportResultsView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
 
-            if let hint = vm.languageRelaxedHint {
-                Text(hint)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+            if !vm.effectiveQueryForUI.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Google-Query:")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(vm.effectiveQueryForUI)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .lineLimit(4)
+                }
             }
 
             if let dbg = vm.lastRequestDebugSummary {
@@ -119,23 +126,49 @@ struct BookImportResultsView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 10) {
+        let trimmedQuery = vm.queryText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasQuery = !trimmedQuery.isEmpty
+        let isLocalFilterEmpty = vm.isEmptyBecauseOfLocalFilters
+
+        return VStack(spacing: 10) {
             Image(systemName: "books.vertical")
                 .font(.system(size: 38))
                 .foregroundStyle(.secondary)
 
-            Text(vm.queryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Starte eine Suche" : "Keine Treffer")
+            Text(!hasQuery ? "Starte eine Suche" : (isLocalFilterEmpty ? "Keine Treffer – Filter blenden alles aus" : "Keine Treffer bei Google"))
                 .font(.headline)
 
-            Text(vm.queryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            Text(!hasQuery
                  ? "Gib z.B. „Stephen King“ oder eine ISBN ein."
-                 : "Versuch’s mit einem anderen Begriff oder nur dem Nachnamen.")
+                 : (isLocalFilterEmpty
+                    ? "Google hat Treffer geliefert, aber deine lokalen Qualitätsfilter lassen am Ende 0 übrig."
+                    : "Google meldet 0 Treffer. Prüfe ggf. Filter oder probier’s mit einem anderen Begriff."))
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
             .padding(.horizontal, 8)
 
-            if !vm.queryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if hasQuery {
+                VStack(spacing: 8) {
+                    Button {
+                        vm.resetFiltersToDefaults()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.counterclockwise")
+                            Text("Filter zurücksetzen")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    if isLocalFilterEmpty, !vm.activeLocalQualityFilters.isEmpty {
+                        Text("Aktive lokale Filter: \(vm.activeLocalQualityFilters.joined(separator: " • "))")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+
                 Divider()
                     .padding(.top, 6)
 
@@ -156,14 +189,33 @@ struct BookImportResultsView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(3)
 
+            if !vm.effectiveQueryForUI.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Google-Query:")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(vm.effectiveQueryForUI)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .lineLimit(6)
+                }
+                .padding(.top, 2)
+            }
+
+            if vm.isEmptyBecauseOfLocalFilters {
+                Text("Google geladen: \(vm.fetchedVolumesCount) • angezeigt: 0")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
             if let dbg = vm.lastRequestDebugSummary {
                 Text(dbg)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
 
-            let ti = vm.lastResponseParsedTotalItems ?? vm.totalItems
-            Text("totalItems: \(ti)")
+            Text("totalItems: \(vm.lastReportedTotalItems)")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 

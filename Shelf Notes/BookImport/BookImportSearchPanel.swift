@@ -44,6 +44,15 @@ struct BookImportSearchPanel: View {
                     .focused(searchFocused)
                     .onSubmit { Task { await vm.search() } }
 
+                Text(vm.scope.title)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.thinMaterial)
+                    .clipShape(Capsule())
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Suchfeld: \(vm.scope.title)")
+
                 if !vm.queryText.isEmpty {
                     Button {
                         vm.clearQueryAndResults()

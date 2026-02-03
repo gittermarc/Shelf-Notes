@@ -63,12 +63,13 @@ struct AddBookView: View {
         }
         .sheet(item: $vm.activeSheet, onDismiss: handleSheetDismiss) { sheet in
             switch sheet {
-            case .importBooks(let initialQuery):
+            case .importBooks(let initialQuery, let origin):
                 BookImportView(
                     onPick: { imported in
                         vm.applyImportedBook(imported)
                     },
                     initialQuery: initialQuery,
+                    initialQueryOrigin: origin,
                     autoSearchOnAppear: true,
                     onQuickAddHappened: {
                         vm.quickAddActive = true
@@ -80,12 +81,12 @@ struct AddBookView: View {
 
             case .scanner:
                 BarcodeScannerSheet { isbn in
-                    vm.queueImportAfterDismiss(query: isbn)
+                    vm.queueImportAfterDismiss(query: isbn, origin: .userTyped)
                 }
 
             case .inspiration:
                 InspirationSeedPickerView(onSelect: { query in
-                    vm.queueImportAfterDismiss(query: query)
+                    vm.queueImportAfterDismiss(query: query, origin: .seed)
                 })
 
             case .manualAdd:

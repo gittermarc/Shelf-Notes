@@ -27,6 +27,29 @@ struct BookImportQueryBuilder {
         return trimmed
     }
 
+    /// True when the query contains Google Books advanced operators (subject:, intitle:, etc.).
+    /// Used to avoid rewriting user-provided operator queries.
+    static func containsAdvancedOperators(_ query: String) -> Bool {
+        let lower = query.lowercased()
+        return lower.contains("isbn:")
+            || lower.contains("intitle:")
+            || lower.contains("inauthor:")
+            || lower.contains("subject:")
+            || lower.contains("inpublisher:")
+            || lower.contains("lccn:")
+            || lower.contains("oclc:")
+    }
+
+    /// Builds a `subject:` query from a free-text term (quotes are added only when needed).
+    static func makeSubjectQuery(fromFreeText input: String) -> String {
+        let cleaned = input
+            .replacingOccurrences(of: "\"", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return "" }
+        return "subject:\(Self.quoteIfNeeded(cleaned))"
+    }
+
+
     /// Builds the effective query string using scope (intitle/inauthor) and a robust category fragment.
     ///
     /// Notes:
@@ -39,7 +62,7 @@ struct BookImportQueryBuilder {
 
         let lower = trimmed.lowercased()
         let isISBNQuery = lower.hasPrefix("isbn:")
-        let usesOperators = lower.contains("isbn:") || lower.contains("intitle:") || lower.contains("inauthor:") || lower.contains("subject:")
+        let usesOperators = Self.containsAdvancedOperators(trimmed)
 
         var q = trimmed
 
@@ -48,9 +71,9 @@ struct BookImportQueryBuilder {
             case .any:
                 break
             case .title:
-                q = "intitle:\(quoteIfNeeded(trimmed))"
+                q = "intitle:\(Self.quoteIfNeeded(trimmed))"
             case .author:
-                q = "inauthor:\(quoteIfNeeded(trimmed))"
+                q = "inauthor:\(Self.quoteIfNeeded(trimmed))"
             }
         }
 
@@ -60,7 +83,7 @@ struct BookImportQueryBuilder {
                 q += " \(fragment)"
             } else {
                 // Defensive fallback.
-                q += " subject:\(quoteIfNeeded(cat))"
+                q += " subject:\(Self.quoteIfNeeded(cat))"
             }
         }
 
@@ -82,7 +105,7 @@ struct BookImportQueryBuilder {
 
     // MARK: - Helpers
 
-    private func quoteIfNeeded(_ value: String) -> String {
+    private static func quoteIfNeeded(_ value: String) -> String {
         let cleaned = value
             .replacingOccurrences(of: "\"", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)

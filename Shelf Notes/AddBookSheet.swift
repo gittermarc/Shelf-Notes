@@ -10,15 +10,15 @@ import Foundation
 /// Centralizes all sheet routing for `AddBookView`.
 /// Using a single `sheet(item:)` avoids the classic Bool-zoo.
 enum AddBookSheet: Identifiable, Equatable {
-    case importBooks(initialQuery: String?)
+    case importBooks(initialQuery: String?, origin: BookImportSearchOrigin)
     case scanner
     case inspiration
     case manualAdd
 
     var id: String {
         switch self {
-        case .importBooks(let q):
-            return "import:\(q ?? "")"
+        case .importBooks(let q, let origin):
+            return "import:\(origin.rawValue):\(q ?? "")"
         case .scanner:
             return "scanner"
         case .inspiration:

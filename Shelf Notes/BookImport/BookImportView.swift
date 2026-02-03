@@ -18,6 +18,8 @@ struct BookImportView: View {
 
     // ✅ Optional: prefill search (e.g. ISBN from barcode scan)
     var initialQuery: String? = nil
+    /// Where the initialQuery originated from (seed vs user input).
+    var initialQueryOrigin: BookImportSearchOrigin = .userTyped
     var autoSearchOnAppear: Bool = true
 
     /// Legacy: called once on the first Quick-Add in this sheet session
@@ -34,12 +36,14 @@ struct BookImportView: View {
     init(
         onPick: @escaping (ImportedBook) -> Void,
         initialQuery: String? = nil,
+        initialQueryOrigin: BookImportSearchOrigin = .userTyped,
         autoSearchOnAppear: Bool = true,
         onQuickAddHappened: (() -> Void)? = nil,
         onQuickAddActiveChanged: ((Bool) -> Void)? = nil
     ) {
         self.onPick = onPick
         self.initialQuery = initialQuery
+        self.initialQueryOrigin = initialQueryOrigin
         self.autoSearchOnAppear = autoSearchOnAppear
         self.onQuickAddHappened = onQuickAddHappened
         self.onQuickAddActiveChanged = onQuickAddActiveChanged
@@ -109,6 +113,7 @@ struct BookImportView: View {
                    !initialQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                    vm.queryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     vm.queryText = initialQuery
+                    vm.setNextSearchOrigin(initialQueryOrigin)
                     Task { await vm.search() }
                     return
                 }

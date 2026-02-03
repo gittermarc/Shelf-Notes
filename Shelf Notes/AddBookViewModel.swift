@@ -17,33 +17,33 @@ final class AddBookViewModel: ObservableObject {
     @Published var activeSheet: AddBookSheet? = nil
 
     private var lastPresentedSheet: AddBookSheet? = nil
-    private var queuedImportQueryAfterDismiss: String? = nil
+    private var queuedImportAfterDismiss: (query: String, origin: BookImportSearchOrigin)? = nil
 
-    func openImport(query: String? = nil) {
-        queuedImportQueryAfterDismiss = nil
+    func openImport(query: String? = nil, origin: BookImportSearchOrigin = .userTyped) {
+        queuedImportAfterDismiss = nil
         quickAddActive = false
-        present(.importBooks(initialQuery: query))
+        present(.importBooks(initialQuery: query, origin: origin))
     }
 
     func openScanner() {
-        queuedImportQueryAfterDismiss = nil
+        queuedImportAfterDismiss = nil
         present(.scanner)
     }
 
     func openInspiration() {
-        queuedImportQueryAfterDismiss = nil
+        queuedImportAfterDismiss = nil
         present(.inspiration)
     }
 
     func openManualAdd() {
-        queuedImportQueryAfterDismiss = nil
+        queuedImportAfterDismiss = nil
         present(.manualAdd)
     }
 
-    func queueImportAfterDismiss(query: String) {
+    func queueImportAfterDismiss(query: String, origin: BookImportSearchOrigin = .userTyped) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        queuedImportQueryAfterDismiss = trimmed
+        queuedImportAfterDismiss = (trimmed, origin)
     }
 
     struct SheetDismissOutcome {
@@ -59,9 +59,9 @@ final class AddBookViewModel: ObservableObject {
         let shouldDismiss = (dismissed?.isImport == true) && quickAddActive && trimmedTitle.isEmpty
 
         // 2) If a scanner/inspiration flow queued an import query, open the import sheet now.
-        if let q = queuedImportQueryAfterDismiss {
-            queuedImportQueryAfterDismiss = nil
-            openImport(query: q)
+        if let queued = queuedImportAfterDismiss {
+            queuedImportAfterDismiss = nil
+            openImport(query: queued.query, origin: queued.origin)
         }
 
         return SheetDismissOutcome(dismissedSheet: dismissed, shouldDismissAddBookView: shouldDismiss)
