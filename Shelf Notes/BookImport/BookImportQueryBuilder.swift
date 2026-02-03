@@ -69,7 +69,12 @@ struct BookImportQueryBuilder {
         if !usesOperators && !isISBNQuery {
             switch scope {
             case .any:
-                break
+                // Make the default scope resilient:
+                // - Free-text search (as typed)
+                // - Title match
+                // - Author match
+                // Grouping matters so later filters (e.g. category fragments) apply to the whole OR block.
+                q = Self.makeAnyScopeORQuery(fromFreeText: trimmed)
             case .title:
                 q = "intitle:\(Self.quoteIfNeeded(trimmed))"
             case .author:
@@ -115,5 +120,26 @@ struct BookImportQueryBuilder {
             return "\"\(cleaned)\""
         }
         return cleaned
+    }
+
+    /// Builds an OR query for the "Alles" scope.
+    ///
+    /// Why?
+    /// Google Books' plain `q=<term>` matching can be surprisingly weak for author-only searches,
+    /// while `intitle:` / `inauthor:` are much more deterministic.
+    ///
+    /// We keep the free-text term unquoted to preserve the user's natural AND semantics for multi-word input.
+    /// For field operators, we quote only when needed.
+    private static func makeAnyScopeORQuery(fromFreeText input: String) -> String {
+        let cleaned = input
+            .replacingOccurrences(of: "\"", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !cleaned.isEmpty else { return input }
+
+        let fieldTerm = quoteIfNeeded(cleaned)
+        // Example: (Fitzek OR intitle:Fitzek OR inauthor:Fitzek)
+        // Example: (Andreas Eschbach OR intitle:"Andreas Eschbach" OR inauthor:"Andreas Eschbach")
+        return "(\(cleaned) OR intitle:\(fieldTerm) OR inauthor:\(fieldTerm))"
     }
 }
