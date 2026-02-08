@@ -103,9 +103,6 @@ struct SettingsView: View {
                     } label: {
                         Label("CSV Import/Export", systemImage: "tablecells")
                     }
-
-                    Text("PDF-Export (kommt)")
-                    Text("Markdown-Export (kommt)")
                 }
 
                 Section("Sync") {
@@ -210,6 +207,13 @@ struct SettingsView: View {
                             .foregroundStyle(.red)
                     }
                 }
+
+                Section("Info") {
+                    LabeledContent("Version", value: appVersionString)
+                        .monospacedDigit()
+                    LabeledContent("Build", value: appBuildString)
+                        .monospacedDigit()
+                }
             }
             .navigationTitle("Einstellungen")
             .navigationDestination(for: SettingsRoute.self) { route in
@@ -272,6 +276,16 @@ struct SettingsView: View {
         }
 
         pathData = (try? JSONEncoder().encode(representation)) ?? Data()
+    }
+
+    // MARK: - App Info
+
+    private var appVersionString: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
+    }
+
+    private var appBuildString: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "–"
     }
 
     @MainActor
