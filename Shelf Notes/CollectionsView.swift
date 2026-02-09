@@ -57,8 +57,6 @@ struct CollectionsView: View {
                                         .monospacedDigit()
                                 }
                                 Spacer()
-                                Image(systemName: "chevron.right")
-                                    .foregroundStyle(.tertiary)
                             }
                             .padding(.vertical, 2)
                         }
