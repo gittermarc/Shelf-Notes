@@ -64,23 +64,37 @@ extension LibraryView {
                 List {
                     ForEach(sections) { section in
                         Section {
-                            ForEach(section.books) { book in
-                                NavigationLink {
-                                    BookDetailView(book: book)
-                                } label: {
-                                    BookRowView(book: book)
+                            if isSelectionMode {
+                                ForEach(section.books) { book in
+                                    selectableListRow(book)
+                                        .listRowInsets(
+                                            EdgeInsets(
+                                                top: CGFloat(libraryRowVerticalInset),
+                                                leading: 16,
+                                                bottom: CGFloat(libraryRowVerticalInset),
+                                                trailing: 16
+                                            )
+                                        )
                                 }
-                                .listRowInsets(
-                                    EdgeInsets(
-                                        top: CGFloat(libraryRowVerticalInset),
-                                        leading: 16,
-                                        bottom: CGFloat(libraryRowVerticalInset),
-                                        trailing: 16
+                            } else {
+                                ForEach(section.books) { book in
+                                    NavigationLink {
+                                        BookDetailView(book: book)
+                                    } label: {
+                                        BookRowView(book: book)
+                                    }
+                                    .listRowInsets(
+                                        EdgeInsets(
+                                            top: CGFloat(libraryRowVerticalInset),
+                                            leading: 16,
+                                            bottom: CGFloat(libraryRowVerticalInset),
+                                            trailing: 16
+                                        )
                                     )
-                                )
-                            }
-                            .onDelete { offsets in
-                                deleteBooksInSection(section.books, offsets: offsets)
+                                }
+                                .onDelete { offsets in
+                                    deleteBooksInSection(section.books, offsets: offsets)
+                                }
                             }
                         } header: {
                             Text(section.key)

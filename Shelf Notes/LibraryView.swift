@@ -35,11 +35,22 @@ struct LibraryView: View {
     @State var selectedTag: String? = nil
     @State var onlyWithNotes: Bool = false
 
+    // Multi-select (bulk actions)
+    // Note: Must be non-private to be accessible from the split extension files.
+    @State var isSelectionMode: Bool = false
+    @State var selectedBookIDs: Set<UUID> = []
+    @State var showingBulkAddTagAlert: Bool = false
+    @State var bulkTagDraft: String = ""
+    @State var showingBulkRemoveTagDialog: Bool = false
+    @State var bulkRemoveTagOptions: [String] = []
+    @State var showingBulkAddToCollectionSheet: Bool = false
+    @State var showingBulkDeleteConfirm: Bool = false
+
     // PERF: Cache expensive derived state (filtering/sorting/alpha sections).
     // Header expand/collapse animates the layout and triggers many body recalculations.
     // Without caching, we would re-run filter+sort (+ alpha bucketing) every frame.
-    @State private var derivedReady: Bool = false
-    @State private var cachedDisplayedBooks: [Book] = []
+    @State var derivedReady: Bool = false
+    @State var cachedDisplayedBooks: [Book] = []
     @State private var cachedCounts: LibraryStatusCounts = .zero
     @State private var cachedAlphaSections: [AlphaSection] = []
     @State private var cachedAlphaLetters: [String] = []
@@ -103,7 +114,7 @@ struct LibraryView: View {
                     }
                 }
             }
-            .navigationTitle("Bibliothek")
+            .navigationTitle(isSelectionMode ? "\(selectedBookIDs.count) ausgewählt" : "Bibliothek")
             .searchable(text: $searchText, prompt: "Suche Titel, Autor, Tag …")
             .toolbar { libraryToolbar }
             .onAppear {
@@ -163,6 +174,12 @@ struct LibraryView: View {
             .sheet(isPresented: $showingAddSheet) {
                 AddBookView()
             }
+            .sheet(isPresented: $showingBulkAddToCollectionSheet) {
+                BulkAddToCollectionSheet(selectionCount: selectedBookIDs.count) { col in
+                    bulkAddSelectedBooks(to: col)
+                    showingBulkAddToCollectionSheet = false
+                }
+            }
             .alert("Buch löschen?", isPresented: Binding(
                 get: { bookToDelete != nil },
                 set: { if !$0 { bookToDelete = nil } }
@@ -176,6 +193,37 @@ struct LibraryView: View {
                 }
             } message: { book in
                 Text("\"\(bestTitle(book))\" wird aus deiner Bibliothek gelöscht.")
+            }
+            .alert("Bücher löschen?", isPresented: $showingBulkDeleteConfirm) {
+                Button("Löschen", role: .destructive) {
+                    bulkDeleteSelectedBooks()
+                }
+                Button("Abbrechen", role: .cancel) {}
+            } message: {
+                Text("\(selectedBookIDs.count) Bücher werden aus deiner Bibliothek gelöscht.")
+            }
+            .alert("Tag hinzufügen", isPresented: $showingBulkAddTagAlert) {
+                TextField("z.B. Thriller, NYC", text: $bulkTagDraft)
+
+                Button("Hinzufügen") {
+                    bulkAddTagsFromDraft()
+                }
+
+                Button("Abbrechen", role: .cancel) {
+                    bulkTagDraft = ""
+                }
+            } message: {
+                Text("Wird zu \(selectedBookIDs.count) Büchern hinzugefügt.")
+            }
+            .confirmationDialog("Tag entfernen", isPresented: $showingBulkRemoveTagDialog, titleVisibility: .visible) {
+                ForEach(bulkRemoveTagOptions, id: \.self) { tag in
+                    Button("#\(tag)", role: .destructive) {
+                        bulkRemoveTag(tag)
+                    }
+                }
+                Button("Abbrechen", role: .cancel) {}
+            } message: {
+                Text("Von \(selectedBookIDs.count) Büchern entfernen.")
             }
         }
     }

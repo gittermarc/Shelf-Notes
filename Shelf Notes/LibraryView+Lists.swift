@@ -13,23 +13,37 @@ extension LibraryView {
 
     func plainList(displayedBooks: [Book]) -> some View {
         List {
-            ForEach(displayedBooks) { book in
-                NavigationLink {
-                    BookDetailView(book: book)
-                } label: {
-                    BookRowView(book: book)
+            if isSelectionMode {
+                ForEach(displayedBooks) { book in
+                    selectableListRow(book)
+                        .listRowInsets(
+                            EdgeInsets(
+                                top: CGFloat(libraryRowVerticalInset),
+                                leading: 16,
+                                bottom: CGFloat(libraryRowVerticalInset),
+                                trailing: 16
+                            )
+                        )
                 }
-                .listRowInsets(
-                    EdgeInsets(
-                        top: CGFloat(libraryRowVerticalInset),
-                        leading: 16,
-                        bottom: CGFloat(libraryRowVerticalInset),
-                        trailing: 16
+            } else {
+                ForEach(displayedBooks) { book in
+                    NavigationLink {
+                        BookDetailView(book: book)
+                    } label: {
+                        BookRowView(book: book)
+                    }
+                    .listRowInsets(
+                        EdgeInsets(
+                            top: CGFloat(libraryRowVerticalInset),
+                            leading: 16,
+                            bottom: CGFloat(libraryRowVerticalInset),
+                            trailing: 16
+                        )
                     )
-                )
-            }
-            .onDelete { offsets in
-                deleteBooks(at: offsets, in: displayedBooks)
+                }
+                .onDelete { offsets in
+                    deleteBooks(at: offsets, in: displayedBooks)
+                }
             }
         }
     }

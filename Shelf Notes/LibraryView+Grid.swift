@@ -27,18 +27,37 @@ extension LibraryView {
             ScrollView {
                 LazyVGrid(columns: columns, spacing: spacing) {
                     ForEach(displayedBooks) { book in
-                        NavigationLink {
-                            BookDetailView(book: book)
-                        } label: {
-                            LibraryGridItemView(
-                                book: book,
-                                itemWidth: itemWidth,
-                                onRequestDelete: {
-                                    bookToDelete = book
-                                }
-                            )
+                        if isSelectionMode {
+                            Button {
+                                toggleSelection(book)
+                            } label: {
+                                LibraryGridItemView(
+                                    book: book,
+                                    itemWidth: itemWidth,
+                                    isSelectionMode: true,
+                                    isSelected: isSelected(book),
+                                    onRequestDelete: {
+                                        bookToDelete = book
+                                    }
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            NavigationLink {
+                                BookDetailView(book: book)
+                            } label: {
+                                LibraryGridItemView(
+                                    book: book,
+                                    itemWidth: itemWidth,
+                                    isSelectionMode: false,
+                                    isSelected: false,
+                                    onRequestDelete: {
+                                        bookToDelete = book
+                                    }
+                                )
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, sidePadding)
@@ -51,6 +70,8 @@ extension LibraryView {
 private struct LibraryGridItemView: View {
     let book: Book
     let itemWidth: CGFloat
+    let isSelectionMode: Bool
+    let isSelected: Bool
     let onRequestDelete: () -> Void
 
     // Keep behavior aligned with the existing row appearance settings.
@@ -211,19 +232,35 @@ private struct LibraryGridItemView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(.secondary.opacity(0.18), lineWidth: 1)
+                .stroke(
+                    (isSelectionMode && isSelected) ? .tint : .secondary.opacity(0.18),
+                    lineWidth: (isSelectionMode && isSelected) ? 2 : 1
+                )
         )
+        .overlay(alignment: .topTrailing) {
+            if isSelectionMode {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3.weight(.semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(isSelected ? .tint : .secondary)
+                    .padding(8)
+                    .background(.thinMaterial, in: Circle())
+                    .padding(6)
+            }
+        }
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .contextMenu {
-            Button(role: .destructive) {
-                onRequestDelete()
-            } label: {
-                Label("Löschen", systemImage: "trash")
+            if !isSelectionMode {
+                Button(role: .destructive) {
+                    onRequestDelete()
+                } label: {
+                    Label("Löschen", systemImage: "trash")
+                }
             }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(book.title)
-        .accessibilityHint("Tippen für Details. Long-Press für Aktionen")
+        .accessibilityHint(isSelectionMode ? "Tippen zum Auswählen" : "Tippen für Details. Long-Press für Aktionen")
     }
 
     private var placeholder: some View {
