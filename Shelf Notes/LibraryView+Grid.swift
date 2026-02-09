@@ -143,124 +143,187 @@ private struct LibraryGridItemView: View {
     }
 
     var body: some View {
+        card
+    }
+
+    // MARK: - Card Composition
+
+    private var card: some View {
         VStack(alignment: .leading, spacing: max(4, CGFloat(rowContentSpacing))) {
-            if showCovers {
-                LibraryRowCoverView(
-                    book: book,
-                    size: coverSize,
-                    cornerRadius: resolvedCoverRadius,
-                    contentMode: resolvedContentMode,
-                    prefersHighResCover: true
-                )
-                .shadow(
-                    color: coverShadowEnabled ? .black.opacity(0.12) : .clear,
-                    radius: coverShadowEnabled ? 4 : 0,
-                    x: 0,
-                    y: coverShadowEnabled ? 2 : 0
-                )
-            } else {
-                placeholder
-            }
-
-            Text(book.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Ohne Titel" : book.title)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-
-            if showAuthor, !book.author.isEmpty {
-                Text(book.author)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            if !metaParts.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(Array(metaParts.enumerated()), id: \.offset) { idx, part in
-                        if idx > 0 {
-                            Text("•")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        switch part {
-                        case .status(let text):
-                            Text(text)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        case .readDate(let text):
-                            Text(text)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        case .rating(let value):
-                            HStack(spacing: 4) {
-                                StarsView(rating: value)
-                                Text(String(format: "%.1f", value))
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .monospacedDigit()
-                            }
-                        }
-                    }
-
-                    Spacer(minLength: 0)
-                }
-            }
-
-            if showTags, !book.tags.isEmpty, maxTags > 0 {
-                let n = max(1, min(maxTags, book.tags.count))
-                let visible = Array(book.tags.prefix(n))
-                let remaining = max(0, book.tags.count - visible.count)
-
-                switch resolvedTagStyle {
-                case .hashtags:
-                    Text(visible.map { "#\($0)" }.joined(separator: " "))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                case .chips:
-                    TagPillsRow(tags: visible, remainingCount: remaining)
-                }
-            }
+            coverBlock
+            titleBlock
+            authorBlock
+            metaBlock
+            tagsBlock
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.thinMaterial)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(
-                    (isSelectionMode && isSelected) ? .tint : .secondary.opacity(0.18),
-                    lineWidth: (isSelectionMode && isSelected) ? 2 : 1
-                )
-        )
+        .background(cardBackground)
+        .overlay(cardBorder)
         .overlay(alignment: .topTrailing) {
-            if isSelectionMode {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3.weight(.semibold))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(isSelected ? .tint : .secondary)
-                    .padding(8)
-                    .background(.thinMaterial, in: Circle())
-                    .padding(6)
-            }
+            selectionBadge
         }
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .contextMenu {
-            if !isSelectionMode {
-                Button(role: .destructive) {
-                    onRequestDelete()
-                } label: {
-                    Label("Löschen", systemImage: "trash")
-                }
-            }
-        }
+        .contextMenu { contextMenuContent }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(book.title)
         .accessibilityHint(isSelectionMode ? "Tippen zum Auswählen" : "Tippen für Details. Long-Press für Aktionen")
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(.thinMaterial)
+    }
+
+    private var cardBorder: some View {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .stroke(borderStrokeStyle, lineWidth: borderLineWidth)
+    }
+
+    private var borderLineWidth: CGFloat {
+        (isSelectionMode && isSelected) ? 2 : 1
+    }
+
+    private var borderStrokeStyle: AnyShapeStyle {
+        if isSelectionMode && isSelected {
+            return AnyShapeStyle(.tint)
+        }
+        return AnyShapeStyle(.secondary.opacity(0.18))
+    }
+
+    // MARK: - Blocks
+
+    @ViewBuilder
+    private var coverBlock: some View {
+        if showCovers {
+            LibraryRowCoverView(
+                book: book,
+                size: coverSize,
+                cornerRadius: resolvedCoverRadius,
+                contentMode: resolvedContentMode,
+                prefersHighResCover: true
+            )
+            .shadow(
+                color: coverShadowEnabled ? .black.opacity(0.12) : .clear,
+                radius: coverShadowEnabled ? 4 : 0,
+                x: 0,
+                y: coverShadowEnabled ? 2 : 0
+            )
+        } else {
+            placeholder
+        }
+    }
+
+    private var titleBlock: some View {
+        Text(book.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Ohne Titel" : book.title)
+            .font(.subheadline.weight(.semibold))
+            .lineLimit(2)
+            .multilineTextAlignment(.leading)
+    }
+
+    @ViewBuilder
+    private var authorBlock: some View {
+        if showAuthor, !book.author.isEmpty {
+            Text(book.author)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    @ViewBuilder
+    private var metaBlock: some View {
+        if !metaParts.isEmpty {
+            HStack(spacing: 6) {
+                ForEach(Array(metaParts.enumerated()), id: \.offset) { idx, part in
+                    if idx > 0 {
+                        Text("•")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    metaPartView(part)
+                }
+
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func metaPartView(_ part: MetaPart) -> some View {
+        switch part {
+        case .status(let text):
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .readDate(let text):
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        case .rating(let value):
+            HStack(spacing: 4) {
+                StarsView(rating: value)
+                Text(String(format: "%.1f", value))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+    }
+
+    private var visibleTags: [String] {
+        guard maxTags > 0 else { return [] }
+        let n = max(1, min(maxTags, book.tags.count))
+        return Array(book.tags.prefix(n))
+    }
+
+    private var remainingTagsCount: Int {
+        max(0, book.tags.count - visibleTags.count)
+    }
+
+    @ViewBuilder
+    private var tagsBlock: some View {
+        if showTags, !visibleTags.isEmpty {
+            switch resolvedTagStyle {
+            case .hashtags:
+                Text(visibleTags.map { "#\($0)" }.joined(separator: " "))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            case .chips:
+                TagPillsRow(tags: visibleTags, remainingCount: remainingTagsCount)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var selectionBadge: some View {
+        if isSelectionMode {
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.title3.weight(.semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(selectionBadgeStyle)
+                .padding(8)
+                .background(.thinMaterial, in: Circle())
+                .padding(6)
+        }
+    }
+
+    private var selectionBadgeStyle: AnyShapeStyle {
+        isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private var contextMenuContent: some View {
+        if !isSelectionMode {
+            Button(role: .destructive) {
+                onRequestDelete()
+            } label: {
+                Label("Löschen", systemImage: "trash")
+            }
+        }
     }
 
     private var placeholder: some View {

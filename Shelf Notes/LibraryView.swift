@@ -78,99 +78,133 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            // PERF: Use cached derived state so header animations stay smooth even with large libraries.
-            let displayed = derivedReady ? cachedDisplayedBooks : displayedBooks
-            let counts = derivedReady ? cachedCounts : statusCounts(in: books)
+        attachSheetsAndAlerts(
+            NavigationStack {
+                libraryContent
+            }
+        )
+    }
 
-            let alphaSections = derivedReady ? cachedAlphaSections : buildAlphaSections(from: displayed)
-            let alphaLetters = derivedReady ? cachedAlphaLetters : alphaSections.map(\.key)
+    // MARK: - Body building blocks (helps the Swift compiler and keeps the file readable)
 
-            let showAlphaIndexHint = (libraryLayoutMode == .list)
-            && (sortField == .title)
-            && (displayed.count >= Self.alphaIndexHintThreshold)
+    private var displayedForUI: [Book] {
+        derivedReady ? cachedDisplayedBooks : displayedBooks
+    }
 
-            VStack(spacing: 0) {
-                filterBar(displayedBooks: displayed, counts: counts, showAlphaIndexHint: showAlphaIndexHint)
+    private var countsForUI: LibraryStatusCounts {
+        derivedReady ? cachedCounts : statusCounts(in: books)
+    }
 
-                if showAlphaIndexHint {
-                    alphaIndexHint
-                }
+    private func alphaSectionsForUI(displayed: [Book]) -> [AlphaSection] {
+        derivedReady ? cachedAlphaSections : buildAlphaSections(from: displayed)
+    }
 
-                Group {
-                    if displayed.isEmpty {
-                        emptyState
+    private func alphaLettersForUI(sections: [AlphaSection]) -> [String] {
+        derivedReady ? cachedAlphaLetters : sections.map(\.key)
+    }
+
+    private func shouldShowAlphaIndexHint(displayedCount: Int) -> Bool {
+        (libraryLayoutMode == .list)
+        && (sortField == .title)
+        && (displayedCount >= Self.alphaIndexHintThreshold)
+    }
+
+    @ViewBuilder
+    private var libraryContent: some View {
+        // Explicit types here massively reduce SwiftUI's generic inference work.
+        let displayed: [Book] = displayedForUI
+        let counts: LibraryStatusCounts = countsForUI
+
+        let alphaSections: [AlphaSection] = alphaSectionsForUI(displayed: displayed)
+        let alphaLetters: [String] = alphaLettersForUI(sections: alphaSections)
+
+        let showAlphaIndexHint: Bool = shouldShowAlphaIndexHint(displayedCount: displayed.count)
+
+        VStack(spacing: 0) {
+            filterBar(displayedBooks: displayed, counts: counts, showAlphaIndexHint: showAlphaIndexHint)
+
+            if showAlphaIndexHint {
+                alphaIndexHint
+            }
+
+            Group {
+                if displayed.isEmpty {
+                    emptyState
+                } else {
+                    if libraryLayoutMode == .grid {
+                        gridView(displayedBooks: displayed)
                     } else {
-                        if libraryLayoutMode == .grid {
-                            gridView(displayedBooks: displayed)
+                        // Alphabet index makes most sense for title sort
+                        if sortField == .title {
+                            alphaIndexedList(sections: alphaSections, letters: alphaLetters)
                         } else {
-                            // Alphabet index makes most sense for title sort
-                            if sortField == .title {
-                                alphaIndexedList(sections: alphaSections, letters: alphaLetters)
-                            } else {
-                                plainList(displayedBooks: displayed)
-                            }
+                            plainList(displayedBooks: displayed)
                         }
                     }
                 }
             }
-            .navigationTitle(isSelectionMode ? "\(selectedBookIDs.count) ausgewählt" : "Bibliothek")
-            .searchable(text: $searchText, prompt: "Suche Titel, Autor, Tag …")
-            .toolbar { libraryToolbar }
-            .onAppear {
+        }
+        .navigationTitle(isSelectionMode ? "\(selectedBookIDs.count) ausgewählt" : "Bibliothek")
+        .searchable(text: $searchText, prompt: "Suche Titel, Autor, Tag …")
+        .toolbar { libraryToolbar }
+        .onAppear {
+            if libraryHeaderStyle == .standard {
+                headerExpanded = libraryHeaderDefaultExpanded
+            } else {
+                headerExpanded = false
+            }
+
+            if books.isEmpty { headerExpanded = true }
+            enforceRatingRuleIfNeeded()
+
+            // Ensure derived cache exists right away (and refresh when returning from detail views).
+            updateDerivedCacheNow()
+        }
+        .onChange(of: books.count) { _, _ in
+            updateDerivedCacheNow()
+        }
+        .onChange(of: selectedStatus) { _, _ in
+            updateDerivedCacheNow()
+        }
+        .onChange(of: selectedTag) { _, _ in
+            updateDerivedCacheNow()
+        }
+        .onChange(of: onlyWithNotes) { _, _ in
+            updateDerivedCacheNow()
+        }
+        .onChange(of: sortFieldRaw) { _, _ in
+            updateDerivedCacheNow()
+        }
+        .onChange(of: sortAscending) { _, _ in
+            updateDerivedCacheNow()
+        }
+        .onChange(of: libraryLayoutModeRaw) { _, _ in
+            // Clears/warms alpha cache depending on list vs grid.
+            updateDerivedCacheNow()
+        }
+        .onChange(of: searchText) { _, _ in
+            // Debounce typing to avoid re-filtering/sorting the full library for every keystroke.
+            scheduleDerivedCacheRecomputeDebounced()
+        }
+        .onChange(of: libraryHeaderStyleRaw) { _, _ in
+            withAnimation(.easeInOut(duration: 0.18)) {
                 if libraryHeaderStyle == .standard {
                     headerExpanded = libraryHeaderDefaultExpanded
                 } else {
                     headerExpanded = false
                 }
+            }
+        }
+        .onChange(of: libraryHeaderDefaultExpanded) { _, newValue in
+            guard libraryHeaderStyle == .standard else { return }
+            withAnimation(.easeInOut(duration: 0.18)) {
+                headerExpanded = newValue
+            }
+        }
+    }
 
-                if books.isEmpty { headerExpanded = true }
-                enforceRatingRuleIfNeeded()
-
-                // Ensure derived cache exists right away (and refresh when returning from detail views).
-                updateDerivedCacheNow()
-            }
-            .onChange(of: books.count) { _, _ in
-                updateDerivedCacheNow()
-            }
-            .onChange(of: selectedStatus) { _, _ in
-                updateDerivedCacheNow()
-            }
-            .onChange(of: selectedTag) { _, _ in
-                updateDerivedCacheNow()
-            }
-            .onChange(of: onlyWithNotes) { _, _ in
-                updateDerivedCacheNow()
-            }
-            .onChange(of: sortFieldRaw) { _, _ in
-                updateDerivedCacheNow()
-            }
-            .onChange(of: sortAscending) { _, _ in
-                updateDerivedCacheNow()
-            }
-            .onChange(of: libraryLayoutModeRaw) { _, _ in
-                // Clears/warms alpha cache depending on list vs grid.
-                updateDerivedCacheNow()
-            }
-            .onChange(of: searchText) { _, _ in
-                // Debounce typing to avoid re-filtering/sorting the full library for every keystroke.
-                scheduleDerivedCacheRecomputeDebounced()
-            }
-            .onChange(of: libraryHeaderStyleRaw) { _, _ in
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    if libraryHeaderStyle == .standard {
-                        headerExpanded = libraryHeaderDefaultExpanded
-                    } else {
-                        headerExpanded = false
-                    }
-                }
-            }
-            .onChange(of: libraryHeaderDefaultExpanded) { _, newValue in
-                guard libraryHeaderStyle == .standard else { return }
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    headerExpanded = newValue
-                }
-            }
+    private func attachSheetsAndAlerts<Content: View>(_ content: Content) -> some View {
+        content
             .sheet(isPresented: $showingAddSheet) {
                 AddBookView()
             }
@@ -225,10 +259,9 @@ struct LibraryView: View {
             } message: {
                 Text("Von \(selectedBookIDs.count) Büchern entfernen.")
             }
-        }
     }
 
-    // MARK: - Derived cache updates
+// MARK: - Derived cache updates
 
     @MainActor
     private func updateDerivedCacheNow() {
