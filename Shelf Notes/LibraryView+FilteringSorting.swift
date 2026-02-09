@@ -30,7 +30,12 @@ extension LibraryView {
     // MARK: Filtering + Sorting
 
     var filteredBooks: [Book] {
-        books.filter { book in
+        // PERF: `filteredBooks` is evaluated frequently (search typing, header expand/collapse, state changes).
+        // Avoid per-book work where possible.
+        let s = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasSearch = !s.isEmpty
+
+        return books.filter { book in
             if let selectedStatus, book.status != selectedStatus { return false }
 
             if let selectedTag, !book.tags.contains(where: { $0.caseInsensitiveCompare(selectedTag) == .orderedSame }) {
@@ -42,8 +47,7 @@ extension LibraryView {
                 if !book.notes.contains(where: { !$0.isWhitespace }) { return false }
             }
 
-            let s = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !s.isEmpty {
+            if hasSearch {
                 // PERF: Avoid building a huge lowercased "haystack" string per book.
                 if book.title.localizedCaseInsensitiveContains(s) { return true }
                 if book.author.localizedCaseInsensitiveContains(s) { return true }

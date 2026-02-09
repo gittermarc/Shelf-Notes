@@ -11,15 +11,17 @@ extension StatisticsView {
     /// - O(tags+categories) per book (usually tiny)
     /// - **No** deep iteration over readingSessions durations
     func booksSignature(_ books: [Book]) -> Int {
-        var hasher = Hasher()
-        hasher.combine(books.count)
+        // PERF: The previous implementation sorted `books` by UUID to keep the signature deterministic.
+        // Sorting is O(n log n) and can show up as UI hitching on frequent view updates.
+        //
+        // Instead we compute a per-book hash and aggregate it in an order-independent way (XOR + sum).
+        // This keeps the signature stable even if SwiftData returns the array in a different order.
 
         func dayStamp(_ d: Date?) -> Int {
             guard let d else { return -1 }
             return Int(d.timeIntervalSince1970 / 86_400) // coarse day resolution
         }
 
-        // Aggregate common fields that influence the visible stats.
         var finished = 0
         var reading = 0
         var toRead = 0
@@ -28,38 +30,46 @@ extension StatisticsView {
         var tagTotal = 0
         var categoryTotal = 0
 
-        // Deterministic order so signature doesn't fluctuate.
-        for b in books.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
-            hasher.combine(b.id)
-            hasher.combine(b.statusRawValue)
+        var xorAgg: Int = 0
+        var sumAgg: Int = 0
 
-            hasher.combine(dayStamp(b.readFrom))
-            hasher.combine(dayStamp(b.readTo))
+        for b in books {
+            var h = Hasher()
 
-            hasher.combine(b.pageCount ?? 0)
-            hasher.combine(b.author)
-            hasher.combine(b.publisher ?? "")
-            hasher.combine(b.language ?? "")
-            hasher.combine(b.mainCategory ?? "")
+            h.combine(b.id)
+            h.combine(b.statusRawValue)
+
+            h.combine(dayStamp(b.readFrom))
+            h.combine(dayStamp(b.readTo))
+
+            h.combine(b.pageCount ?? 0)
+            h.combine(b.author)
+            h.combine(b.publisher ?? "")
+            h.combine(b.language ?? "")
+            h.combine(b.mainCategory ?? "")
 
             // User ratings (6 criteria, 0 = not rated)
-            hasher.combine(b.userRatingPlot)
-            hasher.combine(b.userRatingCharacters)
-            hasher.combine(b.userRatingWritingStyle)
-            hasher.combine(b.userRatingAtmosphere)
-            hasher.combine(b.userRatingGenreFit)
-            hasher.combine(b.userRatingPresentation)
+            h.combine(b.userRatingPlot)
+            h.combine(b.userRatingCharacters)
+            h.combine(b.userRatingWritingStyle)
+            h.combine(b.userRatingAtmosphere)
+            h.combine(b.userRatingGenreFit)
+            h.combine(b.userRatingPresentation)
 
             // Order shouldn't matter.
             if !b.categories.isEmpty {
-                for c in b.categories.sorted() { hasher.combine(c) }
+                for c in b.categories.sorted() { h.combine(c) }
             }
             if !b.tags.isEmpty {
-                for t in b.tags.sorted() { hasher.combine(t) }
+                for t in b.tags.sorted() { h.combine(t) }
             }
 
             // We include only the session count (not durations) to keep this cheap.
-            hasher.combine(b.readingSessionsSafe.count)
+            h.combine(b.readingSessionsSafe.count)
+
+            let bookHash = h.finalize()
+            xorAgg ^= bookHash
+            sumAgg &+= bookHash
 
             switch b.status {
             case .finished: finished += 1
@@ -72,6 +82,11 @@ extension StatisticsView {
             tagTotal += b.tags.count
             categoryTotal += b.categories.count
         }
+
+        var hasher = Hasher()
+        hasher.combine(books.count)
+        hasher.combine(xorAgg)
+        hasher.combine(sumAgg)
 
         hasher.combine(finished)
         hasher.combine(reading)

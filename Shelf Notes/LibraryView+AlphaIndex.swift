@@ -44,9 +44,11 @@ extension LibraryView {
         let folded = String(first).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
         let upper = folded.uppercased()
 
-        if upper.range(of: "^[A-Z]$", options: .regularExpression) != nil {
-            return upper
-        }
+        // PERF: Avoid regex here – this is called for every visible row when building the alpha index.
+        // After folding/uppercasing we only accept ASCII A–Z as section headers.
+        guard upper.unicodeScalars.count == 1, let scalar = upper.unicodeScalars.first else { return "#" }
+        let v = scalar.value
+        if v >= 65 && v <= 90 { return upper } // "A".."Z"
         return "#"
     }
 
