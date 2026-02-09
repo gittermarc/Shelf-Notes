@@ -147,6 +147,10 @@ struct LibraryView: View {
         .navigationTitle(isSelectionMode ? "\(selectedBookIDs.count) ausgewählt" : "Bibliothek")
         .searchable(text: $searchText, prompt: "Suche Titel, Autor, Tag …")
         .toolbar { libraryToolbar }
+        // Bulk-Actions nutzen eine Bottom-Toolbar (.bottomBar). Innerhalb einer TabView
+        // landet diese sonst hinter der TabBar und ist nicht tappable.
+        // Deshalb blenden wir die TabBar nur während der Mehrfachauswahl aus.
+        .toolbar(isSelectionMode ? .hidden : .visible, for: .tabBar)
         .onAppear {
             if libraryHeaderStyle == .standard {
                 headerExpanded = libraryHeaderDefaultExpanded
