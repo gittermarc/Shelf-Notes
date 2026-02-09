@@ -11,7 +11,7 @@ extension LibraryView {
 
     // MARK: - Lists
 
-    var plainList: some View {
+    func plainList(displayedBooks: [Book]) -> some View {
         List {
             ForEach(displayedBooks) { book in
                 NavigationLink {
@@ -28,7 +28,9 @@ extension LibraryView {
                     )
                 )
             }
-            .onDelete(perform: deleteBooks)
+            .onDelete { offsets in
+                deleteBooks(at: offsets, in: displayedBooks)
+            }
         }
     }
 

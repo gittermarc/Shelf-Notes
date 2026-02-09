@@ -18,8 +18,7 @@ extension LibraryView {
         let books: [Book]
     }
 
-    private var alphaSections: [AlphaSection] {
-        let input = displayedBooks
+    private func buildAlphaSections(from input: [Book]) -> [AlphaSection] {
         var buckets: [String: [Book]] = [:]
 
         for b in input {
@@ -51,15 +50,14 @@ extension LibraryView {
         return "#"
     }
 
-    private var alphaIndexLetters: [String] {
-        alphaSections.map(\.key)
-    }
+    func alphaIndexedList(displayedBooks: [Book]) -> some View {
+        let sections = buildAlphaSections(from: displayedBooks)
+        let letters = sections.map(\.key)
 
-    var alphaIndexedList: some View {
-        ScrollViewReader { proxy in
+        return ScrollViewReader { proxy in
             ZStack(alignment: .trailing) {
                 List {
-                    ForEach(alphaSections) { section in
+                    ForEach(sections) { section in
                         Section {
                             ForEach(section.books) { book in
                                 NavigationLink {
@@ -90,7 +88,7 @@ extension LibraryView {
                 }
 
                 VStack(spacing: 2) {
-                    ForEach(alphaIndexLetters, id: \.self) { letter in
+                    ForEach(letters, id: \.self) { letter in
                         Button {
                             withAnimation(.snappy) {
                                 proxy.scrollTo(letter, anchor: .top)

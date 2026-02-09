@@ -11,7 +11,7 @@ extension LibraryView {
 
     // MARK: - Grid
 
-    var gridView: some View {
+    func gridView(displayedBooks: [Book]) -> some View {
         GeometryReader { geo in
             let sidePadding: CGFloat = 16
             let spacing: CGFloat = 14

@@ -58,24 +58,33 @@ struct LibraryView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                filterBar
+            // PERF: Compute the derived list **once per render**.
+            // Previously, multiple sub-views referenced `displayedBooks` independently, which
+            // caused filtering + sorting to be re-run several times per frame (especially during
+            // the header expand/collapse animation).
+            let displayed = displayedBooks
+            let counts = statusCounts(in: books)
+            let showAlphaIndexHint = (libraryLayoutMode == .list) && (sortField == .title) && (displayed.count >= Self.alphaIndexHintThreshold)
 
-                if shouldShowAlphaIndexHint {
+            VStack(spacing: 0) {
+                filterBar(displayedBooks: displayed, counts: counts, showAlphaIndexHint: showAlphaIndexHint)
+
+                if showAlphaIndexHint {
                     alphaIndexHint
                 }
+
                 Group {
-                    if displayedBooks.isEmpty {
+                    if displayed.isEmpty {
                         emptyState
                     } else {
                         if libraryLayoutMode == .grid {
-                            gridView
+                            gridView(displayedBooks: displayed)
                         } else {
                             // Alphabet index makes most sense for title sort
                             if sortField == .title {
-                                alphaIndexedList
+                                alphaIndexedList(displayedBooks: displayed)
                             } else {
-                                plainList
+                                plainList(displayedBooks: displayed)
                             }
                         }
                     }
@@ -132,7 +141,6 @@ struct LibraryView: View {
     var libraryHeaderStyle: LibraryHeaderStyleOption {
         LibraryHeaderStyleOption(rawValue: libraryHeaderStyleRaw) ?? .standard
     }
-
 
     var libraryLayoutMode: LibraryLayoutModeOption {
         LibraryLayoutModeOption(rawValue: libraryLayoutModeRaw) ?? .list

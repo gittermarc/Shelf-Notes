@@ -166,8 +166,4 @@ extension LibraryView {
         return t.isEmpty ? "Ohne Titel" : t
     }
 
-    // A–Z hint logic (only show when it’s actually helpful)
-    var shouldShowAlphaIndexHint: Bool {
-        libraryLayoutMode == .list && sortField == .title && displayedBooks.count >= Self.alphaIndexHintThreshold
-    }
 }

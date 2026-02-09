@@ -18,6 +18,28 @@ extension LibraryView {
         var id: String { rawValue }
     }
 
+    // MARK: Counts (single-pass)
+
+    struct LibraryStatusCounts: Equatable {
+        var toRead: Int
+        var reading: Int
+        var finished: Int
+
+        static let zero = LibraryStatusCounts(toRead: 0, reading: 0, finished: 0)
+    }
+
+    func statusCounts(in books: [Book]) -> LibraryStatusCounts {
+        var counts = LibraryStatusCounts.zero
+        for b in books {
+            switch b.status {
+            case .toRead: counts.toRead += 1
+            case .reading: counts.reading += 1
+            case .finished: counts.finished += 1
+            }
+        }
+        return counts
+    }
+
     var quickSortModeBinding: Binding<QuickSortMode> {
         Binding(
             get: { sortField == .readDate ? .read : .added },
@@ -36,12 +58,12 @@ extension LibraryView {
         return trimmed.isEmpty && selectedStatus == nil && selectedTag == nil && !onlyWithNotes
     }
 
-    var shouldShowQuickSortSegment: Bool {
+    func shouldShowQuickSortSegment(counts: LibraryStatusCounts) -> Bool {
         // only show when it actually adds value
-        books.count >= 8 && finishedCount > 0
+        books.count >= 8 && counts.finished > 0
     }
 
-    // MARK: Header text + counts
+    // MARK: Header text
 
     var heroSubtitle: String {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -51,18 +73,6 @@ extension LibraryView {
         if let selectedStatus { return "Filter: \(selectedStatus.displayName)" }
         if onlyWithNotes { return "Filter: nur mit Notizen" }
         return "Dein Regal — \(books.count) Bücher"
-    }
-
-    var toReadCount: Int {
-        books.filter { $0.status == .toRead }.count
-    }
-
-    var readingCount: Int {
-        books.filter { $0.status == .reading }.count
-    }
-
-    var finishedCount: Int {
-        books.filter { $0.status == .finished }.count
     }
 
     func toggleStatusFilter(_ status: ReadingStatus) {
@@ -82,25 +92,44 @@ extension LibraryView {
     // MARK: Header UI
 
     @ViewBuilder
-    var filterBar: some View {
+    func filterBar(
+        displayedBooks: [Book],
+        counts: LibraryStatusCounts,
+        showAlphaIndexHint: Bool
+    ) -> some View {
         switch libraryHeaderStyle {
         case .hidden:
             EmptyView()
         case .compact:
-            compactFilterBar
+            compactFilterBar(displayedBooks: displayedBooks, counts: counts, showAlphaIndexHint: showAlphaIndexHint)
         case .standard:
-            standardFilterBar
+            standardFilterBar(displayedBooks: displayedBooks, counts: counts, showAlphaIndexHint: showAlphaIndexHint)
         }
     }
 
-    private var standardFilterBar: some View {
-        VStack(alignment: .leading, spacing: headerExpanded ? 10 : 8) {
+    private func standardFilterBar(
+        displayedBooks: [Book],
+        counts: LibraryStatusCounts,
+        showAlphaIndexHint: Bool
+    ) -> some View {
+        let showQuickSort = shouldShowQuickSortSegment(counts: counts)
+
+        return VStack(alignment: .leading, spacing: headerExpanded ? 10 : 8) {
             headerTopRowStandard
 
             if headerExpanded {
-                expandedHeaderContent
+                expandedHeaderContent(
+                    displayedBooks: displayedBooks,
+                    counts: counts,
+                    showQuickSortSegment: showQuickSort,
+                    showAlphaIndexHint: showAlphaIndexHint
+                )
             } else {
-                collapsedHeaderContent
+                collapsedHeaderContent(
+                    displayedCount: displayedBooks.count,
+                    showQuickSortSegment: showQuickSort,
+                    showAlphaIndexHint: showAlphaIndexHint
+                )
             }
         }
         .padding(.horizontal, 12)
@@ -108,11 +137,17 @@ extension LibraryView {
         .background(.ultraThinMaterial)
     }
 
-    private var compactFilterBar: some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private func compactFilterBar(
+        displayedBooks: [Book],
+        counts: LibraryStatusCounts,
+        showAlphaIndexHint: Bool
+    ) -> some View {
+        let showQuickSort = shouldShowQuickSortSegment(counts: counts)
+
+        return VStack(alignment: .leading, spacing: 8) {
             headerTopRowCompact
 
-            if shouldShowQuickSortSegment {
+            if showQuickSort {
                 Picker("", selection: quickSortModeBinding) {
                     Text(QuickSortMode.added.rawValue).tag(QuickSortMode.added)
                     Text(QuickSortMode.read.rawValue).tag(QuickSortMode.read)
@@ -121,7 +156,7 @@ extension LibraryView {
             }
 
             activeFilterChips
-            countLine
+            countLine(displayedCount: displayedBooks.count, showAlphaIndexHint: showAlphaIndexHint)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -190,12 +225,16 @@ extension LibraryView {
         }
     }
 
-    private var collapsedHeaderContent: some View {
+    private func collapsedHeaderContent(
+        displayedCount: Int,
+        showQuickSortSegment: Bool,
+        showAlphaIndexHint: Bool
+    ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             // Count line (always visible)
-            countLine
+            countLine(displayedCount: displayedCount, showAlphaIndexHint: showAlphaIndexHint)
 
-            if shouldShowQuickSortSegment {
+            if showQuickSortSegment {
                 Picker("", selection: quickSortModeBinding) {
                     Text(QuickSortMode.added.rawValue).tag(QuickSortMode.added)
                     Text(QuickSortMode.read.rawValue).tag(QuickSortMode.read)
@@ -207,7 +246,12 @@ extension LibraryView {
         }
     }
 
-    private var expandedHeaderContent: some View {
+    private func expandedHeaderContent(
+        displayedBooks: [Book],
+        counts: LibraryStatusCounts,
+        showQuickSortSegment: Bool,
+        showAlphaIndexHint: Bool
+    ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
 
             // Status overview (tap = quick filter)
@@ -215,7 +259,7 @@ extension LibraryView {
                 HStack(spacing: 10) {
                     LibraryStatCard(
                         title: "Will ich lesen",
-                        value: toReadCount,
+                        value: counts.toRead,
                         systemImage: "bookmark",
                         isActive: selectedStatus == .toRead
                     ) {
@@ -226,7 +270,7 @@ extension LibraryView {
 
                     LibraryStatCard(
                         title: "Lese ich gerade",
-                        value: readingCount,
+                        value: counts.reading,
                         systemImage: "book",
                         isActive: selectedStatus == .reading
                     ) {
@@ -237,7 +281,7 @@ extension LibraryView {
 
                     LibraryStatCard(
                         title: "Gelesen",
-                        value: finishedCount,
+                        value: counts.finished,
                         systemImage: "checkmark.seal",
                         isActive: selectedStatus == .finished
                     ) {
@@ -251,9 +295,9 @@ extension LibraryView {
 
             activeFilterChips
 
-            countLine
+            countLine(displayedCount: displayedBooks.count, showAlphaIndexHint: showAlphaIndexHint)
 
-            if shouldShowQuickSortSegment {
+            if showQuickSortSegment {
                 Picker("", selection: quickSortModeBinding) {
                     Text(QuickSortMode.added.rawValue).tag(QuickSortMode.added)
                     Text(QuickSortMode.read.rawValue).tag(QuickSortMode.read)
@@ -330,18 +374,18 @@ extension LibraryView {
         }
     }
 
-    private var countLine: some View {
+    private func countLine(displayedCount: Int, showAlphaIndexHint: Bool) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "number")
                 .foregroundStyle(.secondary)
 
-            Text("Bücher in deiner Liste: \(displayedBooks.count)")
+            Text("Bücher in deiner Liste: \(displayedCount)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             Spacer(minLength: 0)
 
-            if shouldShowAlphaIndexHint {
+            if showAlphaIndexHint {
                 Text("A–Z")
                     .font(.caption2.weight(.semibold))
                     .padding(.horizontal, 8)
