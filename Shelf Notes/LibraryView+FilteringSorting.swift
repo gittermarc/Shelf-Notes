@@ -38,19 +38,18 @@ extension LibraryView {
             }
 
             if onlyWithNotes {
-                if book.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
+                // Avoid allocating a trimmed copy for every book.
+                if !book.notes.contains(where: { !$0.isWhitespace }) { return false }
             }
 
             let s = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
             if !s.isEmpty {
-                let hay = [
-                    book.title,
-                    book.author,
-                    book.isbn13 ?? "",
-                    book.tags.joined(separator: " ")
-                ].joined(separator: " ").lowercased()
-
-                if !hay.contains(s.lowercased()) { return false }
+                // PERF: Avoid building a huge lowercased "haystack" string per book.
+                if book.title.localizedCaseInsensitiveContains(s) { return true }
+                if book.author.localizedCaseInsensitiveContains(s) { return true }
+                if (book.isbn13?.localizedCaseInsensitiveContains(s) ?? false) { return true }
+                if book.tags.contains(where: { $0.localizedCaseInsensitiveContains(s) }) { return true }
+                return false
             }
 
             return true

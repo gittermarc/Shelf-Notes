@@ -35,6 +35,16 @@ struct LibraryView: View {
     @State var selectedTag: String? = nil
     @State var onlyWithNotes: Bool = false
 
+    // PERF: Cache expensive derived state (filtering/sorting/alpha sections).
+    // Header expand/collapse animates the layout and triggers many body recalculations.
+    // Without caching, we would re-run filter+sort (+ alpha bucketing) every frame.
+    @State private var derivedReady: Bool = false
+    @State private var cachedDisplayedBooks: [Book] = []
+    @State private var cachedCounts: LibraryStatusCounts = .zero
+    @State private var cachedAlphaSections: [AlphaSection] = []
+    @State private var cachedAlphaLetters: [String] = []
+    @State private var pendingRecomputeTask: Task<Void, Never>? = nil
+
     // Grid delete (LazyVGrid has no swipe-to-delete)
     @State var bookToDelete: Book? = nil
 
@@ -58,13 +68,16 @@ struct LibraryView: View {
 
     var body: some View {
         NavigationStack {
-            // PERF: Compute the derived list **once per render**.
-            // Previously, multiple sub-views referenced `displayedBooks` independently, which
-            // caused filtering + sorting to be re-run several times per frame (especially during
-            // the header expand/collapse animation).
-            let displayed = displayedBooks
-            let counts = statusCounts(in: books)
-            let showAlphaIndexHint = (libraryLayoutMode == .list) && (sortField == .title) && (displayed.count >= Self.alphaIndexHintThreshold)
+            // PERF: Use cached derived state so header animations stay smooth even with large libraries.
+            let displayed = derivedReady ? cachedDisplayedBooks : displayedBooks
+            let counts = derivedReady ? cachedCounts : statusCounts(in: books)
+
+            let alphaSections = derivedReady ? cachedAlphaSections : buildAlphaSections(from: displayed)
+            let alphaLetters = derivedReady ? cachedAlphaLetters : alphaSections.map(\.key)
+
+            let showAlphaIndexHint = (libraryLayoutMode == .list)
+            && (sortField == .title)
+            && (displayed.count >= Self.alphaIndexHintThreshold)
 
             VStack(spacing: 0) {
                 filterBar(displayedBooks: displayed, counts: counts, showAlphaIndexHint: showAlphaIndexHint)
@@ -82,7 +95,7 @@ struct LibraryView: View {
                         } else {
                             // Alphabet index makes most sense for title sort
                             if sortField == .title {
-                                alphaIndexedList(displayedBooks: displayed)
+                                alphaIndexedList(sections: alphaSections, letters: alphaLetters)
                             } else {
                                 plainList(displayedBooks: displayed)
                             }
@@ -102,6 +115,35 @@ struct LibraryView: View {
 
                 if books.isEmpty { headerExpanded = true }
                 enforceRatingRuleIfNeeded()
+
+                // Ensure derived cache exists right away (and refresh when returning from detail views).
+                updateDerivedCacheNow()
+            }
+            .onChange(of: books.count) { _, _ in
+                updateDerivedCacheNow()
+            }
+            .onChange(of: selectedStatus) { _, _ in
+                updateDerivedCacheNow()
+            }
+            .onChange(of: selectedTag) { _, _ in
+                updateDerivedCacheNow()
+            }
+            .onChange(of: onlyWithNotes) { _, _ in
+                updateDerivedCacheNow()
+            }
+            .onChange(of: sortFieldRaw) { _, _ in
+                updateDerivedCacheNow()
+            }
+            .onChange(of: sortAscending) { _, _ in
+                updateDerivedCacheNow()
+            }
+            .onChange(of: libraryLayoutModeRaw) { _, _ in
+                // Clears/warms alpha cache depending on list vs grid.
+                updateDerivedCacheNow()
+            }
+            .onChange(of: searchText) { _, _ in
+                // Debounce typing to avoid re-filtering/sorting the full library for every keystroke.
+                scheduleDerivedCacheRecomputeDebounced()
             }
             .onChange(of: libraryHeaderStyleRaw) { _, _ in
                 withAnimation(.easeInOut(duration: 0.18)) {
@@ -135,6 +177,40 @@ struct LibraryView: View {
             } message: { book in
                 Text("\"\(bestTitle(book))\" wird aus deiner Bibliothek gelöscht.")
             }
+        }
+    }
+
+    // MARK: - Derived cache updates
+
+    @MainActor
+    private func updateDerivedCacheNow() {
+        pendingRecomputeTask?.cancel()
+        pendingRecomputeTask = nil
+
+        let displayed = displayedBooks
+        cachedDisplayedBooks = displayed
+        cachedCounts = statusCounts(in: books)
+
+        if libraryLayoutMode == .list, sortField == .title {
+            let sections = buildAlphaSections(from: displayed)
+            cachedAlphaSections = sections
+            cachedAlphaLetters = sections.map(\.key)
+        } else {
+            cachedAlphaSections = []
+            cachedAlphaLetters = []
+        }
+
+        derivedReady = true
+    }
+
+    @MainActor
+    private func scheduleDerivedCacheRecomputeDebounced() {
+        pendingRecomputeTask?.cancel()
+        pendingRecomputeTask = Task { @MainActor in
+            // 200ms feels snappy but avoids churn while typing.
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            if Task.isCancelled { return }
+            updateDerivedCacheNow()
         }
     }
 

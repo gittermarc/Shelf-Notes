@@ -12,13 +12,13 @@ extension LibraryView {
 
     // MARK: - Alphabet indexing (Title sort)
 
-    private struct AlphaSection: Identifiable {
+    struct AlphaSection: Identifiable {
         let id: String
         let key: String
         let books: [Book]
     }
 
-    private func buildAlphaSections(from input: [Book]) -> [AlphaSection] {
+    func buildAlphaSections(from input: [Book]) -> [AlphaSection] {
         var buckets: [String: [Book]] = [:]
 
         for b in input {
@@ -53,7 +53,10 @@ extension LibraryView {
     func alphaIndexedList(displayedBooks: [Book]) -> some View {
         let sections = buildAlphaSections(from: displayedBooks)
         let letters = sections.map(\.key)
+        return alphaIndexedList(sections: sections, letters: letters)
+    }
 
+    func alphaIndexedList(sections: [AlphaSection], letters: [String]) -> some View {
         return ScrollViewReader { proxy in
             ZStack(alignment: .trailing) {
                 List {

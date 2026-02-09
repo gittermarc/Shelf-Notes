@@ -83,11 +83,14 @@ struct LibraryCoverThumb: View {
     let book: Book
 
     var body: some View {
-        BookCoverThumbnailView(
+        // PERF: Avoid decoding `userCoverData` in SwiftUI body during header animations.
+        // `LibraryRowCoverView` decodes off-main and caches the decoded thumbnail.
+        LibraryRowCoverView(
             book: book,
             size: CGSize(width: 44, height: 66),
             cornerRadius: 10,
-            contentMode: .fill
+            contentMode: .fill,
+            prefersHighResCover: false
         )
     }
 }
