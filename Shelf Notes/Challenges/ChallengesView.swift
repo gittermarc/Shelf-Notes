@@ -83,7 +83,7 @@ struct ChallengesView: View {
         ChallengeEngine.refreshCompletionForActiveChallenges(modelContext: modelContext)
 
         // Compute progress for visible entries (active + recent past)
-        var newMap: [UUID: ChallengeEngine.ChallengeProgress] = progressByID
+        var newMap: [UUID: ChallengeEngine.ChallengeProgress] = [:]
 
         let interesting = activeChallenges + pastChallenges
         for ch in interesting {
@@ -137,34 +137,50 @@ private struct ChallengeCard: View {
 
             Divider().opacity(0.6)
 
-            let p = progress ?? ChallengeEngine.computeProgress(for: challenge, modelContext: modelContext)
+            Group {
+                if let p = progress {
+                    ProgressView(value: p.fraction(target: challenge.targetValue))
+                        .progressViewStyle(.linear)
 
-            ProgressView(value: p.fraction(target: challenge.targetValue))
-                .progressViewStyle(.linear)
+                    HStack {
+                        Text(p.valueText(target: challenge.targetValue))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
 
-            HStack {
-                Text(p.valueText(target: challenge.targetValue))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+                        Spacer()
 
-                Spacer()
+                        if let remaining = p.remainingText(target: challenge.targetValue) {
+                            Text(remaining)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("Ziel erreicht")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
 
-                if let remaining = p.remainingText(target: challenge.targetValue) {
-                    Text(remaining)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if let hint = suggestionText(progress: p) {
+                        Text(hint)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 } else {
-                    Text("Ziel erreicht")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
+                    ProgressView(value: 0)
+                        .progressViewStyle(.linear)
 
-            if let hint = suggestionText(progress: p) {
-                Text(hint)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    HStack {
+                        Text("…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                        Spacer()
+                        Text("…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             HStack(spacing: 10) {
