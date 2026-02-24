@@ -10,8 +10,6 @@
 
 import SwiftUI
 import SwiftData
-import StoreKit
-import Combine
 
 #if canImport(PhotosUI)
 import PhotosUI
@@ -29,6 +27,10 @@ struct BookDetailView: View {
 
     @State var tagsText: String = ""
     @State var tagDraft: String = ""
+
+    // Not `private` because `BookDetailView` is split across multiple files (extensions)
+    // and the bindings/helpers need access to the cached tag counts.
+    @StateObject var tagsIndexModel = TagsIndexModel()
 
     // Cover upload (user photo)
     #if canImport(PhotosUI)
@@ -193,6 +195,9 @@ struct BookDetailView: View {
             tagsText = book.tags.joined(separator: ", ")
             tagDraft = ""
         }
+        .task(id: tagsIndexTaskKey) {
+            await updateTagsIndexModelFromAllBooks()
+        }
         #if canImport(PhotosUI)
         .onChange(of: pickedCoverItem) { _, newValue in
             handlePickedCoverItem(newValue)
@@ -200,6 +205,36 @@ struct BookDetailView: View {
         #endif
         .onDisappear {
             _ = modelContext.saveWithDiagnostics()
+        }
+    }
+
+    // MARK: - Tags index caching
+
+    private var tagsIndexTaskKey: UInt64 {
+        // Keep the task key lightweight so typing into `tagDraft` doesn't trigger O(n) work.
+        // We only rebuild the library-wide tag index when the current book's tags change
+        // (or when a different book is shown).
+        var hasher = Hasher()
+        hasher.combine(book.id)
+        hasher.combine(book.tags.count)
+        for rawTag in book.tags {
+            let normalized = normalizeTagString(rawTag).lowercased()
+            guard !normalized.isEmpty else { continue }
+            hasher.combine(normalized)
+        }
+        return UInt64(bitPattern: Int64(hasher.finalize()))
+    }
+
+    private func updateTagsIndexModelFromAllBooks() async {
+        var snapshot: [TagsIndexModel.BookTagsSnapshot] = []
+        snapshot.reserveCapacity(allBooks.count)
+
+        for b in allBooks {
+            snapshot.append(.init(id: b.id, tags: b.tags))
+        }
+
+        await MainActor.run {
+            tagsIndexModel.update(snapshot: snapshot)
         }
     }
 }
