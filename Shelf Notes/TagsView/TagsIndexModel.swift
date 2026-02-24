@@ -36,13 +36,44 @@ final class TagsIndexModel: ObservableObject {
 
     // MARK: - API
 
-    func update(snapshot: [BookTagsSnapshot]) {
-        let signature = Self.computeSignature(snapshot: snapshot)
+    /// Updates cached counts from a lightweight snapshot.
+    ///
+    /// Pass a precomputed `signature` to avoid recomputing it inside the model.
+    func update(snapshot: [BookTagsSnapshot], signature: UInt64) {
         guard didComputeOnce == false || signature != lastSignature else { return }
 
         didComputeOnce = true
         lastSignature = signature
         tagCounts = Self.computeTagCounts(snapshot: snapshot)
+    }
+
+    func update(snapshot: [BookTagsSnapshot]) {
+        update(snapshot: snapshot, signature: Self.computeSignature(snapshot: snapshot))
+    }
+
+    /// Task-friendly, order-independent signature for a list of `Book` instances.
+    ///
+    /// This intentionally mirrors `computeSignature(snapshot:)` (same mixing),
+    /// but avoids allocating arrays just to feed `.task(id:)`.
+    static func taskSignature(books: [Book]) -> UInt64 {
+        var aggregate: UInt64 = 0x9E37_79B9_7F4A_7C15
+        aggregate &+= UInt64(books.count) &* 0xBF58_476D_1CE4_E5B9
+
+        for book in books {
+            var hasher = Hasher()
+            hasher.combine(book.id)
+            hasher.combine(book.tags.count)
+            for rawTag in book.tags {
+                let normalized = normalizeTagString(rawTag)
+                guard !normalized.isEmpty else { continue }
+                hasher.combine(normalized)
+            }
+
+            let h = UInt64(bitPattern: Int64(hasher.finalize()))
+            aggregate ^= h &+ 0x9E37_79B9_7F4A_7C15 &+ (aggregate << 6) &+ (aggregate >> 2)
+        }
+
+        return aggregate
     }
 
     // MARK: - Implementation

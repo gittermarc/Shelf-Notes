@@ -34,6 +34,54 @@ final class ReadingTimelineViewModel: ObservableObject {
 
     private var cachedEntries: [ReadingTimelineEntry] = []
 
+    /// Task-friendly signature for `.task(id:)`.
+    ///
+    /// We include only fields that affect the derived timeline output:
+    /// - completion dates (readFrom/readTo/createdAt)
+    /// - user ratings (used by year summary cards)
+    ///
+    /// Order-independent so SwiftData reordering doesn't trigger unnecessary rebuilds.
+    static func taskSignature(books: [Book]) -> Int {
+        func dayStamp(_ d: Date) -> Int {
+            Int(d.timeIntervalSince1970 / 86_400)
+        }
+
+        func dayStamp(_ d: Date?) -> Int {
+            guard let d else { return -1 }
+            return Int(d.timeIntervalSince1970 / 86_400)
+        }
+
+        var xorAgg: Int = 0
+        var sumAgg: Int = 0
+
+        for b in books {
+            var h = Hasher()
+            h.combine(b.id)
+
+            h.combine(dayStamp(b.createdAt))
+            h.combine(dayStamp(b.readFrom))
+            h.combine(dayStamp(b.readTo))
+
+            // Year summary cards depend on these.
+            h.combine(b.userRatingPlot)
+            h.combine(b.userRatingCharacters)
+            h.combine(b.userRatingWritingStyle)
+            h.combine(b.userRatingAtmosphere)
+            h.combine(b.userRatingGenreFit)
+            h.combine(b.userRatingPresentation)
+
+            let bookHash = h.finalize()
+            xorAgg ^= bookHash
+            sumAgg &+= bookHash
+        }
+
+        var finalHasher = Hasher()
+        finalHasher.combine(books.count)
+        finalHasher.combine(xorAgg)
+        finalHasher.combine(sumAgg)
+        return finalHasher.finalize()
+    }
+
     func setBooks(_ finishedBooks: [Book]) {
         cachedEntries = finishedBooks
             .map { ReadingTimelineEntry(book: $0, date: completionDate(for: $0)) }

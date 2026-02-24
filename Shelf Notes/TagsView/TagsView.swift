@@ -15,7 +15,7 @@ struct TagsView: View {
     @StateObject private var indexModel = TagsIndexModel()
 
     var body: some View {
-        let snapshot = books.map { TagsIndexModel.BookTagsSnapshot(id: $0.id, tags: $0.tags) }
+        let signature = TagsIndexModel.taskSignature(books: books)
 
         NavigationStack {
             List {
@@ -42,8 +42,10 @@ struct TagsView: View {
             }
             .navigationTitle("Tags")
         }
-        .task(id: snapshot) {
-            indexModel.update(snapshot: snapshot)
+        .task(id: signature) {
+            // Build the snapshot off the render path (inside the task).
+            let snapshot = books.map { TagsIndexModel.BookTagsSnapshot(id: $0.id, tags: $0.tags) }
+            indexModel.update(snapshot: snapshot, signature: signature)
         }
     }
 }

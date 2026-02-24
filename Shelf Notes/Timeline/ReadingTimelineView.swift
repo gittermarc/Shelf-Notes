@@ -56,6 +56,8 @@ struct ReadingTimelineView: View {
     }
 
     var body: some View {
+        let signature = ReadingTimelineViewModel.taskSignature(books: finishedBooks)
+
         Group {
             if finishedBooks.isEmpty {
                 emptyState
@@ -91,7 +93,7 @@ struct ReadingTimelineView: View {
                 }
             }
         }
-        .task(id: finishedBooks.map { $0.id }) {
+        .task(id: signature) {
             // Keep view model derived data in sync with SwiftData changes.
             vm.setBooks(finishedBooks)
         }
