@@ -18,8 +18,6 @@ import UIKit
 /// - Zeitleiste
 /// - Challenges
 struct ProgressHubView: View {
-    @Environment(\.modelContext) private var modelContext
-
     @Query private var books: [Book]
 
     @Query(sort: [SortDescriptor(\ChallengeRecord.periodStart, order: .reverse)])
@@ -57,10 +55,6 @@ struct ProgressHubView: View {
             }
             .navigationTitle("Fortschritt")
             .navigationBarTitleDisplayMode(.large)
-            .task {
-                // Make sure the initial weekly/monthly challenges exist.
-                ChallengeEngine.ensureCurrentChallenges(modelContext: modelContext)
-            }
         }
     }
 
