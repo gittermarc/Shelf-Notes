@@ -31,7 +31,17 @@ struct ProgressHubView: View {
 
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
+    @StateObject private var metricsModel = ProgressHubMetricsModel()
+
     var body: some View {
+        let currentYear = Calendar.current.component(.year, from: Date())
+        let token = ProgressHubMetricsModel.makeInputToken(
+            year: currentYear,
+            books: books,
+            goals: goals,
+            sessions: sessions
+        )
+
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
@@ -55,6 +65,14 @@ struct ProgressHubView: View {
             }
             .navigationTitle("Fortschritt")
             .navigationBarTitleDisplayMode(.large)
+        }
+        .task(id: token) {
+            metricsModel.recompute(
+                year: currentYear,
+                books: books,
+                goals: goals,
+                sessions: sessions
+            )
         }
     }
 
@@ -86,11 +104,11 @@ struct ProgressHubView: View {
     // MARK: - Hero
 
     private var heroCard: some View {
-        let y = Calendar.current.component(.year, from: Date())
-        let finishedThisYear = finishedBooks(in: y).count
-        let goalTarget = goalTargetCount(for: y)
-
-        let last7 = last7DaysSessionStats()
+        let m = metricsModel.metrics
+        let y = m.year
+        let finishedThisYear = m.finishedThisYear
+        let goalTarget = m.goalTarget
+        let last7 = (minutes: m.minutesLast7, activeDays: m.activeDaysLast7, currentStreak: m.currentStreak)
 
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
@@ -200,58 +218,6 @@ struct ProgressHubView: View {
         }
     }
 
-    // MARK: - Data helpers
-
-    private func finishedBooks(in year: Int) -> [Book] {
-        let cal = Calendar.current
-        let start = cal.date(from: DateComponents(year: year, month: 1, day: 1)) ?? Date.distantPast
-        let end = cal.date(from: DateComponents(year: year + 1, month: 1, day: 1)) ?? Date.distantFuture
-
-        return books.filter { b in
-            guard b.status == .finished else { return false }
-            let key = b.readTo ?? b.readFrom
-            guard let d = key else { return false }
-            return d >= start && d < end
-        }
-    }
-
-    private func goalTargetCount(for year: Int) -> Int? {
-        goals.first(where: { $0.year == year })?.targetCount
-    }
-
-    private func last7DaysSessionStats() -> (minutes: Int, activeDays: Int, currentStreak: Int) {
-        var cal = Calendar(identifier: .iso8601)
-        cal.timeZone = .current
-
-        let today = cal.startOfDay(for: Date())
-        let windowStart = cal.date(byAdding: .day, value: -6, to: today) ?? today
-
-        var secondsTotal = 0
-        var daysWithActivityWindow = Set<Date>()
-        var daysWithActivityAll = Set<Date>()
-
-        for s in sessions {
-            let day = cal.startOfDay(for: s.startedAt)
-            if s.durationSeconds > 0 { daysWithActivityAll.insert(day) }
-
-            // sessions are sorted desc, so once we pass the window we can stop collecting window-stats.
-            if day < windowStart { continue }
-            secondsTotal += max(0, s.durationSeconds)
-            if s.durationSeconds > 0 { daysWithActivityWindow.insert(day) }
-        }
-
-        // streak from today backwards (not limited to the 7-day window)
-        var streak = 0
-        var cursor = today
-        while daysWithActivityAll.contains(cursor) {
-            streak += 1
-            guard let prev = cal.date(byAdding: .day, value: -1, to: cursor) else { break }
-            cursor = prev
-        }
-
-        let minutes = Int((Double(secondsTotal) / 60.0).rounded())
-        return (minutes: minutes, activeDays: daysWithActivityWindow.count, currentStreak: streak)
-    }
 }
 
 // MARK: - UI components
