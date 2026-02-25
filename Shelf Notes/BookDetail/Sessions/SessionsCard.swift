@@ -26,9 +26,7 @@ struct SessionsCard: View {
     /// Remaining pages until the book is finished (based on logged sessions).
     /// Returns nil when the book has no valid total page count.
     private var remainingPagesForBook: Int? {
-        guard let total = book.pageCount, total > 0 else { return nil }
-        let already = sessions.compactMap { $0.pagesReadNormalized }.reduce(0, +)
-        return max(0, total - already)
+        ReadingSessionLogging.remainingPages(totalPages: book.pageCount, sessions: sessions)
     }
 
     init(book: Book, onShowAll: @escaping () -> Void) {
@@ -257,66 +255,33 @@ struct SessionsCard: View {
 
         let seconds = m * 60
         let end = Date()
-        let start = end.addingTimeInterval(-TimeInterval(seconds))
 
-        let normalizedPages: Int? = {
-            guard let p = pages, p > 0 else { return nil }
-            return p
-        }()
+        let timing = ReadingSessionLogging.Timing(endedAt: end, durationSeconds: seconds)
+        let state = ReadingSessionLogging.BookState(book: book)
 
-        // ✅ Validate page input: you can't log more pages than the book has remaining.
-        if let total = book.pageCount, total > 0, let p = normalizedPages {
-            let already = sessions.compactMap { $0.pagesReadNormalized }.reduce(0, +)
-            let remaining = max(0, total - already)
-
-            if remaining <= 0 {
-                lastError = "Dieses Buch hat bereits alle \(total) Seiten erreicht – du kannst keine weiteren Seiten loggen."
-                return
-            }
-
-            if p > remaining {
-                lastError = "Zu viele Seiten: Es sind nur noch \(remaining) von \(total) Seiten übrig."
-                return
-            }
-        }
-
-        let trimmedNote: String? = {
-            guard let n = note?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty else { return nil }
-            return n
-        }()
-
-        // Logging a session implies the user has started reading.
-        if book.status == .toRead {
-            book.status = .reading
-        }
-
-        // ✅ Auto-finish: if this session reaches the last page, mark the book as finished.
-        if let total = book.pageCount, total > 0 {
-            let already = sessions.compactMap { $0.pagesReadNormalized }.reduce(0, +)
-            let after = already + (normalizedPages ?? 0)
-            if after >= total {
-                book.status = .finished
-
-                if book.readFrom == nil {
-                    let earliestExisting = sessions.map(\.startedAt).min()
-                    let earliest = min(earliestExisting ?? start, start)
-                    book.readFrom = earliest
-                }
-                book.readTo = end
-
-                if let from = book.readFrom, let to = book.readTo, to < from {
-                    book.readFrom = to
-                }
-            }
-        }
-
-        let session = ReadingSession(
-            book: book,
-            startedAt: start,
-            endedAt: end,
-            pagesRead: normalizedPages,
-            note: trimmedNote
+        let planResult = ReadingSessionLogging.plan(
+            bookState: state,
+            existingSessions: sessions,
+            timing: timing,
+            pages: pages,
+            note: note
         )
+
+        var session: ReadingSession? = nil
+
+        switch planResult {
+        case .failure(let err):
+            lastError = err.message
+            return
+        case .success(let plan):
+            plan.apply(to: book)
+            session = plan.makeSession(book: book)
+        }
+
+        guard let session else {
+            lastError = "Konnte Session nicht vorbereiten."
+            return
+        }
 
         modelContext.insert(session)
 

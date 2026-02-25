@@ -33,14 +33,11 @@ struct ReadingProgressView: View {
     }
 
     private var totalPages: Int? {
-        guard let t = book.pageCount, t > 0 else { return nil }
-        return t
+        ReadingSessionLogging.normalizedTotalPages(book.pageCount)
     }
 
     private var pagesRead: Int {
-        sessions
-            .compactMap { $0.pagesReadNormalized }
-            .reduce(0, +)
+        ReadingSessionLogging.pagesReadTotal(in: sessions)
     }
 
     private var isFinished: Bool {
@@ -49,9 +46,7 @@ struct ReadingProgressView: View {
 
     /// Returns nil when we can't compute progress (no pageCount) and the book isn't finished.
     private var progressFraction: Double? {
-        if isFinished { return 1.0 }
-        guard let totalPages else { return nil }
-        return min(1.0, max(0.0, Double(pagesRead) / Double(totalPages)))
+        ReadingSessionLogging.progressFraction(status: book.status, totalPages: book.pageCount, sessions: sessions)
     }
 
     private var percentText: String {
