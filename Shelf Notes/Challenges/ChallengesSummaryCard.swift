@@ -63,7 +63,7 @@ struct ChallengesSummaryCard: View {
         .background(.thinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .task(id: challenges.count) {
-            refreshProgress()
+            await refreshProgress()
         }
     }
 
@@ -77,17 +77,17 @@ struct ChallengesSummaryCard: View {
     }
 
     @MainActor
-    private func refreshProgress() {
-        ChallengeEngine.ensureCurrentChallenges(modelContext: modelContext)
-        ChallengeEngine.refreshCompletionForActiveChallenges(modelContext: modelContext)
+    private func refreshProgress() async {
+        await ChallengeEngine.ensureCurrentChallengesAndRefreshCompletion(modelContext: modelContext)
 
-        if let weekly = activeChallenge(kind: .weekly) {
-            weeklyProgress = ChallengeEngine.computeProgress(for: weekly, modelContext: modelContext)
-        }
+        let weekly = activeChallenge(kind: .weekly)
+        let monthly = activeChallenge(kind: .monthly)
 
-        if let monthly = activeChallenge(kind: .monthly) {
-            monthlyProgress = ChallengeEngine.computeProgress(for: monthly, modelContext: modelContext)
-        }
+        let toCompute = [weekly, monthly].compactMap { $0 }
+        let map = await ChallengeEngine.computeProgressMap(for: toCompute, modelContext: modelContext)
+
+        weeklyProgress = weekly.flatMap { map[$0.id] }
+        monthlyProgress = monthly.flatMap { map[$0.id] }
     }
 }
 

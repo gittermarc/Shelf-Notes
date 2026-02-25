@@ -22,7 +22,13 @@ struct ChallengesView: View {
             if !activeChallenges.isEmpty {
                 Section("Aktiv") {
                     ForEach(activeChallenges) { ch in
-                        ChallengeCard(challenge: ch, progress: progressByID[ch.id], onRefresh: refresh)
+                        ChallengeCard(
+                            challenge: ch,
+                            progress: progressByID[ch.id],
+                            onRefresh: {
+                                Task { await refresh() }
+                            }
+                        )
                     }
                 }
             }
@@ -53,12 +59,11 @@ struct ChallengesView: View {
         .task {
             if !didInitialRefresh {
                 didInitialRefresh = true
-                ChallengeEngine.ensureCurrentChallenges(modelContext: modelContext)
-                refresh()
+                await refresh()
             }
         }
         .refreshable {
-            refresh()
+            await refresh()
         }
     }
 
@@ -78,18 +83,11 @@ struct ChallengesView: View {
     }
 
     @MainActor
-    private func refresh() {
-        ChallengeEngine.ensureCurrentChallenges(modelContext: modelContext)
-        ChallengeEngine.refreshCompletionForActiveChallenges(modelContext: modelContext)
-
-        // Compute progress for visible entries (active + recent past)
-        var newMap: [UUID: ChallengeEngine.ChallengeProgress] = [:]
+    private func refresh() async {
+        await ChallengeEngine.ensureCurrentChallengesAndRefreshCompletion(modelContext: modelContext)
 
         let interesting = activeChallenges + pastChallenges
-        for ch in interesting {
-            newMap[ch.id] = ChallengeEngine.computeProgress(for: ch, modelContext: modelContext)
-        }
-
+        let newMap = await ChallengeEngine.computeProgressMap(for: interesting, modelContext: modelContext)
         progressByID = newMap
     }
 }
