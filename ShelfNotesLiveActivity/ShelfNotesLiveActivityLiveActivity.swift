@@ -8,6 +8,7 @@
 import ActivityKit
 import WidgetKit
 import SwiftUI
+import AppIntents
 
 struct ShelfNotesLiveActivityLiveActivity: Widget {
     var body: some WidgetConfiguration {
@@ -18,8 +19,7 @@ struct ShelfNotesLiveActivityLiveActivity: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Image(systemName: context.state.isPaused ? "pause.fill" : "timer")
-                        .accessibilityLabel(context.state.isPaused ? "Pausiert" : "Läuft")
+                    DynamicIslandCoverOrIcon(bookID: context.attributes.bookID, isPaused: context.state.isPaused)
                 }
                 DynamicIslandExpandedRegion(.center) {
                     Text(context.attributes.bookTitle)
@@ -36,9 +36,7 @@ struct ShelfNotesLiveActivityLiveActivity: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    Text(context.state.isPaused ? "Session pausiert" : "Session läuft")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    LiveActivityControlsRow(context: context, size: .compact)
                 }
             } compactLeading: {
                 Image(systemName: "timer")
@@ -61,35 +59,119 @@ private struct LockScreenView: View {
     let context: ActivityViewContext<ReadingSessionActivityAttributes>
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(context.attributes.bookTitle)
-                .font(.headline)
-                .lineLimit(2)
+        HStack(alignment: .top, spacing: 12) {
+            LiveActivityCoverView(bookID: context.attributes.bookID)
 
-            HStack(spacing: 10) {
-                Image(systemName: context.state.isPaused ? "pause.fill" : "timer")
+            VStack(alignment: .leading, spacing: 10) {
+                Text(context.attributes.bookTitle)
+                    .font(.headline)
+                    .lineLimit(2)
+
+                LiveActivityTimerLine(context: context)
+
+                LiveActivityControlsRow(context: context, size: .regular)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct LiveActivityTimerLine: View {
+    let context: ActivityViewContext<ReadingSessionActivityAttributes>
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            if context.state.isPaused {
+                Text(ReadingSessionDurationFormatter.format(context.state.pausedElapsedSeconds))
+                    .font(.system(size: 30, weight: .semibold))
+                    .monospacedDigit()
+
+                Text("Pausiert")
                     .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(context.state.effectiveStartDate, style: .timer)
+                    .font(.system(size: 30, weight: .semibold))
+                    .monospacedDigit()
 
-                if context.state.isPaused {
-                    Text(ReadingSessionDurationFormatter.format(context.state.pausedElapsedSeconds))
+                Text("Liest…")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private enum LiveActivityControlsSize {
+    case regular
+    case compact
+}
+
+private struct LiveActivityControlsRow: View {
+    let context: ActivityViewContext<ReadingSessionActivityAttributes>
+    let size: LiveActivityControlsSize
+
+    var body: some View {
+        if #available(iOS 17.0, *) {
+            HStack(spacing: 10) {
+                Button(intent: ReadingSessionTogglePauseIntent(bookID: context.attributes.bookID)) {
+                    Label(context.state.isPaused ? "Weiter" : "Pause", systemImage: context.state.isPaused ? "play.fill" : "pause.fill")
+                }
+                .buttonStyle(.bordered)
+
+                Button(intent: ReadingSessionStopIntent(bookID: context.attributes.bookID)) {
+                    Label("Stop", systemImage: "stop.fill")
+                }
+                .buttonStyle(.bordered)
+            }
+            .controlSize(size == .compact ? .mini : .small)
+        } else {
+            Text(context.state.isPaused ? "Session pausiert" : "Session läuft")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct LiveActivityCoverView: View {
+    let bookID: String
+
+    var body: some View {
+        Group {
+            if let uiImage = LiveActivityCoverLoader.load(bookIDString: bookID) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(.ultraThinMaterial)
+                    Image(systemName: "book.closed")
                         .font(.title3)
-                        .monospacedDigit()
-
-                    Text("Pausiert")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text(context.state.effectiveStartDate, style: .timer)
-                        .font(.title3)
-                        .monospacedDigit()
-
-                    Text("Liest…")
-                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }
         }
-        .padding(.vertical, 4)
+        .frame(width: 56, height: 84)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+private struct DynamicIslandCoverOrIcon: View {
+    let bookID: String
+    let isPaused: Bool
+
+    var body: some View {
+        if let uiImage = LiveActivityCoverLoader.load(bookIDString: bookID) {
+            Image(uiImage: uiImage)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 32, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        } else {
+            Image(systemName: isPaused ? "pause.fill" : "timer")
+                .accessibilityLabel(isPaused ? "Pausiert" : "Läuft")
+        }
     }
 }
 

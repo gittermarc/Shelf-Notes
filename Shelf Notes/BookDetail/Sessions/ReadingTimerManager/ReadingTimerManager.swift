@@ -47,6 +47,7 @@ final class ReadingTimerManager: ObservableObject {
 
     init() {
         registerDefaultsIfNeeded()
+        loadPendingCompletionFromDisk()
         loadActiveFromDisk()
     }
 
@@ -65,7 +66,12 @@ final class ReadingTimerManager: ObservableObject {
 
     /// Starts a timer session. Returns an error message if start is not possible.
     @discardableResult
-    func start(bookID: UUID, bookTitle: String, startedAt: Date = Date()) -> String? {
+    func start(
+        bookID: UUID,
+        bookTitle: String,
+        startedAt: Date = Date(),
+        coverThumbnailData: Data? = nil
+    ) -> String? {
         // Ensure UI updates immediately (BookDetail timer label + Root sheet triggers later).
         objectWillChange.send()
 
@@ -97,6 +103,22 @@ final class ReadingTimerManager: ObservableObject {
         backgroundEnteredAt = nil
         persistActive()
         liveActivityCoordinator.startOrUpdate(from: self.active!)
+
+        if let coverThumbnailData {
+            Task.detached(priority: .utility) { [weak self] in
+                LiveActivityCoverWriter.writeCoverThumbnailIfPossible(
+                    bookID: bookID,
+                    sourceThumbnailData: coverThumbnailData
+                )
+
+                // Trigger a lightweight state update so the lock screen re-renders
+                // after the cover thumbnail becomes available.
+                await MainActor.run {
+                    guard let self, let active = self.active, active.bookID == bookID else { return }
+                    self.liveActivityCoordinator.startOrUpdate(from: active)
+                }
+            }
+        }
 
         // Redundant but harmless — guarantees immediate refresh even if @Published doesn't fire reliably.
         objectWillChange.send()
@@ -167,6 +189,8 @@ final class ReadingTimerManager: ObservableObject {
             autoStopMinutes: autoStopMinutes
         )
 
+        persistPendingCompletion()
+
         self.active = nil
         backgroundEnteredAt = nil
         clearPersistedActive()
@@ -188,6 +212,7 @@ final class ReadingTimerManager: ObservableObject {
     func discardPendingCompletion() {
         objectWillChange.send()
         pendingCompletion = nil
+        clearPersistedPendingCompletion()
         objectWillChange.send()
     }
 

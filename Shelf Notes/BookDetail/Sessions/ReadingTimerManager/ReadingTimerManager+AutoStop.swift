@@ -11,6 +11,12 @@ extension ReadingTimerManager {
     // MARK: - Auto-stop (background/inactive)
 
     func handleScenePhaseChange(_ phase: ScenePhase) {
+        if phase == .active {
+            // When controls were used from the lock screen, the widget extension updated
+            // the shared App Group storage. Re-sync when returning to the app.
+            syncFromSharedStoreOnAppActive()
+        }
+
         // Auto-stop only applies to an actually running timer.
         guard let a = active, !a.isPaused else {
             clearBackgroundEnteredAt()

@@ -191,7 +191,11 @@ struct SessionsCard: View {
         } else {
             iconCircleButton(systemName: "play.fill", tint: .green, accessibilityLabel: "Session starten") {
                 let title = safeTitle(book)
-                lastError = timer.start(bookID: book.id, bookTitle: title)
+                lastError = timer.start(
+                    bookID: book.id,
+                    bookTitle: title,
+                    coverThumbnailData: book.userCoverData
+                )
             }
         }
     }

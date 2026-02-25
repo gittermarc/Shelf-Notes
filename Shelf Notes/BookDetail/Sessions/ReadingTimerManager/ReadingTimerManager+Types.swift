@@ -89,6 +89,7 @@ extension ReadingTimerManager {
         var autoStopMinutes: Int?
 
         init(
+            id: UUID = UUID(),
             bookID: UUID,
             bookTitle: String,
             startedAt: Date,
@@ -97,7 +98,7 @@ extension ReadingTimerManager {
             wasAutoStopped: Bool,
             autoStopMinutes: Int?
         ) {
-            self.id = UUID()
+            self.id = id
             self.bookID = bookID
             self.bookTitle = bookTitle
             self.startedAt = startedAt
