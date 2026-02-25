@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		60CF7A4F2F4F22A1000F12A7 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 60CF7A4E2F4F22A1000F12A7 /* WidgetKit.framework */; };
+		60CF7A512F4F22A1000F12A7 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 60CF7A502F4F22A1000F12A7 /* SwiftUI.framework */; };
+		60CF7A622F4F22A3000F12A7 /* ShelfNotesLiveActivityExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 60CF7A4C2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		60A8A8082EEB1E7800BED10B /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,12 +27,36 @@
 			remoteGlobalIDString = 60A8A7F52EEB1E7600BED10B;
 			remoteInfo = "Shelf Notes";
 		};
+		60CF7A602F4F22A3000F12A7 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 60A8A7EE2EEB1E7600BED10B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 60CF7A4B2F4F22A1000F12A7;
+			remoteInfo = ShelfNotesLiveActivityExtension;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		60CF7A672F4F22A3000F12A7 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				60CF7A622F4F22A3000F12A7 /* ShelfNotesLiveActivityExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		60A8A7F62EEB1E7600BED10B /* Shelf Notes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Shelf Notes.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		60A8A8072EEB1E7800BED10B /* Shelf NotesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Shelf NotesTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		60A8A8112EEB1E7800BED10B /* Shelf NotesUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Shelf NotesUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		60CF7A4C2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShelfNotesLiveActivityExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		60CF7A4E2F4F22A1000F12A7 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		60CF7A502F4F22A1000F12A7 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -36,6 +66,13 @@
 				Info.plist,
 			);
 			target = 60A8A7F52EEB1E7600BED10B /* Shelf Notes */;
+		};
+		60CF7A662F4F22A3000F12A7 /* Exceptions for "ShelfNotesLiveActivity" folder in "ShelfNotesLiveActivityExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 60CF7A4B2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -56,6 +93,14 @@
 		60A8A8142EEB1E7800BED10B /* Shelf NotesUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Shelf NotesUITests";
+			sourceTree = "<group>";
+		};
+		60CF7A522F4F22A1000F12A7 /* ShelfNotesLiveActivity */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				60CF7A662F4F22A3000F12A7 /* Exceptions for "ShelfNotesLiveActivity" folder in "ShelfNotesLiveActivityExtension" target */,
+			);
+			path = ShelfNotesLiveActivity;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -82,6 +127,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		60CF7A492F4F22A1000F12A7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				60CF7A512F4F22A1000F12A7 /* SwiftUI.framework in Frameworks */,
+				60CF7A4F2F4F22A1000F12A7 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -91,6 +145,8 @@
 				60A8A7F82EEB1E7600BED10B /* Shelf Notes */,
 				60A8A80A2EEB1E7800BED10B /* Shelf NotesTests */,
 				60A8A8142EEB1E7800BED10B /* Shelf NotesUITests */,
+				60CF7A522F4F22A1000F12A7 /* ShelfNotesLiveActivity */,
+				60CF7A4D2F4F22A1000F12A7 /* Frameworks */,
 				60A8A7F72EEB1E7600BED10B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -101,8 +157,18 @@
 				60A8A7F62EEB1E7600BED10B /* Shelf Notes.app */,
 				60A8A8072EEB1E7800BED10B /* Shelf NotesTests.xctest */,
 				60A8A8112EEB1E7800BED10B /* Shelf NotesUITests.xctest */,
+				60CF7A4C2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		60CF7A4D2F4F22A1000F12A7 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				60CF7A4E2F4F22A1000F12A7 /* WidgetKit.framework */,
+				60CF7A502F4F22A1000F12A7 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -115,10 +181,12 @@
 				60A8A7F22EEB1E7600BED10B /* Sources */,
 				60A8A7F32EEB1E7600BED10B /* Frameworks */,
 				60A8A7F42EEB1E7600BED10B /* Resources */,
+				60CF7A672F4F22A3000F12A7 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				60CF7A612F4F22A3000F12A7 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				60A8A7F82EEB1E7600BED10B /* Shelf Notes */,
@@ -176,6 +244,28 @@
 			productReference = 60A8A8112EEB1E7800BED10B /* Shelf NotesUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		60CF7A4B2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 60CF7A632F4F22A3000F12A7 /* Build configuration list for PBXNativeTarget "ShelfNotesLiveActivityExtension" */;
+			buildPhases = (
+				60CF7A482F4F22A1000F12A7 /* Sources */,
+				60CF7A492F4F22A1000F12A7 /* Frameworks */,
+				60CF7A4A2F4F22A1000F12A7 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				60CF7A522F4F22A1000F12A7 /* ShelfNotesLiveActivity */,
+			);
+			name = ShelfNotesLiveActivityExtension;
+			packageProductDependencies = (
+			);
+			productName = ShelfNotesLiveActivityExtension;
+			productReference = 60CF7A4C2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -183,7 +273,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2600;
+				LastSwiftUpdateCheck = 2620;
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
 					60A8A7F52EEB1E7600BED10B = {
@@ -196,6 +286,9 @@
 					60A8A8102EEB1E7800BED10B = {
 						CreatedOnToolsVersion = 26.0;
 						TestTargetID = 60A8A7F52EEB1E7600BED10B;
+					};
+					60CF7A4B2F4F22A1000F12A7 = {
+						CreatedOnToolsVersion = 26.2;
 					};
 				};
 			};
@@ -216,6 +309,7 @@
 				60A8A7F52EEB1E7600BED10B /* Shelf Notes */,
 				60A8A8062EEB1E7800BED10B /* Shelf NotesTests */,
 				60A8A8102EEB1E7800BED10B /* Shelf NotesUITests */,
+				60CF7A4B2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -236,6 +330,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		60A8A80F2EEB1E7800BED10B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		60CF7A4A2F4F22A1000F12A7 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -266,6 +367,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		60CF7A482F4F22A1000F12A7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -278,6 +386,11 @@
 			isa = PBXTargetDependency;
 			target = 60A8A7F52EEB1E7600BED10B /* Shelf Notes */;
 			targetProxy = 60A8A8122EEB1E7800BED10B /* PBXContainerItemProxy */;
+		};
+		60CF7A612F4F22A3000F12A7 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 60CF7A4B2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension */;
+			targetProxy = 60CF7A602F4F22A3000F12A7 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -561,6 +674,68 @@
 			};
 			name = Release;
 		};
+		60CF7A642F4F22A3000F12A7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HPJKAPZ8A3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShelfNotesLiveActivity/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ShelfNotesLiveActivity;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "de.marcfechner.Shelf-Notes.ShelfNotesLiveActivity";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		60CF7A652F4F22A3000F12A7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HPJKAPZ8A3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShelfNotesLiveActivity/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ShelfNotesLiveActivity;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "de.marcfechner.Shelf-Notes.ShelfNotesLiveActivity";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -596,6 +771,15 @@
 			buildConfigurations = (
 				60A8A8232EEB1E7800BED10B /* Debug */,
 				60A8A8242EEB1E7800BED10B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		60CF7A632F4F22A3000F12A7 /* Build configuration list for PBXNativeTarget "ShelfNotesLiveActivityExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				60CF7A642F4F22A3000F12A7 /* Debug */,
+				60CF7A652F4F22A3000F12A7 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
