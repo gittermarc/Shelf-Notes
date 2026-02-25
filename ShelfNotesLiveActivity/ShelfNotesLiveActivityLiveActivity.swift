@@ -72,7 +72,8 @@ private struct LockScreenView: View {
                 LiveActivityControlsRow(context: context, size: .regular)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 }
 
@@ -113,18 +114,23 @@ private struct LiveActivityControlsRow: View {
 
     var body: some View {
         if #available(iOS 17.0, *) {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Button(intent: ReadingSessionTogglePauseIntent(bookID: context.attributes.bookID)) {
                     Label(context.state.isPaused ? "Weiter" : "Pause", systemImage: context.state.isPaused ? "play.fill" : "pause.fill")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
+                .tint(.yellow)
+                .foregroundStyle(.black)
 
                 Button(intent: ReadingSessionStopIntent(bookID: context.attributes.bookID)) {
                     Label("Stop", systemImage: "stop.fill")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
             }
             .controlSize(size == .compact ? .mini : .small)
+            .padding(.top, size == .compact ? 0 : 2)
+            .padding(.bottom, size == .compact ? 0 : 4)
         } else {
             Text(context.state.isPaused ? "Session pausiert" : "Session läuft")
                 .font(.caption)
@@ -137,23 +143,27 @@ private struct LiveActivityCoverView: View {
     let bookID: String
 
     var body: some View {
-        Group {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+
             if let uiImage = LiveActivityCoverLoader.load(bookIDString: bookID) {
                 Image(uiImage: uiImage)
                     .resizable()
                     .scaledToFill()
             } else {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(.ultraThinMaterial)
-                    Image(systemName: "book.closed")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                }
+                Image(systemName: "book.closed")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
             }
         }
         .frame(width: 56, height: 84)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(.white.opacity(0.10), lineWidth: 1)
+        )
+        .shadow(radius: 1.5, x: 0, y: 1)
     }
 }
 
