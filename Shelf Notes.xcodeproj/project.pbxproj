@@ -74,6 +74,13 @@
 			);
 			target = 60CF7A4B2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension */;
 		};
+		60CF7A702F4F276A000F12A7 /* Exceptions for "Shelf Notes" folder in "ShelfNotesLiveActivityExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Shared/LiveActivity/ReadingSessionActivityAttributes.swift,
+			);
+			target = 60CF7A4B2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -81,6 +88,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				60A8A8192EEB1E7800BED10B /* Exceptions for "Shelf Notes" folder in "Shelf Notes" target */,
+				60CF7A702F4F276A000F12A7 /* Exceptions for "Shelf Notes" folder in "ShelfNotesLiveActivityExtension" target */,
 			);
 			path = "Shelf Notes";
 			sourceTree = "<group>";

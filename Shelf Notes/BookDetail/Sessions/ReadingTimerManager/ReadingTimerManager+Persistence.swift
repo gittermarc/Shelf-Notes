@@ -35,11 +35,13 @@ extension ReadingTimerManager {
         do {
             let decoded = try JSONDecoder().decode(ActiveState.self, from: data)
             setActiveForInternalUse(decoded)
+            liveActivityCoordinator.startOrUpdate(from: decoded)
 
             // Ensure any views (e.g. BookDetail) show the running/paused state immediately.
             objectWillChange.send()
         } catch {
             clearPersistedActive()
+            liveActivityCoordinator.endCurrentActivity()
         }
     }
 

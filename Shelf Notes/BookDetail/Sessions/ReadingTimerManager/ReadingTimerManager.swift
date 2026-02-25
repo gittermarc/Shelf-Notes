@@ -39,6 +39,10 @@ final class ReadingTimerManager: ObservableObject {
     /// Kept private, but accessed via small internal helpers so extensions can stay in separate files.
     private var backgroundEnteredAt: Date?
 
+    // MARK: - Live Activity (Phase 1: display-only)
+
+    let liveActivityCoordinator = ReadingSessionLiveActivityCoordinator()
+
     // MARK: - Init
 
     init() {
@@ -92,6 +96,7 @@ final class ReadingTimerManager: ObservableObject {
 
         backgroundEnteredAt = nil
         persistActive()
+        liveActivityCoordinator.startOrUpdate(from: self.active!)
 
         // Redundant but harmless — guarantees immediate refresh even if @Published doesn't fire reliably.
         objectWillChange.send()
@@ -113,6 +118,7 @@ final class ReadingTimerManager: ObservableObject {
 
         backgroundEnteredAt = nil
         persistActive()
+        liveActivityCoordinator.startOrUpdate(from: a)
         objectWillChange.send()
     }
 
@@ -129,6 +135,7 @@ final class ReadingTimerManager: ObservableObject {
 
         backgroundEnteredAt = nil
         persistActive()
+        liveActivityCoordinator.startOrUpdate(from: a)
         objectWillChange.send()
     }
 
@@ -138,6 +145,8 @@ final class ReadingTimerManager: ObservableObject {
 
         // Ensure sheet opens immediately (no “only after switching tabs”).
         objectWillChange.send()
+
+        liveActivityCoordinator.endCurrentActivity()
 
         let end: Date
         if a.isPaused {
@@ -168,6 +177,7 @@ final class ReadingTimerManager: ObservableObject {
     /// Drops the running timer immediately (no pending completion, nothing saved).
     func abortActiveSession() {
         objectWillChange.send()
+        liveActivityCoordinator.endCurrentActivity()
         active = nil
         backgroundEnteredAt = nil
         clearPersistedActive()
