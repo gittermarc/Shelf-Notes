@@ -10,7 +10,7 @@ import AppIntents
 import Foundation
 
 @available(iOS 17.0, *)
-struct ReadingSessionTogglePauseIntent: AppIntent {
+struct ReadingSessionTogglePauseIntent: LiveActivityIntent {
 
     static var title: LocalizedStringResource = "Pause/Resume Reading Session"
     static var description = IntentDescription("Toggles pause/resume for the active reading timer session.")
@@ -77,7 +77,7 @@ struct ReadingSessionTogglePauseIntent: AppIntent {
 }
 
 @available(iOS 17.0, *)
-struct ReadingSessionStopIntent: AppIntent {
+struct ReadingSessionStopIntent: LiveActivityIntent {
 
     static var title: LocalizedStringResource = "Stop Reading Session"
     static var description = IntentDescription("Stops the active reading timer session.")

@@ -84,6 +84,13 @@
 			);
 			target = 60CF7A4B2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension */;
 		};
+		60CF7A7F2F4F4424000F12A7 /* Exceptions for "ShelfNotesLiveActivity" folder in "Shelf Notes" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				ReadingSessionLiveActivityIntents.swift,
+			);
+			target = 60A8A7F52EEB1E7600BED10B /* Shelf Notes */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -109,6 +116,7 @@
 		60CF7A522F4F22A1000F12A7 /* ShelfNotesLiveActivity */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
+				60CF7A7F2F4F4424000F12A7 /* Exceptions for "ShelfNotesLiveActivity" folder in "Shelf Notes" target */,
 				60CF7A662F4F22A3000F12A7 /* Exceptions for "ShelfNotesLiveActivity" folder in "ShelfNotesLiveActivityExtension" target */,
 			);
 			path = ShelfNotesLiveActivity;
