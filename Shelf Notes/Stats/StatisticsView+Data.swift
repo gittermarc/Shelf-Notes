@@ -4,20 +4,20 @@ extension StatisticsView {
 
     // MARK: - Data plumbing
 
-    var scopedBooks: [Book] {
+    func scopedBooks(for scope: Scope, in input: [Book]) -> [Book] {
         switch scope {
         case .all:
-            return books
+            return input
         case .finished:
-            return books.filter { $0.status == .finished }
+            return input.filter { $0.status == .finished }
         case .reading:
-            return books.filter { $0.status == .reading }
+            return input.filter { $0.status == .reading }
         case .toRead:
-            return books.filter { $0.status == .toRead }
+            return input.filter { $0.status == .toRead }
         }
     }
 
-    var yearOptions: [Int] {
+    func availableYears(from input: [Book]) -> [Int] {
         let cal = Calendar.current
         let currentYear = cal.component(.year, from: Date())
         let nextYear = currentYear + 1
@@ -26,11 +26,11 @@ extension StatisticsView {
         years.insert(currentYear)
         years.insert(nextYear)
 
-        for b in books {
-            if let d = readKeyDate(b) {
+        for book in input {
+            if let d = readKeyDate(book) {
                 years.insert(cal.component(.year, from: d))
             }
-            if let y = publishedYear(from: b.publishedDate) {
+            if let y = publishedYear(from: book.publishedDate) {
                 years.insert(y)
             }
         }
@@ -38,14 +38,14 @@ extension StatisticsView {
         return years.sorted(by: >)
     }
 
-    var finishedInSelectedYear: [Book] {
+    func finishedBooks(in year: Int, from input: [Book]) -> [Book] {
         let cal = Calendar.current
-        let start = cal.date(from: DateComponents(year: selectedYear, month: 1, day: 1)) ?? Date.distantPast
-        let end = cal.date(from: DateComponents(year: selectedYear + 1, month: 1, day: 1)) ?? Date.distantFuture
+        let start = cal.date(from: DateComponents(year: year, month: 1, day: 1)) ?? Date.distantPast
+        let end = cal.date(from: DateComponents(year: year + 1, month: 1, day: 1)) ?? Date.distantFuture
 
-        return scopedBooks.filter { b in
-            guard b.status == .finished else { return false }
-            guard let d = readKeyDate(b) else { return false }
+        return input.filter { book in
+            guard book.status == .finished else { return false }
+            guard let d = readKeyDate(book) else { return false }
             return d >= start && d < end
         }
     }
@@ -53,19 +53,6 @@ extension StatisticsView {
     func readKeyDate(_ book: Book) -> Date? {
         guard book.status == .finished else { return nil }
         return book.readTo ?? book.readFrom
-    }
-
-    var monthsForSelectedYear: [MonthKey] {
-        let cal = Calendar.current
-        let currentYear = cal.component(.year, from: Date())
-        let currentMonth = cal.component(.month, from: Date())
-
-        let maxMonth: Int
-        if selectedYear < currentYear { maxMonth = 12 }
-        else if selectedYear > currentYear { maxMonth = 12 }
-        else { maxMonth = max(1, currentMonth) }
-
-        return (1...maxMonth).map { MonthKey(year: selectedYear, month: $0) }
     }
 
     struct MonthKey: Hashable, Identifiable {
@@ -85,31 +72,6 @@ extension StatisticsView {
         let monthLabel: String
         let finishedCount: Int
         let pages: Int
-    }
-
-    func monthlySeriesForFinishedSelectedYear(months: [MonthKey]) -> [MonthSeriesPoint] {
-        let cal = Calendar.current
-        var countBy: [MonthKey: Int] = [:]
-        var pagesBy: [MonthKey: Int] = [:]
-
-        for b in finishedInSelectedYear {
-            guard let d = readKeyDate(b) else { continue }
-            let y = cal.component(.year, from: d)
-            let m = cal.component(.month, from: d)
-            let key = MonthKey(year: y, month: m)
-
-            countBy[key, default: 0] += 1
-            pagesBy[key, default: 0] += (b.pageCount ?? 0)
-        }
-
-        return months.map { mk in
-            MonthSeriesPoint(
-                id: mk.id,
-                monthLabel: mk.monthLabel,
-                finishedCount: countBy[mk, default: 0],
-                pages: pagesBy[mk, default: 0]
-            )
-        }
     }
 
     // MARK: - Aggregations

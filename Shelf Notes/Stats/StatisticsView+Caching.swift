@@ -113,7 +113,26 @@ extension StatisticsView {
     }
 
     struct StatsCache {
+        struct Summary {
+            struct Overview {
+                let scopedBooksCount: Int
+                let finishedScopedBooksCount: Int
+                let uniqueAuthorsCount: Int
+                let uniquePublishersCount: Int
+                let pagesInSelectedYear: Int
+                let finishedInSelectedYearCount: Int
+                let avgPagesPerBookText: String
+                let avgDaysPerBookText: String
+            }
+
+            let yearOptions: [Int]
+            let heroSubtitle: String
+            let tinyTeaserLine: String?
+            let overview: Overview
+        }
+
         let key: StatsCacheKey
+        let summary: Summary
 
         // Reading charts
         let monthsCount: Int
@@ -168,28 +187,9 @@ extension StatisticsView {
     }
 
     func computeStatsCache(for key: StatsCacheKey) -> StatsCache {
-        // 1) Scope + year slices
-        let scoped: [Book]
-        switch key.scope {
-        case .all:
-            scoped = books
-        case .finished:
-            scoped = books.filter { $0.status == .finished }
-        case .reading:
-            scoped = books.filter { $0.status == .reading }
-        case .toRead:
-            scoped = books.filter { $0.status == .toRead }
-        }
-
-        let cal = Calendar.current
-        let start = cal.date(from: DateComponents(year: key.selectedYear, month: 1, day: 1)) ?? Date.distantPast
-        let end = cal.date(from: DateComponents(year: key.selectedYear + 1, month: 1, day: 1)) ?? Date.distantFuture
-
-        let finishedInYear: [Book] = scoped.filter { b in
-            guard b.status == .finished else { return false }
-            guard let d = (b.readTo ?? b.readFrom) else { return false }
-            return d >= start && d < end
-        }
+        let scoped = scopedBooks(for: key.scope, in: books)
+        let finishedInYear = finishedBooks(in: key.selectedYear, from: scoped)
+        let summary = makeStatsSummary(allBooks: books, scopedBooks: scoped, finishedInYear: finishedInYear)
 
         // 2) Monthly charts
         let months = monthsForYear(key.selectedYear)
@@ -211,6 +211,7 @@ extension StatisticsView {
 
         return StatsCache(
             key: key,
+            summary: summary,
             monthsCount: months.count,
             monthlySeries: series,
             topGenres: topGenres,
@@ -224,6 +225,12 @@ extension StatisticsView {
             biggest: biggest,
             highestRated: highestRated
         )
+    }
+
+    func computeStatsSummary(for key: StatsCacheKey) -> StatsCache.Summary {
+        let scoped = scopedBooks(for: key.scope, in: books)
+        let finishedInYear = finishedBooks(in: key.selectedYear, from: scoped)
+        return makeStatsSummary(allBooks: books, scopedBooks: scoped, finishedInYear: finishedInYear)
     }
 
     func computeHeatmapCache(for key: HeatmapCacheKey) -> HeatmapCache {
@@ -250,6 +257,51 @@ extension StatisticsView {
             counts: counts,
             stats: stats,
             weeks: weeks
+        )
+    }
+
+    func makeStatsSummary(
+        allBooks: [Book],
+        scopedBooks: [Book],
+        finishedInYear: [Book]
+    ) -> StatsCache.Summary {
+        let scopedCount = scopedBooks.count
+        let finishedScopedCount = scopedBooks.reduce(into: 0) { partial, book in
+            if book.status == .finished { partial += 1 }
+        }
+        let scopedPages = totalPages(scopedBooks)
+        let uniqueAuthorsCount = uniqueAuthors(scopedBooks).count
+        let uniquePublishersCount = uniquePublishers(scopedBooks).count
+        let pagesInSelectedYear = totalPages(finishedInYear)
+        let avgPagesPerBook = avgPagesPerBookText(for: finishedInYear)
+        let avgDaysPerBook = avgDaysPerBookText(for: finishedInYear)
+        let avgPagesPerDay = avgPagesPerDayText(for: finishedInYear)
+
+        let tinyTeaserLine: String?
+        if finishedInYear.count >= 2, avgPagesPerBook != "–" || avgDaysPerBook != "–" || avgPagesPerDay != "–" {
+            if avgPagesPerDay == "–" && avgDaysPerBook == "–" {
+                tinyTeaserLine = nil
+            } else {
+                tinyTeaserLine = "Ø \(avgPagesPerDay) Seiten/Tag • Ø \(avgDaysPerBook) Tage/Buch (für „Gelesen“ mit Zeitraum)"
+            }
+        } else {
+            tinyTeaserLine = nil
+        }
+
+        return StatsCache.Summary(
+            yearOptions: availableYears(from: allBooks),
+            heroSubtitle: "\(scopedCount) Bücher • \(finishedScopedCount) gelesen • \(formatInt(scopedPages)) Seiten (wo vorhanden)",
+            tinyTeaserLine: tinyTeaserLine,
+            overview: StatsCache.Summary.Overview(
+                scopedBooksCount: scopedCount,
+                finishedScopedBooksCount: finishedScopedCount,
+                uniqueAuthorsCount: uniqueAuthorsCount,
+                uniquePublishersCount: uniquePublishersCount,
+                pagesInSelectedYear: pagesInSelectedYear,
+                finishedInSelectedYearCount: finishedInYear.count,
+                avgPagesPerBookText: avgPagesPerBook,
+                avgDaysPerBookText: avgDaysPerBook
+            )
         )
     }
 

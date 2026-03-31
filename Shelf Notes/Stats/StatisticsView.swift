@@ -55,6 +55,16 @@ struct StatisticsView: View {
         let signature = booksSignature(books)
         let statsKey = makeStatsCacheKey(signature: signature)
         let heatmapKey = makeHeatmapCacheKey(signature: signature)
+        let exactStatsCache = statsCache?.key == statsKey ? statsCache : nil
+        let scopeStatsCache: StatsCache? = {
+            guard let cache = statsCache,
+                  cache.key.scope == scope,
+                  cache.key.booksSignature == signature else {
+                return nil
+            }
+            return cache
+        }()
+        let exactHeatmapCache = heatmapCache?.key == heatmapKey ? heatmapCache : nil
 
         Group {
             if books.isEmpty {
@@ -65,15 +75,17 @@ struct StatisticsView: View {
                 )
                 .padding(.horizontal)
             } else {
+                let summary = exactStatsCache?.summary ?? computeStatsSummary(for: statsKey)
+
                 ScrollView {
                     VStack(spacing: 14) {
-                        headerCard
-                        yearAndScopeCard
-                        overviewGrid
-                        readingChartsCard
-                        activityHeatmapCard
-                        topListsCard
-                        nerdCornerCard
+                        headerCard(summary: summary)
+                        yearAndScopeCard(yearOptions: summary.yearOptions)
+                        overviewGrid(summary: summary)
+                        readingChartsCard(statsKey: statsKey, cache: exactStatsCache)
+                        activityHeatmapCard(heatmapKey: heatmapKey, cache: exactHeatmapCache)
+                        topListsCard(cache: scopeStatsCache)
+                        nerdCornerCard(summary: summary, cache: exactStatsCache)
                     }
                     .padding(.horizontal)
                     .padding(.bottom, 18)
@@ -96,7 +108,11 @@ struct StatisticsView: View {
 
             // Let the UI render first; then crunch numbers.
             await Task.yield()
-            statsCache = computeStatsCache(for: statsKey)
+            guard !Task.isCancelled else { return }
+
+            let cache = computeStatsCache(for: statsKey)
+            guard !Task.isCancelled else { return }
+            statsCache = cache
         }
         .task(id: heatmapKey) {
             guard !books.isEmpty else {
@@ -108,7 +124,11 @@ struct StatisticsView: View {
             defer { isUpdatingHeatmapCache = false }
 
             await Task.yield()
-            heatmapCache = computeHeatmapCache(for: heatmapKey)
+            guard !Task.isCancelled else { return }
+
+            let cache = computeHeatmapCache(for: heatmapKey)
+            guard !Task.isCancelled else { return }
+            heatmapCache = cache
         }
     }
 }

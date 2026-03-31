@@ -8,14 +8,14 @@ extension StatisticsView {
 
     // MARK: - Header
 
-    var headerCard: some View {
+    func headerCard(summary: StatsCache.Summary) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Dein Lese-Dashboard")
                         .font(.title3.weight(.semibold))
 
-                    Text(heroSubtitle)
+                    Text(summary.heroSubtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -28,7 +28,7 @@ extension StatisticsView {
                     .foregroundStyle(.secondary)
             }
 
-            if let tease = tinyTeaserLine {
+            if let tease = summary.tinyTeaserLine {
                 Text(tease)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -40,28 +40,9 @@ extension StatisticsView {
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
-    var heroSubtitle: String {
-        let total = scopedBooks.count
-        let fin = scopedBooks.filter { $0.status == .finished }.count
-        let pages = totalPages(scopedBooks)
-        return "\(total) Bücher • \(fin) gelesen • \(formatInt(pages)) Seiten (wo vorhanden)"
-    }
-
-    var tinyTeaserLine: String? {
-        // etwas „nerdig“ aber nicht nervig
-        let fin = finishedInSelectedYear
-        guard fin.count >= 2 else { return nil }
-
-        let speed = avgPagesPerDayText(for: fin)
-        let days = avgDaysPerBookText(for: fin)
-
-        if speed == "–" && days == "–" { return nil }
-        return "Ø \(speed) Seiten/Tag • Ø \(days) Tage/Buch (für „Gelesen“ mit Zeitraum)"
-    }
-
     // MARK: - Controls
 
-    var yearAndScopeCard: some View {
+    func yearAndScopeCard(yearOptions: [Int]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
                 Picker("Jahr", selection: $selectedYear) {
@@ -92,33 +73,32 @@ extension StatisticsView {
 
     // MARK: - Overview
 
-    var overviewGrid: some View {
+    func overviewGrid(summary: StatsCache.Summary) -> some View {
         let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+        let overview = summary.overview
 
         return LazyVGrid(columns: cols, spacing: 10) {
-            MetricCard(title: "Bücher", value: "\(scopedBooks.count)", systemImage: "books.vertical")
-            MetricCard(title: "Gelesen", value: "\(scopedBooks.filter { $0.status == .finished }.count)", systemImage: "checkmark.seal")
+            MetricCard(title: "Bücher", value: "\(overview.scopedBooksCount)", systemImage: "books.vertical")
+            MetricCard(title: "Gelesen", value: "\(overview.finishedScopedBooksCount)", systemImage: "checkmark.seal")
 
-            MetricCard(title: "Autoren", value: "\(uniqueAuthors(scopedBooks).count)", systemImage: "person.2")
-            MetricCard(title: "Verlage", value: "\(uniquePublishers(scopedBooks).count)", systemImage: "building.2")
+            MetricCard(title: "Autoren", value: "\(overview.uniqueAuthorsCount)", systemImage: "person.2")
+            MetricCard(title: "Verlage", value: "\(overview.uniquePublishersCount)", systemImage: "building.2")
 
-            MetricCard(title: "Seiten (Jahr)", value: formatInt(totalPages(finishedInSelectedYear)), systemImage: "doc.plaintext")
-            MetricCard(title: "Bücher (Jahr)", value: "\(finishedInSelectedYear.count)", systemImage: "calendar")
+            MetricCard(title: "Seiten (Jahr)", value: formatInt(overview.pagesInSelectedYear), systemImage: "doc.plaintext")
+            MetricCard(title: "Bücher (Jahr)", value: "\(overview.finishedInSelectedYearCount)", systemImage: "calendar")
 
-            MetricCard(title: "Ø Seiten/Buch", value: avgPagesPerBookText(for: finishedInSelectedYear), systemImage: "divide")
-            MetricCard(title: "Ø Tage/Buch", value: avgDaysPerBookText(for: finishedInSelectedYear), systemImage: "clock")
+            MetricCard(title: "Ø Seiten/Buch", value: overview.avgPagesPerBookText, systemImage: "divide")
+            MetricCard(title: "Ø Tage/Buch", value: overview.avgDaysPerBookText, systemImage: "clock")
         }
     }
 
     // MARK: - Charts
 
-    var readingChartsCard: some View {
-        let key = makeStatsCacheKey()
-        let cache = statsCache
-        let isValid = (cache?.key == key)
+    func readingChartsCard(statsKey: StatsCacheKey, cache: StatsCache?) -> some View {
+        let isValid = (cache?.key == statsKey)
         let effective = isValid ? cache : nil
 
-        let monthsCount = monthsForSelectedYear.count
+        let monthsCount = effective?.monthsCount ?? monthsForYear(statsKey.selectedYear).count
         let series = effective?.monthlySeries ?? []
 
         return VStack(alignment: .leading, spacing: 12) {
@@ -203,13 +183,11 @@ extension StatisticsView {
 
     // MARK: - Activity Heatmap & Streaks
 
-    var activityHeatmapCard: some View {
-        let key = makeHeatmapCacheKey()
-        let cache = heatmapCache
-        let isValid = (cache?.key == key)
+    func activityHeatmapCard(heatmapKey: HeatmapCacheKey, cache: HeatmapCache?) -> some View {
+        let isValid = (cache?.key == heatmapKey)
         let effective = isValid ? cache : nil
 
-        let range = effective?.range ?? heatmapRangeForSelectedYear()
+        let range = effective?.range ?? heatmapRange(for: heatmapKey.selectedYear)
         let stats = effective?.stats ?? HeatmapStats(
             activeDays: 0,
             maxCount: 0,
@@ -322,15 +300,12 @@ extension StatisticsView {
 
     // MARK: - Top lists
 
-    var topListsCard: some View {
+    func topListsCard(cache: StatsCache?) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Top-Listen")
                 .font(.headline)
 
-            let signature = booksSignature(books)
-            let canUseCache = (statsCache?.key.scope == scope && statsCache?.key.booksSignature == signature)
-
-            if !canUseCache {
+            if cache == nil {
                 HStack(spacing: 8) {
                     if isUpdatingStatsCache { ProgressView().controlSize(.mini) }
                     Text("Berechne Top-Listen …")
@@ -338,12 +313,12 @@ extension StatisticsView {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                let topGenres = statsCache?.topGenres ?? []
-                let topSubgenres = statsCache?.topSubgenres ?? []
-                let topAuthors = statsCache?.topAuthors ?? []
-                let topPublishers = statsCache?.topPublishers ?? []
-                let topLanguages = statsCache?.topLanguages ?? []
-                let topTags = statsCache?.topTags ?? []
+                let topGenres = cache?.topGenres ?? []
+                let topSubgenres = cache?.topSubgenres ?? []
+                let topAuthors = cache?.topAuthors ?? []
+                let topPublishers = cache?.topPublishers ?? []
+                let topLanguages = cache?.topLanguages ?? []
+                let topTags = cache?.topTags ?? []
 
                 if topGenres.isEmpty && topSubgenres.isEmpty && topAuthors.isEmpty && topPublishers.isEmpty && topTags.isEmpty {
                     Text("Noch nicht genug Metadaten — gib Büchern Kategorien/Verlage/Tags, dann wird’s hier richtig gut.")
@@ -395,22 +370,17 @@ extension StatisticsView {
 
     // MARK: - Nerd corner
 
-    var nerdCornerCard: some View {
-        let key = makeStatsCacheKey()
-        let canUseCache = (statsCache?.key == key)
-
-        let fastest = canUseCache ? statsCache?.fastest : nil
-        let slowest = canUseCache ? statsCache?.slowest : nil
-        let biggest = canUseCache ? statsCache?.biggest : nil
-        let highestRated = canUseCache ? statsCache?.highestRated : nil
-
-        let fin = finishedInSelectedYear
+    func nerdCornerCard(summary: StatsCache.Summary, cache: StatsCache?) -> some View {
+        let fastest = cache?.fastest
+        let slowest = cache?.slowest
+        let biggest = cache?.biggest
+        let highestRated = cache?.highestRated
 
         return VStack(alignment: .leading, spacing: 12) {
             Text("Nerd Corner")
                 .font(.headline)
 
-            if !canUseCache && isUpdatingStatsCache {
+            if cache == nil && isUpdatingStatsCache {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.mini)
                     Text("Aktualisiere Nerd-Stats …")
@@ -443,7 +413,7 @@ extension StatisticsView {
                 systemImage: "star.bubble"
             )
 
-            if fin.isEmpty {
+            if summary.overview.finishedInSelectedYearCount == 0 {
                 Text("Für „Schnell/Langsam“ brauchst du bei gelesenen Büchern `Von/Bis`.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

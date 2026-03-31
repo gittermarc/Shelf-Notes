@@ -64,7 +64,7 @@ extension StatisticsView {
     }
 
     func activityDailyCounts(metric: ActivityMetric, range: HeatmapRange) -> [Date: Int] {
-        activityDailyCounts(metric: metric, range: range, books: scopedBooks)
+        activityDailyCounts(metric: metric, range: range, books: scopedBooks(for: scope, in: books))
     }
 
     /// Parameterized variant used by caching so we can compute counts for an explicit book slice.
