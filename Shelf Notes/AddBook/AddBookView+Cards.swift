@@ -2,7 +2,7 @@
 //  AddBookView+Cards.swift
 //  Shelf Notes
 //
-//  Created by Marc Fechner + ChatGPT on 31.01.26.
+//  Created by Marc Fechner on 31.01.26.
 //
 
 import SwiftUI

@@ -2,7 +2,7 @@
 //  ManualBookAddSheet.swift
 //  Shelf Notes
 //
-//  Created by Marc Fechner + ChatGPT on 01.02.26.
+//  Created by Marc Fechner on 01.02.26.
 //
 
 import SwiftUI
