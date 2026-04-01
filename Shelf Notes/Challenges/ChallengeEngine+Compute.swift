@@ -8,7 +8,7 @@
 
 import Foundation
 
-extension ChallengeEngine {
+nonisolated extension ChallengeEngine {
 
     struct PeriodBounds: Sendable {
         let start: Date
@@ -276,7 +276,7 @@ extension ChallengeEngine {
 
 // MARK: - Metric selection + baselines
 
-private extension ChallengeEngine {
+private nonisolated extension ChallengeEngine {
 
     static func pickMetric(kind: ChallengeKind, periodStart: Date, snapshot: Snapshot) -> ChallengeMetric {
         let baseline = baselineStats(kind: kind, baselineEnd: periodStart, snapshot: snapshot)
@@ -320,7 +320,7 @@ private extension ChallengeEngine {
 
 // MARK: - Aggregations
 
-private extension ChallengeEngine {
+private nonisolated extension ChallengeEngine {
 
     static func totalReadingSeconds(in range: Range<Date>, snapshot: Snapshot) -> Int {
         if snapshot.sessions.isEmpty { return 0 }
@@ -391,7 +391,7 @@ private extension ChallengeEngine {
 
 // MARK: - Date math + helpers
 
-private extension ChallengeEngine {
+private nonisolated extension ChallengeEngine {
 
     static func engineCalendar() -> Calendar {
         var cal = Calendar(identifier: .iso8601)

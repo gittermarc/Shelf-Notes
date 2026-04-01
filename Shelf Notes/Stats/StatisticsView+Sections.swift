@@ -8,14 +8,14 @@ extension StatisticsView {
 
     // MARK: - Header
 
-    func headerCard(summary: StatsCache.Summary) -> some View {
+    func headerCard(summary: StatsCache.Summary?) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Dein Lese-Dashboard")
                         .font(.title3.weight(.semibold))
 
-                    Text(summary.heroSubtitle)
+                    Text(summary?.heroSubtitle ?? "Berechne Übersicht …")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -28,7 +28,7 @@ extension StatisticsView {
                     .foregroundStyle(.secondary)
             }
 
-            if let tease = summary.tinyTeaserLine {
+            if let tease = summary?.tinyTeaserLine {
                 Text(tease)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -73,22 +73,22 @@ extension StatisticsView {
 
     // MARK: - Overview
 
-    func overviewGrid(summary: StatsCache.Summary) -> some View {
+    func overviewGrid(summary: StatsCache.Summary?) -> some View {
         let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
-        let overview = summary.overview
+        let overview = summary?.overview
 
         return LazyVGrid(columns: cols, spacing: 10) {
-            MetricCard(title: "Bücher", value: "\(overview.scopedBooksCount)", systemImage: "books.vertical")
-            MetricCard(title: "Gelesen", value: "\(overview.finishedScopedBooksCount)", systemImage: "checkmark.seal")
+            MetricCard(title: "Bücher", value: overview.map { "\($0.scopedBooksCount)" } ?? "–", systemImage: "books.vertical")
+            MetricCard(title: "Gelesen", value: overview.map { "\($0.finishedScopedBooksCount)" } ?? "–", systemImage: "checkmark.seal")
 
-            MetricCard(title: "Autoren", value: "\(overview.uniqueAuthorsCount)", systemImage: "person.2")
-            MetricCard(title: "Verlage", value: "\(overview.uniquePublishersCount)", systemImage: "building.2")
+            MetricCard(title: "Autoren", value: overview.map { "\($0.uniqueAuthorsCount)" } ?? "–", systemImage: "person.2")
+            MetricCard(title: "Verlage", value: overview.map { "\($0.uniquePublishersCount)" } ?? "–", systemImage: "building.2")
 
-            MetricCard(title: "Seiten (Jahr)", value: formatInt(overview.pagesInSelectedYear), systemImage: "doc.plaintext")
-            MetricCard(title: "Bücher (Jahr)", value: "\(overview.finishedInSelectedYearCount)", systemImage: "calendar")
+            MetricCard(title: "Seiten (Jahr)", value: overview.map { formatInt($0.pagesInSelectedYear) } ?? "–", systemImage: "doc.plaintext")
+            MetricCard(title: "Bücher (Jahr)", value: overview.map { "\($0.finishedInSelectedYearCount)" } ?? "–", systemImage: "calendar")
 
-            MetricCard(title: "Ø Seiten/Buch", value: overview.avgPagesPerBookText, systemImage: "divide")
-            MetricCard(title: "Ø Tage/Buch", value: overview.avgDaysPerBookText, systemImage: "clock")
+            MetricCard(title: "Ø Seiten/Buch", value: overview?.avgPagesPerBookText ?? "–", systemImage: "divide")
+            MetricCard(title: "Ø Tage/Buch", value: overview?.avgDaysPerBookText ?? "–", systemImage: "clock")
         }
     }
 
@@ -370,7 +370,7 @@ extension StatisticsView {
 
     // MARK: - Nerd corner
 
-    func nerdCornerCard(summary: StatsCache.Summary, cache: StatsCache?) -> some View {
+    func nerdCornerCard(summary: StatsCache.Summary?, cache: StatsCache?) -> some View {
         let fastest = cache?.fastest
         let slowest = cache?.slowest
         let biggest = cache?.biggest
@@ -413,7 +413,7 @@ extension StatisticsView {
                 systemImage: "star.bubble"
             )
 
-            if summary.overview.finishedInSelectedYearCount == 0 {
+            if summary?.overview.finishedInSelectedYearCount == 0 {
                 Text("Für „Schnell/Langsam“ brauchst du bei gelesenen Büchern `Von/Bis`.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

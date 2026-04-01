@@ -187,51 +187,11 @@ extension StatisticsView {
     }
 
     func computeStatsCache(for key: StatsCacheKey) -> StatsCache {
-        let scoped = scopedBooks(for: key.scope, in: books)
-        let finishedInYear = finishedBooks(in: key.selectedYear, from: scoped)
-        let summary = makeStatsSummary(allBooks: books, scopedBooks: scoped, finishedInYear: finishedInYear)
-
-        // 2) Monthly charts
-        let months = monthsForYear(key.selectedYear)
-        let series = monthlySeriesFor(months: months, finishedBooks: finishedInYear)
-
-        // 3) Top lists (use scoped books)
-        let topGenres = topGenresList(scoped, limit: 8)
-        let topSubgenres = topSubgenresList(scoped, limit: 8)
-        let topAuthors = topAuthorsList(scoped, limit: 8)
-        let topPublishers = topPublishersList(scoped, limit: 8)
-        let topLanguages = topLanguagesList(scoped, limit: 8)
-        let topTags = topTagsList(scoped, limit: 10)
-
-        // 4) Nerd corner
-        let fastest = fastestBook(finishedInYear)
-        let slowest = slowestBook(finishedInYear)
-        let biggest = biggestBook(finishedInYear)
-        let highestRated = highestRatedBook(scoped)
-
-        return StatsCache(
-            key: key,
-            summary: summary,
-            monthsCount: months.count,
-            monthlySeries: series,
-            topGenres: topGenres,
-            topSubgenres: topSubgenres,
-            topAuthors: topAuthors,
-            topPublishers: topPublishers,
-            topLanguages: topLanguages,
-            topTags: topTags,
-            fastest: fastest,
-            slowest: slowest,
-            biggest: biggest,
-            highestRated: highestRated
-        )
+        let snapshots = books.map(StatisticsBookSnapshot.init)
+        let builder = StatisticsSnapshotBuilder(now: Date(), calendar: Calendar.current)
+        return builder.makeStatsCache(for: key, books: snapshots)
     }
 
-    func computeStatsSummary(for key: StatsCacheKey) -> StatsCache.Summary {
-        let scoped = scopedBooks(for: key.scope, in: books)
-        let finishedInYear = finishedBooks(in: key.selectedYear, from: scoped)
-        return makeStatsSummary(allBooks: books, scopedBooks: scoped, finishedInYear: finishedInYear)
-    }
 
     func computeHeatmapCache(for key: HeatmapCacheKey) -> HeatmapCache {
         let scoped: [Book]
@@ -260,51 +220,6 @@ extension StatisticsView {
         )
     }
 
-    func makeStatsSummary(
-        allBooks: [Book],
-        scopedBooks: [Book],
-        finishedInYear: [Book]
-    ) -> StatsCache.Summary {
-        let scopedCount = scopedBooks.count
-        let finishedScopedCount = scopedBooks.reduce(into: 0) { partial, book in
-            if book.status == .finished { partial += 1 }
-        }
-        let scopedPages = totalPages(scopedBooks)
-        let uniqueAuthorsCount = uniqueAuthors(scopedBooks).count
-        let uniquePublishersCount = uniquePublishers(scopedBooks).count
-        let pagesInSelectedYear = totalPages(finishedInYear)
-        let avgPagesPerBook = avgPagesPerBookText(for: finishedInYear)
-        let avgDaysPerBook = avgDaysPerBookText(for: finishedInYear)
-        let avgPagesPerDay = avgPagesPerDayText(for: finishedInYear)
-
-        let tinyTeaserLine: String?
-        if finishedInYear.count >= 2, avgPagesPerBook != "–" || avgDaysPerBook != "–" || avgPagesPerDay != "–" {
-            if avgPagesPerDay == "–" && avgDaysPerBook == "–" {
-                tinyTeaserLine = nil
-            } else {
-                tinyTeaserLine = "Ø \(avgPagesPerDay) Seiten/Tag • Ø \(avgDaysPerBook) Tage/Buch (für „Gelesen“ mit Zeitraum)"
-            }
-        } else {
-            tinyTeaserLine = nil
-        }
-
-        return StatsCache.Summary(
-            yearOptions: availableYears(from: allBooks),
-            heroSubtitle: "\(scopedCount) Bücher • \(finishedScopedCount) gelesen • \(formatInt(scopedPages)) Seiten (wo vorhanden)",
-            tinyTeaserLine: tinyTeaserLine,
-            overview: StatsCache.Summary.Overview(
-                scopedBooksCount: scopedCount,
-                finishedScopedBooksCount: finishedScopedCount,
-                uniqueAuthorsCount: uniqueAuthorsCount,
-                uniquePublishersCount: uniquePublishersCount,
-                pagesInSelectedYear: pagesInSelectedYear,
-                finishedInSelectedYearCount: finishedInYear.count,
-                avgPagesPerBookText: avgPagesPerBook,
-                avgDaysPerBookText: avgDaysPerBook
-            )
-        )
-    }
-
     // MARK: - Helpers (parameterized variants)
 
     func monthsForYear(_ year: Int) -> [MonthKey] {
@@ -320,28 +235,4 @@ extension StatisticsView {
         return (1...maxMonth).map { MonthKey(year: year, month: $0) }
     }
 
-    func monthlySeriesFor(months: [MonthKey], finishedBooks: [Book]) -> [MonthSeriesPoint] {
-        let cal = Calendar.current
-        var countBy: [MonthKey: Int] = [:]
-        var pagesBy: [MonthKey: Int] = [:]
-
-        for b in finishedBooks {
-            guard let d = (b.readTo ?? b.readFrom) else { continue }
-            let y = cal.component(.year, from: d)
-            let m = cal.component(.month, from: d)
-            let key = MonthKey(year: y, month: m)
-
-            countBy[key, default: 0] += 1
-            pagesBy[key, default: 0] += (b.pageCount ?? 0)
-        }
-
-        return months.map { mk in
-            MonthSeriesPoint(
-                id: mk.id,
-                monthLabel: mk.monthLabel,
-                finishedCount: countBy[mk, default: 0],
-                pages: pagesBy[mk, default: 0]
-            )
-        }
-    }
 }

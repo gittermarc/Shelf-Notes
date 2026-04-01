@@ -243,8 +243,8 @@ extension BookImportViewModel {
             guard generation == searchGeneration else { return }
 
             // Prefer showing a mixed feed (interleave) instead of dumping all from the first query.
-            var finalResponses = responses
-            var finalMerged = interleavingUniqueVolumes(lists: responses.map { $0.volumes })
+            let finalResponses = responses
+            let finalMerged = interleavingUniqueVolumes(lists: responses.map { $0.volumes })
 
             lastDebugInfo = finalResponses.first?.debug
             totalItems = finalMerged.count

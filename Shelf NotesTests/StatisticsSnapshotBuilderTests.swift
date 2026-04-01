@@ -1,0 +1,194 @@
+import Foundation
+import Testing
+@testable import Shelf_Notes
+
+struct StatisticsSnapshotBuilderTests {
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        return calendar
+    }
+
+    private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day)) ?? .distantPast
+    }
+
+    @Test func buildsSummaryForScopedYearData() {
+        let builder = StatisticsSnapshotBuilder(now: date(2026, 4, 15), calendar: calendar)
+        let books = [
+            StatisticsBookSnapshot(
+                title: "Alpha",
+                author: "Author One",
+                statusRawValue: ReadingStatus.finished.rawValue,
+                readFrom: date(2026, 1, 1),
+                readTo: date(2026, 1, 5),
+                publisher: "Pub A",
+                publishedDate: "2021-02-01",
+                pageCount: 300,
+                language: "DE",
+                categories: ["Fiction / Thriller / Noir"],
+                mainCategory: "Fiction / Thriller / Noir",
+                userRatingAverage1: 4.6
+            ),
+            StatisticsBookSnapshot(
+                title: "Beta",
+                author: "Author Two",
+                statusRawValue: ReadingStatus.finished.rawValue,
+                tags: ["History"],
+                readFrom: date(2026, 2, 10),
+                readTo: date(2026, 2, 12),
+                publisher: "Pub B",
+                publishedDate: "2020",
+                pageCount: 150,
+                language: "EN",
+                categories: ["Nonfiction / History"],
+                mainCategory: "Nonfiction / History",
+                userRatingAverage1: 3.8
+            ),
+            StatisticsBookSnapshot(
+                title: "Gamma",
+                author: "Author Two",
+                statusRawValue: ReadingStatus.reading.rawValue,
+                tags: ["Currently Reading"],
+                publisher: "Pub B",
+                publishedDate: "2019",
+                pageCount: 420,
+                language: "EN"
+            )
+        ]
+
+        let key = StatisticsView.StatsCacheKey(
+            selectedYear: 2026,
+            scope: .all,
+            booksSignature: 123
+        )
+        let cache = builder.makeStatsCache(for: key, books: books)
+
+        #expect(cache.summary.heroSubtitle == "3 Bücher • 2 gelesen • 870 Seiten (wo vorhanden)")
+        #expect(cache.summary.overview.scopedBooksCount == 3)
+        #expect(cache.summary.overview.finishedScopedBooksCount == 2)
+        #expect(cache.summary.overview.uniqueAuthorsCount == 2)
+        #expect(cache.summary.overview.uniquePublishersCount == 2)
+        #expect(cache.summary.overview.pagesInSelectedYear == 450)
+        #expect(cache.summary.overview.finishedInSelectedYearCount == 2)
+        #expect(cache.summary.overview.avgPagesPerBookText == "225")
+        #expect(cache.summary.overview.avgDaysPerBookText == "4")
+        #expect(cache.summary.yearOptions == [2027, 2026, 2021, 2020, 2019])
+        #expect(cache.summary.tinyTeaserLine == "Ø 55 Seiten/Tag • Ø 4 Tage/Buch (für „Gelesen“ mit Zeitraum)")
+    }
+
+    @Test func buildsStableTopListsAndRatings() {
+        let builder = StatisticsSnapshotBuilder(now: date(2026, 7, 1), calendar: calendar)
+        let books = [
+            StatisticsBookSnapshot(
+                title: "Noir One",
+                author: "Ada",
+                statusRawValue: ReadingStatus.finished.rawValue,
+                tags: ["#Mood", "Crime"],
+                publisher: "Zed",
+                pageCount: 220,
+                language: "DE",
+                categories: ["Fiction / Thriller / Noir"],
+                mainCategory: "Fiction / Thriller / Noir",
+                userRatingAverage1: 4.4
+            ),
+            StatisticsBookSnapshot(
+                title: "Noir Two",
+                author: "Ada",
+                statusRawValue: ReadingStatus.finished.rawValue,
+                tags: ["Mood"],
+                publisher: "Alpha",
+                pageCount: 180,
+                language: "DE",
+                categories: ["Fiction / Thriller / Noir"],
+                mainCategory: "Fiction / Thriller / Noir",
+                userRatingAverage1: 4.8
+            ),
+            StatisticsBookSnapshot(
+                title: "History One",
+                author: "Bea",
+                statusRawValue: ReadingStatus.toRead.rawValue,
+                tags: ["Crime"],
+                publisher: "Alpha",
+                pageCount: 300,
+                language: "EN",
+                categories: ["Nonfiction / History"],
+                mainCategory: "Nonfiction / History"
+            )
+        ]
+
+        let cache = builder.makeStatsCache(
+            for: .init(selectedYear: 2026, scope: .all, booksSignature: 99),
+            books: books
+        )
+
+        #expect(cache.topGenres.map { $0.label } == ["Thriller", "History"])
+        #expect(cache.topGenres.map { $0.count } == [2, 1])
+        #expect(cache.topSubgenres.map { $0.label } == ["Noir"])
+        #expect(cache.topAuthors.map { $0.label } == ["Ada", "Bea"])
+        #expect(cache.topPublishers.map { $0.label } == ["Alpha", "Zed"])
+        #expect(cache.topPublishers.map { $0.count } == [2, 1])
+        #expect(cache.topLanguages.map { $0.label } == ["DE", "EN"])
+        #expect(cache.topTags.map { $0.label } == ["Crime", "Mood"])
+        #expect(cache.topTags.map { $0.count } == [2, 2])
+        #expect(cache.highestRated?.label == "Noir Two • 4.8 / 5")
+    }
+
+    @Test func buildsMonthlySeriesAndNerdStatsForFinishedBooks() {
+        let builder = StatisticsSnapshotBuilder(now: date(2026, 4, 15), calendar: calendar)
+        let books = [
+            StatisticsBookSnapshot(
+                title: "Sprint",
+                statusRawValue: ReadingStatus.finished.rawValue,
+                readFrom: date(2026, 1, 10),
+                readTo: date(2026, 1, 10),
+                pageCount: 100
+            ),
+            StatisticsBookSnapshot(
+                title: "Marathon",
+                statusRawValue: ReadingStatus.finished.rawValue,
+                readFrom: date(2026, 2, 1),
+                readTo: date(2026, 2, 10),
+                pageCount: 500
+            ),
+            StatisticsBookSnapshot(
+                title: "April Book",
+                statusRawValue: ReadingStatus.finished.rawValue,
+                readFrom: date(2026, 4, 2),
+                readTo: date(2026, 4, 4),
+                pageCount: 250
+            )
+        ]
+
+        let cache = builder.makeStatsCache(
+            for: .init(selectedYear: 2026, scope: .all, booksSignature: 7),
+            books: books
+        )
+
+        #expect(cache.monthsCount == 4)
+        #expect(cache.monthlySeries.map { $0.finishedCount } == [1, 1, 0, 1])
+        #expect(cache.monthlySeries.map { $0.pages } == [100, 500, 0, 250])
+        #expect(cache.fastest?.label == "Sprint • 1 Tage")
+        #expect(cache.slowest?.label == "Marathon • 10 Tage")
+        #expect(cache.biggest?.label == "Marathon • 500 Seiten")
+    }
+
+    @Test func returnsEmptyFriendlySnapshotForNoBooks() {
+        let builder = StatisticsSnapshotBuilder(now: date(2026, 4, 15), calendar: calendar)
+        let cache = builder.makeStatsCache(
+            for: .init(selectedYear: 2026, scope: .all, booksSignature: 0),
+            books: []
+        )
+
+        #expect(cache.summary.heroSubtitle == "0 Bücher • 0 gelesen • 0 Seiten (wo vorhanden)")
+        #expect(cache.summary.overview.scopedBooksCount == 0)
+        #expect(cache.summary.overview.pagesInSelectedYear == 0)
+        #expect(cache.summary.overview.avgPagesPerBookText == "–")
+        #expect(cache.summary.overview.avgDaysPerBookText == "–")
+        #expect(cache.summary.yearOptions == [2027, 2026])
+        #expect(cache.monthsCount == 4)
+        #expect(cache.monthlySeries.allSatisfy { $0.finishedCount == 0 && $0.pages == 0 })
+        #expect(cache.topGenres.isEmpty)
+        #expect(cache.highestRated == nil)
+    }
+}

@@ -58,6 +58,7 @@ nonisolated enum ChallengeEngine {
     ///
     /// Fetching is done on the current actor (usually MainActor via `modelContext`).
     /// Heavy crunching is done off-main via value-only snapshots.
+    @MainActor
     static func ensureCurrentChallengesAndRefreshCompletion(modelContext: ModelContext) async {
         let now = Date()
         let weekly = periodBounds(kind: .weekly, now: now)
@@ -69,21 +70,10 @@ nonisolated enum ChallengeEngine {
         )
         let latest = max(weekly.end, monthly.end)
 
-        let snapshot = await MainActor.run {
-            buildSnapshot(range: earliest..<latest, modelContext: modelContext)
-        }
-
-        let existingWeekly = await MainActor.run {
-            fetchChallengeSnapshot(kind: .weekly, periodStart: weekly.start, modelContext: modelContext)
-        }
-
-        let existingMonthly = await MainActor.run {
-            fetchChallengeSnapshot(kind: .monthly, periodStart: monthly.start, modelContext: modelContext)
-        }
-
-        let activeSnapshots = await MainActor.run {
-            fetchActiveChallenges(now: now, modelContext: modelContext).map { ChallengeRecordSnapshot(from: $0) }
-        }
+        let snapshot = buildSnapshot(range: earliest..<latest, modelContext: modelContext)
+        let existingWeekly = fetchChallengeSnapshot(kind: .weekly, periodStart: weekly.start, modelContext: modelContext)
+        let existingMonthly = fetchChallengeSnapshot(kind: .monthly, periodStart: monthly.start, modelContext: modelContext)
+        let activeSnapshots = fetchActiveChallenges(now: now, modelContext: modelContext).map { ChallengeRecordSnapshot(from: $0) }
 
         let plans = await Task.detached(priority: .utility) {
             let ensures = planEnsures(
@@ -97,28 +87,22 @@ nonisolated enum ChallengeEngine {
             return (ensures, completions)
         }.value
 
-        await MainActor.run {
-            applyEnsurePlans(plans.0, modelContext: modelContext)
-            applyCompletionPlans(plans.1, modelContext: modelContext)
-        }
+        applyEnsurePlans(plans.0, modelContext: modelContext)
+        applyCompletionPlans(plans.1, modelContext: modelContext)
     }
 
     /// Computes progress for multiple challenges efficiently.
     ///
     /// This fetches a single snapshot spanning all provided periods and crunches the results off-main.
+    @MainActor
     static func computeProgressMap(for challenges: [ChallengeRecord], modelContext: ModelContext) async -> [UUID: ChallengeProgress] {
         guard !challenges.isEmpty else { return [:] }
 
         let minStart = challenges.map(\.periodStart).min() ?? Date()
         let maxEnd = challenges.map(\.periodEnd).max() ?? Date()
 
-        let snapshot = await MainActor.run {
-            buildSnapshot(range: minStart..<maxEnd, modelContext: modelContext)
-        }
-
-        let challengeSnapshots = await MainActor.run {
-            challenges.map { ChallengeRecordSnapshot(from: $0) }
-        }
+        let snapshot = buildSnapshot(range: minStart..<maxEnd, modelContext: modelContext)
+        let challengeSnapshots = challenges.map { ChallengeRecordSnapshot(from: $0) }
 
         return await Task.detached(priority: .utility) {
             var map: [UUID: ChallengeProgress] = [:]

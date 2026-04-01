@@ -75,12 +75,20 @@ struct StatisticsView: View {
                 )
                 .padding(.horizontal)
             } else {
-                let summary = exactStatsCache?.summary ?? computeStatsSummary(for: statsKey)
+                let sameBooksStatsCache: StatsCache? = {
+                    guard let cache = statsCache,
+                          cache.key.booksSignature == signature else {
+                        return nil
+                    }
+                    return cache
+                }()
+                let summary = exactStatsCache?.summary
+                let yearOptions = sameBooksStatsCache?.summary.yearOptions ?? [selectedYear]
 
                 ScrollView {
                     VStack(spacing: 14) {
                         headerCard(summary: summary)
-                        yearAndScopeCard(yearOptions: summary.yearOptions)
+                        yearAndScopeCard(yearOptions: yearOptions)
                         overviewGrid(summary: summary)
                         readingChartsCard(statsKey: statsKey, cache: exactStatsCache)
                         activityHeatmapCard(heatmapKey: heatmapKey, cache: exactHeatmapCache)

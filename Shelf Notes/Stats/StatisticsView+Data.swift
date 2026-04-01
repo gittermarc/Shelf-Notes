@@ -67,7 +67,7 @@ extension StatisticsView {
         }
     }
 
-    struct MonthSeriesPoint: Identifiable {
+    struct MonthSeriesPoint: Identifiable, Equatable {
         let id: String
         let monthLabel: String
         let finishedCount: Int
@@ -348,7 +348,7 @@ extension StatisticsView {
         return nil
     }
 
-    struct NerdPick {
+    struct NerdPick: Equatable {
         let label: String
         let sortKey: Int
     }

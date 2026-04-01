@@ -13,9 +13,9 @@ enum ChallengeKind: String, Codable, CaseIterable, Identifiable {
     case weekly
     case monthly
 
-    var id: String { rawValue }
+    nonisolated var id: String { rawValue }
 
-    var displayName: String {
+    nonisolated var displayName: String {
         switch self {
         case .weekly:
             return "Woche"
@@ -24,7 +24,7 @@ enum ChallengeKind: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    var badgeSystemImage: String {
+    nonisolated var badgeSystemImage: String {
         switch self {
         case .weekly:
             return "calendar.badge.clock"
@@ -41,9 +41,9 @@ enum ChallengeMetric: String, Codable, CaseIterable, Identifiable {
     case pagesRead
     case booksFinished
 
-    var id: String { rawValue }
+    nonisolated var id: String { rawValue }
 
-    var systemImage: String {
+    nonisolated var systemImage: String {
         switch self {
         case .readingMinutes:
             return "clock"
@@ -58,7 +58,7 @@ enum ChallengeMetric: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    var unitSuffix: String {
+    nonisolated var unitSuffix: String {
         switch self {
         case .readingMinutes:
             return "min"
