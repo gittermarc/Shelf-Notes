@@ -8,16 +8,6 @@
 
 import SwiftUI
 import SwiftData
-import StoreKit
-import Combine
-
-#if canImport(PhotosUI)
-import PhotosUI
-#endif
-
-#if canImport(UIKit)
-import UIKit
-#endif
 
 // MARK: - Goals View
 struct GoalsView: View {
@@ -33,11 +23,17 @@ struct GoalsView: View {
     ]
 
     var body: some View {
-        ScrollView {
+        let metrics = GoalsYearMetricsBuilder.make(
+            selectedYear: selectedYear,
+            books: books,
+            goals: goals
+        )
+
+        return ScrollView {
             VStack(spacing: 14) {
-                goalCard
-                progressCard
-                slotsGrid
+                goalCard(metrics: metrics)
+                progressCard(metrics: metrics)
+                slotsGrid(metrics: metrics)
             }
             .padding(.horizontal)
             .padding(.bottom, 18)
@@ -49,14 +45,14 @@ struct GoalsView: View {
         .onChange(of: selectedYear) { _, _ in loadGoalForSelectedYear() }
     }
 
-    private var goalCard: some View {
+    private func goalCard(metrics: GoalsYearMetrics) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Ziel definieren")
                 .font(.headline)
 
             HStack(spacing: 12) {
                 Picker("Jahr", selection: $selectedYear) {
-                    ForEach(yearOptions, id: \.self) { y in
+                    ForEach(metrics.availableYears, id: \.self) { y in
                         Text(String(y)).tag(y)
                     }
                 }
@@ -83,8 +79,8 @@ struct GoalsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
-    private var progressCard: some View {
-        let done = finishedBooksInSelectedYear.count
+    private func progressCard(metrics: GoalsYearMetrics) -> some View {
+        let done = metrics.finishedBooks.count
         let total = max(targetCount, 1)
         let pct = min(Double(done) / Double(total), 1.0)
 
@@ -102,9 +98,9 @@ struct GoalsView: View {
             ProgressView(value: pct)
 
             HStack(spacing: 10) {
-                StatPill(systemImage: "doc.plaintext", title: "Seiten", value: formatInt(pagesReadInSelectedYear))
-                StatPill(systemImage: "divide.circle", title: "Ø/Buch", value: avgPagesPerBookText)
-                StatPill(systemImage: "calendar", title: "/Monat", value: pagesPerMonthText)
+                StatPill(systemImage: "doc.plaintext", title: "Seiten", value: formatInt(metrics.pagesReadInSelectedYear))
+                StatPill(systemImage: "divide.circle", title: "Ø/Buch", value: formatOptionalInt(metrics.averagePagesPerBook))
+                StatPill(systemImage: "calendar", title: "/Monat", value: formatInt(metrics.pagesPerMonth))
             }
         }
         .padding(14)
@@ -112,11 +108,11 @@ struct GoalsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
-    private var slotsGrid: some View {
+    private func slotsGrid(metrics: GoalsYearMetrics) -> some View {
         LazyVGrid(columns: columns, spacing: 10) {
             ForEach(0..<targetCount, id: \.self) { index in
-                if index < finishedBooksInSelectedYear.count {
-                    let book = finishedBooksInSelectedYear[index]
+                if index < metrics.finishedBooks.count {
+                    let book = metrics.finishedBooks[index]
                     NavigationLink {
                         BookDetailView(book: book)
                     } label: {
@@ -133,90 +129,17 @@ struct GoalsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
-    private var yearOptions: [Int] {
-        let cal = Calendar.current
-        let currentYear = cal.component(.year, from: Date())
-        let nextYear = currentYear + 1
-
-        var years = Set<Int>()
-        years.insert(currentYear)
-        years.insert(nextYear)
-
-        for b in books {
-            guard b.status == .finished else { continue }
-            if let d = b.readTo ?? b.readFrom {
-                years.insert(cal.component(.year, from: d))
-            }
-        }
-
-        for g in goals {
-            years.insert(g.year)
-        }
-
-        return years.sorted(by: >)
-    }
-
-    private var finishedBooksInSelectedYear: [Book] {
-        let cal = Calendar.current
-        let start = cal.date(from: DateComponents(year: selectedYear, month: 1, day: 1)) ?? Date.distantPast
-        let end = cal.date(from: DateComponents(year: selectedYear + 1, month: 1, day: 1)) ?? Date.distantFuture
-
-        let filtered = books.filter { book in
-            guard book.status == .finished else { return false }
-            let keyDate = book.readTo ?? book.readFrom
-            guard let d = keyDate else { return false }
-            return d >= start && d < end
-        }
-
-        return filtered.sorted { a, b in
-            let da = a.readTo ?? a.readFrom ?? a.createdAt
-            let db = b.readTo ?? b.readFrom ?? b.createdAt
-            return da < db
-        }
-    }
-
-    private var pagesReadInSelectedYear: Int {
-        finishedBooksInSelectedYear.reduce(0) { partial, book in
-            partial + (book.pageCount ?? 0)
-        }
-    }
-
-    private var countedBooksWithPagesInSelectedYear: [Book] {
-        finishedBooksInSelectedYear.filter { ($0.pageCount ?? 0) > 0 }
-    }
-
-    private var avgPagesPerBookText: String {
-        let arr = countedBooksWithPagesInSelectedYear
-        guard !arr.isEmpty else { return "–" }
-        let pages = arr.reduce(0) { $0 + ($1.pageCount ?? 0) }
-        let avg = Double(pages) / Double(arr.count)
-        return formatInt(Int(avg.rounded()))
-    }
-
-    private var pagesPerMonthText: String {
-        let months = monthsCountForSelectedYear()
-        guard months > 0 else { return "–" }
-        let perMonth = Double(pagesReadInSelectedYear) / Double(months)
-        return formatInt(Int(perMonth.rounded()))
-    }
-
-    private func monthsCountForSelectedYear() -> Int {
-        let cal = Calendar.current
-        let currentYear = cal.component(.year, from: Date())
-
-        if selectedYear < currentYear { return 12 }
-        if selectedYear > currentYear { return 12 }
-
-        let month = cal.component(.month, from: Date())
-        return max(1, month)
-    }
-
     private func formatInt(_ n: Int) -> String {
         let f = NumberFormatter()
         f.numberStyle = .decimal
         f.groupingSeparator = "."
         f.decimalSeparator = ","
         return f.string(from: NSNumber(value: n)) ?? "\(n)"
+    }
+
+    private func formatOptionalInt(_ value: Int?) -> String {
+        guard let value else { return "–" }
+        return formatInt(value)
     }
 
     private func loadGoalForSelectedYear() {
