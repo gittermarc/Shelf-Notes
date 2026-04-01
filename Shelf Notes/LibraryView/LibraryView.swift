@@ -46,7 +46,7 @@ struct LibraryView: View {
     @State var showingBulkDeleteConfirm: Bool = false
 
     // Derived state cache. The pure builder owns filtering, sorting, counts and sections.
-    @State private var derivedState: LibraryDerivedState = .empty
+    @State private var derivedCoordinator = LibraryDerivedStateCoordinator()
     @State private var derivedSearchText: String = ""
     @State private var pendingRecomputeTask: Task<Void, Never>? = nil
 
@@ -111,12 +111,7 @@ struct LibraryView: View {
     }
 
     var currentDerivedStateForUI: LibraryDerivedState {
-        if derivedState.token == activeDerivedTaskToken {
-            return derivedState
-        }
-
-        let source = LibrarySourceSnapshot(books: books)
-        return LibraryDerivedStateBuilder.makeDerivedState(source: source, input: activeDerivedInput)
+        derivedCoordinator.displayState(for: activeDerivedTaskToken)
     }
 
     var displayedBooksForCurrentDerivedState: [Book] {
@@ -192,6 +187,7 @@ struct LibraryView: View {
 
             enforceRatingRuleIfNeeded()
             syncDerivedSearchTextNow()
+            seedDerivedStateIfNeeded()
         }
         .task(id: activeDerivedTaskToken) {
             rebuildDerivedState(for: activeDerivedTaskToken)
@@ -280,13 +276,15 @@ struct LibraryView: View {
     private func rebuildDerivedState(for token: LibraryDerivedInputToken) {
         let source = LibrarySourceSnapshot(books: books)
         let input = activeDerivedInput
-        let rebuiltState = LibraryDerivedStateBuilder.makeDerivedState(source: source, input: input)
+        derivedCoordinator.resolveIfNeeded(for: token, source: source, input: input)
+    }
 
-        guard rebuiltState.token == token else {
-            return
-        }
-
-        derivedState = rebuiltState
+    @MainActor
+    private func seedDerivedStateIfNeeded() {
+        guard derivedCoordinator.hasStableState == false else { return }
+        let token = activeDerivedTaskToken
+        derivedCoordinator.invalidate(for: token)
+        rebuildDerivedState(for: token)
     }
 
     @MainActor
@@ -294,6 +292,7 @@ struct LibraryView: View {
         pendingRecomputeTask?.cancel()
         pendingRecomputeTask = nil
         derivedSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        derivedCoordinator.invalidate(for: activeDerivedTaskToken)
     }
 
     @MainActor
@@ -305,6 +304,7 @@ struct LibraryView: View {
                 return
             }
             derivedSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            derivedCoordinator.invalidate(for: activeDerivedTaskToken)
         }
     }
 
