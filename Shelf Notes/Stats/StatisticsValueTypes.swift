@@ -1,6 +1,6 @@
 import Foundation
 
-enum StatisticsScope: String, CaseIterable, Identifiable, Sendable {
+nonisolated enum StatisticsScope: String, CaseIterable, Identifiable, Sendable {
     case all = "Alle"
     case finished = "Gelesen"
     case reading = "Lese ich"
@@ -9,7 +9,7 @@ enum StatisticsScope: String, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
 }
 
-enum StatisticsActivityMetric: String, CaseIterable, Identifiable, Sendable {
+nonisolated enum StatisticsActivityMetric: String, CaseIterable, Identifiable, Sendable {
     case readingDays = "Lesetage"
     case readingMinutes = "Leseminuten"
     case completions = "Abschlüsse"
@@ -26,39 +26,39 @@ enum StatisticsActivityMetric: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-struct StatisticsStatsCacheKey: Hashable, Sendable {
+nonisolated struct StatisticsStatsCacheKey: Hashable, Sendable {
     let selectedYear: Int
     let scope: StatisticsScope
     let booksSignature: Int
 }
 
-struct StatisticsHeatmapCacheKey: Hashable, Sendable {
+nonisolated struct StatisticsHeatmapCacheKey: Hashable, Sendable {
     let selectedYear: Int
     let scope: StatisticsScope
     let activityMetric: StatisticsActivityMetric
     let booksSignature: Int
 }
 
-struct StatisticsMonthSeriesPoint: Identifiable, Equatable, Sendable {
+nonisolated struct StatisticsMonthSeriesPoint: Identifiable, Equatable, Sendable {
     let id: String
     let monthLabel: String
     let finishedCount: Int
     let pages: Int
 }
 
-struct StatisticsNerdPick: Equatable, Sendable {
+nonisolated struct StatisticsNerdPick: Equatable, Sendable {
     let label: String
     let sortKey: Int
 }
 
-struct StatisticsHeatmapRange: Sendable {
+nonisolated struct StatisticsHeatmapRange: Sendable {
     let start: Date
     let end: Date
     let gridStart: Date
     let gridEnd: Date
 }
 
-struct StatisticsHeatmapDay: Identifiable, Sendable {
+nonisolated struct StatisticsHeatmapDay: Identifiable, Sendable {
     let id: Date
     let date: Date
     let count: Int
@@ -66,12 +66,12 @@ struct StatisticsHeatmapDay: Identifiable, Sendable {
     let isInRange: Bool
 }
 
-struct StatisticsHeatmapWeek: Identifiable, Sendable {
+nonisolated struct StatisticsHeatmapWeek: Identifiable, Sendable {
     let id: Int
     let days: [StatisticsHeatmapDay]
 }
 
-struct StatisticsHeatmapStats: Sendable {
+nonisolated struct StatisticsHeatmapStats: Sendable {
     let activeDays: Int
     let maxCount: Int
     let currentStreak: Int
@@ -81,9 +81,9 @@ struct StatisticsHeatmapStats: Sendable {
     let bestWeekLabel: String
 }
 
-struct StatisticsStatsCache: Sendable {
-    struct Summary: Sendable {
-        struct Overview: Sendable {
+nonisolated struct StatisticsStatsCache: Sendable {
+    nonisolated struct Summary: Sendable {
+        nonisolated struct Overview: Sendable {
             let scopedBooksCount: Int
             let finishedScopedBooksCount: Int
             let uniqueAuthorsCount: Int
@@ -116,7 +116,7 @@ struct StatisticsStatsCache: Sendable {
     let highestRated: StatisticsNerdPick?
 }
 
-struct StatisticsHeatmapCache: Sendable {
+nonisolated struct StatisticsHeatmapCache: Sendable {
     let key: StatisticsHeatmapCacheKey
     let range: StatisticsHeatmapRange
     let counts: [Date: Int]

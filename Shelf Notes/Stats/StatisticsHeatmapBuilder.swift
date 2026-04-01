@@ -1,6 +1,6 @@
 import Foundation
 
-struct StatisticsHeatmapBuilder {
+nonisolated struct StatisticsHeatmapBuilder {
     let now: Date
     let calendar: Calendar
 
@@ -34,13 +34,13 @@ struct StatisticsHeatmapBuilder {
     }
 }
 
-extension StatisticsHeatmapBuilder {
+nonisolated extension StatisticsHeatmapBuilder {
     func makeRange(for year: Int) -> StatisticsHeatmapRange {
         heatmapRange(for: year)
     }
 }
 
-private extension StatisticsHeatmapBuilder {
+private nonisolated extension StatisticsHeatmapBuilder {
     func scopedBooks(
         for scope: StatisticsScope,
         in input: [StatisticsBookSnapshot]
@@ -384,7 +384,7 @@ private extension StatisticsHeatmapBuilder {
         )
     }
 
-    private struct WeekKey: Hashable, Comparable {
+    private nonisolated struct WeekKey: Hashable, Comparable {
         let year: Int
         let week: Int
 
@@ -396,15 +396,11 @@ private extension StatisticsHeatmapBuilder {
         }
     }
 
-    static let intFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.groupingSeparator = "."
-        formatter.decimalSeparator = ","
-        return formatter
-    }()
-
     func formatInt(_ value: Int) -> String {
-        Self.intFormatter.string(from: NSNumber(value: value)) ?? "\(value)"
+        value.formatted(
+            .number
+                .grouping(.automatic)
+                .locale(Locale(identifier: "de_DE"))
+        )
     }
 }

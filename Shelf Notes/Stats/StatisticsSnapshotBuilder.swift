@@ -1,7 +1,7 @@
 import Foundation
 
-struct StatisticsBookSnapshot: Sendable {
-    struct ReadingSessionSnapshot: Sendable {
+nonisolated struct StatisticsBookSnapshot: Sendable {
+    nonisolated struct ReadingSessionSnapshot: Sendable {
         let startedAt: Date
         let endedAt: Date
         let durationSeconds: Int
@@ -103,7 +103,7 @@ struct StatisticsBookSnapshot: Sendable {
     }
 }
 
-struct StatisticsSnapshotBuilder {
+nonisolated struct StatisticsSnapshotBuilder {
     let now: Date
     let calendar: Calendar
 
@@ -146,15 +146,7 @@ struct StatisticsSnapshotBuilder {
     }
 }
 
-private extension StatisticsSnapshotBuilder {
-    static let intFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.groupingSeparator = "."
-        formatter.decimalSeparator = ","
-        return formatter
-    }()
-
+private nonisolated extension StatisticsSnapshotBuilder {
     struct MonthKey: Hashable {
         let year: Int
         let month: Int
@@ -661,6 +653,10 @@ private extension StatisticsSnapshotBuilder {
     }
 
     func formatInt(_ value: Int) -> String {
-        Self.intFormatter.string(from: NSNumber(value: value)) ?? "\(value)"
+        value.formatted(
+            .number
+                .grouping(.automatic)
+                .locale(Locale(identifier: "de_DE"))
+        )
     }
 }

@@ -1,6 +1,6 @@
 import Foundation
 
-struct StatisticsSourceSnapshot: Sendable {
+nonisolated struct StatisticsSourceSnapshot: Sendable {
     let booksSignature: Int
     let books: [StatisticsBookSnapshot]
 
@@ -15,7 +15,7 @@ struct StatisticsSourceSnapshot: Sendable {
     }
 }
 
-struct StatisticsComputePipeline {
+nonisolated struct StatisticsComputePipeline {
     let source: StatisticsSourceSnapshot
     let now: Date
     let calendar: Calendar
