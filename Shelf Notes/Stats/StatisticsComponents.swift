@@ -1,14 +1,50 @@
+import Foundation
 import SwiftUI
+
+// MARK: - Shared section helpers
+
+struct StatisticsSectionCard<Content: View>: View {
+    private let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .padding(14)
+            .background(.thinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+}
+
+enum StatisticsSectionFormatting {
+    private static let intFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.groupingSeparator = "."
+        formatter.decimalSeparator = ","
+        return formatter
+    }()
+
+    static func formatInt(_ value: Int) -> String {
+        intFormatter.string(from: NSNumber(value: value)) ?? "\(value)"
+    }
+
+    static func fraction(_ value: Int, maxValue: Int) -> Double {
+        guard maxValue > 0 else { return 0 }
+        return min(Swift.max(Double(value) / Double(maxValue), 0), 1)
+    }
+}
 
 // MARK: - UI building blocks
 
 struct WeekdayRail: View {
     var body: some View {
-        // GitHub-Style: nur Mo/Mi/Fr beschriften, damit’s nicht zu voll wird
         let labels: [String] = ["Mo", "", "Mi", "", "Fr", "", ""]
         VStack(alignment: .leading, spacing: 4) {
-            ForEach(Array(labels.enumerated()), id: \.offset) { _, t in
-                Text(t)
+            ForEach(Array(labels.enumerated()), id: \.offset) { _, text in
+                Text(text)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .frame(height: 12, alignment: .leading)
@@ -48,8 +84,8 @@ struct HeatmapCellView: View {
     }
 
     var accessibilityText: String {
-        let d = date.formatted(date: .abbreviated, time: .omitted)
-        return "\(d): \(count)\(unitSuffix)"
+        let dateLabel = date.formatted(date: .abbreviated, time: .omitted)
+        return "\(dateLabel): \(count)\(unitSuffix)"
     }
 }
 
@@ -136,7 +172,7 @@ struct BarListRow: View {
                     .monospacedDigit()
             }
 
-            GeometryReader { geo in
+            GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(.ultraThinMaterial)
@@ -144,7 +180,7 @@ struct BarListRow: View {
 
                     RoundedRectangle(cornerRadius: 8)
                         .fill(.primary.opacity(0.25))
-                        .frame(width: max(6, geo.size.width * fraction))
+                        .frame(width: max(6, geometry.size.width * fraction))
                 }
             }
             .frame(height: 10)
