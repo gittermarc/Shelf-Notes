@@ -273,9 +273,9 @@ extension BookDetailView {
 
     /// Cached tag counts for the whole library.
     ///
-    /// Backed by `TagsIndexModel` so we don't run O(n·tags) aggregation during render.
-    private var cachedTagCountsSorted: [TagsIndexModel.TagCount] {
-        tagsIndexModel.tagCounts
+    /// Backed by the central `TagsIndexStore` so we don't run O(n·tags) aggregation during render.
+    private var cachedTagCountsSorted: [TagsIndexStore.TagCount] {
+        tagsIndexStore.tagCounts
     }
 
     /// Query-String für Autocomplete (aktueller Text im Tag-Field).

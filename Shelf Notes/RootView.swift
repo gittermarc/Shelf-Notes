@@ -14,6 +14,7 @@ struct RootView: View {
     @Query private var books: [Book]
     @StateObject private var pro = ProManager()
     @StateObject private var timer = ReadingTimerManager()
+    @StateObject private var tagsIndexStore = TagsIndexStore()
     // Persist across launches: the initial backfill is meant to bring legacy books up to date.
     // New/edited books get thumbnails via their respective flows.
     @AppStorage("did_run_cover_backfill_v2") private var didRunCoverBackfill: Bool = false
@@ -40,6 +41,7 @@ struct RootView: View {
     @SceneStorage("root_selected_tab_v1") private var selectedTab: Int = 0
 
     var body: some View {
+        let tagsIndexSignature = TagsIndexStore.taskSignature(books: books)
         let appTextColor = resolvedTextColor
         let preferredScheme = resolvedColorSchemeOption.preferredColorScheme
         let design = resolvedFontDesignOption.fontDesign
@@ -91,6 +93,7 @@ struct RootView: View {
         .tint(tintColor)
         .environmentObject(pro)
         .environmentObject(timer)
+        .environmentObject(tagsIndexStore)
         .onChange(of: scenePhase) { _, newPhase in
             timer.handleScenePhaseChange(newPhase)
 
@@ -114,6 +117,9 @@ struct RootView: View {
                 CSVImportExportView(title: "Erstimport", showExportSection: false, showDoneButton: true)
             }
         }
+        .task(id: tagsIndexSignature) {
+            tagsIndexStore.update(books: books, signature: tagsIndexSignature)
+        }
         .task {
             // One-time: migrate legacy ReadingStatus strings to stable codes
             await ReadingStatusMigrator.migrateIfNeeded(modelContext: modelContext)
@@ -128,6 +134,7 @@ struct RootView: View {
                 pending: pending
             )
             .environmentObject(timer)
+            .environmentObject(tagsIndexStore)
         }
     }
 
