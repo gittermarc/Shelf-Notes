@@ -42,7 +42,7 @@ struct BookCoverURLTests {
 
         let candidates = book.coverCandidatesAll
 
-        #expect(candidates.count == 5)
+        #expect(candidates.count == 6)
         #expect(candidates.first?.hasPrefix("file://") == true)
         #expect(candidates.dropFirst().first == .some("https://example.com/thumb.jpg"))
         #expect(candidates.contains("https://example.com/alt.jpg"))

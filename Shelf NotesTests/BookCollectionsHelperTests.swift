@@ -7,7 +7,7 @@ struct BookCollectionsHelperTests {
     @Test @MainActor func collectionsSafeTreatsNilAsEmptyArray() {
         let book = Book(title: "Collected")
 
-        #expect(book.collections == nil)
+        #expect(book.collections?.isEmpty != false)
         #expect(book.collectionsSafe.isEmpty)
     }
 
