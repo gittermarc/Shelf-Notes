@@ -14,7 +14,7 @@ struct StatisticsBookSnapshot: Sendable {
             self.pagesRead = pagesRead
         }
 
-        init(session: ReadingSession) {
+        @MainActor init(session: ReadingSession) {
             self.startedAt = session.startedAt
             self.endedAt = session.endedAt
             self.durationSeconds = session.durationSeconds
@@ -78,7 +78,7 @@ struct StatisticsBookSnapshot: Sendable {
         self.readingSessions = readingSessions
     }
 
-    init(book: Book) {
+    @MainActor init(book: Book) {
         self.title = book.title
         self.author = book.author
         self.statusRawValue = book.statusRawValue
@@ -113,9 +113,9 @@ struct StatisticsSnapshotBuilder {
     }
 
     func makeStatsCache(
-        for key: StatisticsView.StatsCacheKey,
+        for key: StatisticsStatsCacheKey,
         books: [StatisticsBookSnapshot]
-    ) -> StatisticsView.StatsCache {
+    ) -> StatisticsStatsCache {
         let scoped = scopedBooks(for: key.scope, in: books)
         let finishedInYear = finishedBooks(in: key.selectedYear, from: scoped)
         let summary = makeSummary(allBooks: books, scopedBooks: scoped, finishedInYear: finishedInYear)
@@ -127,7 +127,7 @@ struct StatisticsSnapshotBuilder {
         let topLanguages = topLanguagesList(scoped, limit: 8)
         let topTags = topTagsList(scoped, limit: 10)
 
-        return StatisticsView.StatsCache(
+        return StatisticsStatsCache(
             key: key,
             summary: summary,
             monthsCount: months.count,
@@ -163,7 +163,7 @@ private extension StatisticsSnapshotBuilder {
     }
 
     func scopedBooks(
-        for scope: StatisticsView.Scope,
+        for scope: StatisticsScope,
         in input: [StatisticsBookSnapshot]
     ) -> [StatisticsBookSnapshot] {
         switch scope {
@@ -247,7 +247,7 @@ private extension StatisticsSnapshotBuilder {
         allBooks: [StatisticsBookSnapshot],
         scopedBooks: [StatisticsBookSnapshot],
         finishedInYear: [StatisticsBookSnapshot]
-    ) -> StatisticsView.StatsCache.Summary {
+    ) -> StatisticsStatsCache.Summary {
         let scopedCount = scopedBooks.count
         let finishedScopedCount = scopedBooks.reduce(into: 0) { partial, book in
             if book.status == .finished {
@@ -273,11 +273,11 @@ private extension StatisticsSnapshotBuilder {
             tinyTeaserLine = nil
         }
 
-        return StatisticsView.StatsCache.Summary(
+        return StatisticsStatsCache.Summary(
             yearOptions: availableYears(from: allBooks),
             heroSubtitle: "\(scopedCount) Bücher • \(finishedScopedCount) gelesen • \(formatInt(scopedPages)) Seiten (wo vorhanden)",
             tinyTeaserLine: tinyTeaserLine,
-            overview: StatisticsView.StatsCache.Summary.Overview(
+            overview: StatisticsStatsCache.Summary.Overview(
                 scopedBooksCount: scopedCount,
                 finishedScopedBooksCount: finishedScopedCount,
                 uniqueAuthorsCount: uniqueAuthorsCount,
@@ -309,7 +309,7 @@ private extension StatisticsSnapshotBuilder {
     func monthlySeriesFor(
         months: [MonthKey],
         finishedBooks: [StatisticsBookSnapshot]
-    ) -> [StatisticsView.MonthSeriesPoint] {
+    ) -> [StatisticsMonthSeriesPoint] {
         var countBy: [MonthKey: Int] = [:]
         var pagesBy: [MonthKey: Int] = [:]
 
@@ -324,7 +324,7 @@ private extension StatisticsSnapshotBuilder {
         }
 
         return months.map { month in
-            StatisticsView.MonthSeriesPoint(
+            StatisticsMonthSeriesPoint(
                 id: month.id,
                 monthLabel: monthLabel(for: month),
                 finishedCount: countBy[month, default: 0],
@@ -582,12 +582,12 @@ private extension StatisticsSnapshotBuilder {
         return nil
     }
 
-    func fastestBook(_ finishedBooks: [StatisticsBookSnapshot]) -> StatisticsView.NerdPick? {
-        var best: StatisticsView.NerdPick?
+    func fastestBook(_ finishedBooks: [StatisticsBookSnapshot]) -> StatisticsNerdPick? {
+        var best: StatisticsNerdPick?
         for book in finishedBooks {
             guard let days = daysBetween(book.readFrom, book.readTo) else { continue }
             let name = normalizedTitle(for: book)
-            let pick = StatisticsView.NerdPick(
+            let pick = StatisticsNerdPick(
                 label: "\(name) • \(formatInt(days)) Tage",
                 sortKey: days
             )
@@ -598,12 +598,12 @@ private extension StatisticsSnapshotBuilder {
         return best
     }
 
-    func slowestBook(_ finishedBooks: [StatisticsBookSnapshot]) -> StatisticsView.NerdPick? {
-        var best: StatisticsView.NerdPick?
+    func slowestBook(_ finishedBooks: [StatisticsBookSnapshot]) -> StatisticsNerdPick? {
+        var best: StatisticsNerdPick?
         for book in finishedBooks {
             guard let days = daysBetween(book.readFrom, book.readTo) else { continue }
             let name = normalizedTitle(for: book)
-            let pick = StatisticsView.NerdPick(
+            let pick = StatisticsNerdPick(
                 label: "\(name) • \(formatInt(days)) Tage",
                 sortKey: days
             )
@@ -614,13 +614,13 @@ private extension StatisticsSnapshotBuilder {
         return best
     }
 
-    func biggestBook(_ finishedBooks: [StatisticsBookSnapshot]) -> StatisticsView.NerdPick? {
-        var best: StatisticsView.NerdPick?
+    func biggestBook(_ finishedBooks: [StatisticsBookSnapshot]) -> StatisticsNerdPick? {
+        var best: StatisticsNerdPick?
         for book in finishedBooks {
             let pages = book.pageCount ?? 0
             guard pages > 0 else { continue }
             let name = normalizedTitle(for: book)
-            let pick = StatisticsView.NerdPick(
+            let pick = StatisticsNerdPick(
                 label: "\(name) • \(formatInt(pages)) Seiten",
                 sortKey: pages
             )
@@ -631,13 +631,13 @@ private extension StatisticsSnapshotBuilder {
         return best
     }
 
-    func highestRatedBook(_ input: [StatisticsBookSnapshot]) -> StatisticsView.NerdPick? {
-        var best: StatisticsView.NerdPick?
+    func highestRatedBook(_ input: [StatisticsBookSnapshot]) -> StatisticsNerdPick? {
+        var best: StatisticsNerdPick?
         for book in input {
             let rating = book.userRatingAverage1 ?? 0
             guard rating > 0 else { continue }
             let name = normalizedTitle(for: book)
-            let pick = StatisticsView.NerdPick(
+            let pick = StatisticsNerdPick(
                 label: "\(name) • \(String(format: "%.1f", rating)) / 5",
                 sortKey: Int((rating * 10).rounded())
             )

@@ -16,45 +16,21 @@ struct StatisticsView: View {
     @Query var books: [Book]
 
     @State var selectedYear: Int = Calendar.current.component(.year, from: Date())
-    @State var scope: Scope = .all
-    @State var activityMetric: ActivityMetric = .readingDays
+    @State var scope: StatisticsScope = .all
+    @State var activityMetric: StatisticsActivityMetric = .readingDays
 
     @State var sourceSnapshot: StatisticsSourceSnapshot? = nil
-    @State var statsCache: StatsCache? = nil
-    @State var heatmapCache: HeatmapCache? = nil
+    @State var statsCache: StatisticsStatsCache? = nil
+    @State var heatmapCache: StatisticsHeatmapCache? = nil
     @State var isUpdatingStatsCache: Bool = false
     @State var isUpdatingHeatmapCache: Bool = false
-
-    enum Scope: String, CaseIterable, Identifiable, Sendable {
-        case all = "Alle"
-        case finished = "Gelesen"
-        case reading = "Lese ich"
-        case toRead = "Will lesen"
-        var id: String { rawValue }
-    }
-
-    enum ActivityMetric: String, CaseIterable, Identifiable, Sendable {
-        case readingDays = "Lesetage"
-        case readingMinutes = "Leseminuten"
-        case completions = "Abschlüsse"
-        var id: String { rawValue }
-
-        var unitSuffix: String {
-            switch self {
-            case .readingMinutes:
-                return " min"
-            case .readingDays, .completions:
-                return ""
-            }
-        }
-    }
 
     var body: some View {
         let signature = booksSignature(books)
         let statsKey = makeStatsCacheKey(signature: signature)
         let heatmapKey = makeHeatmapCacheKey(signature: signature)
         let exactStatsCache = statsCache?.key == statsKey ? statsCache : nil
-        let scopeStatsCache: StatsCache? = {
+        let scopeStatsCache: StatisticsStatsCache? = {
             guard let cache = statsCache,
                   cache.key.scope == scope,
                   cache.key.booksSignature == signature else {
@@ -73,7 +49,7 @@ struct StatisticsView: View {
                 )
                 .padding(.horizontal)
             } else {
-                let sameBooksStatsCache: StatsCache? = {
+                let sameBooksStatsCache: StatisticsStatsCache? = {
                     guard let cache = statsCache,
                           cache.key.booksSignature == signature else {
                         return nil

@@ -37,7 +37,7 @@ extension LibraryView {
             let readTo: Date?
             let userRatingAverage1: Double?
 
-            init(book: Book) {
+            @MainActor init(book: Book) {
                 id = book.id
                 title = book.title
                 author = book.author
@@ -90,7 +90,7 @@ extension LibraryView {
             self.books = books
         }
 
-        init(books: [Book]) {
+        @MainActor init(books: [Book]) {
             let snapshots = books.map(BookSnapshot.init(book:))
             self.init(signature: Self.computeSignature(snapshot: snapshots), books: snapshots)
         }

@@ -4,7 +4,7 @@ struct StatisticsSourceSnapshot: Sendable {
     let booksSignature: Int
     let books: [StatisticsBookSnapshot]
 
-    init(signature: Int, books: [Book]) {
+    @MainActor init(signature: Int, books: [Book]) {
         self.booksSignature = signature
         self.books = books.map(StatisticsBookSnapshot.init)
     }
@@ -31,8 +31,8 @@ struct StatisticsComputePipeline {
     }
 
     func makeStatsCache(
-        for key: StatisticsView.StatsCacheKey
-    ) async -> StatisticsView.StatsCache {
+        for key: StatisticsStatsCacheKey
+    ) async -> StatisticsStatsCache {
         let source = source
         let now = now
         let calendar = calendar
@@ -50,8 +50,8 @@ struct StatisticsComputePipeline {
     }
 
     func makeHeatmapCache(
-        for key: StatisticsView.HeatmapCacheKey
-    ) async -> StatisticsView.HeatmapCache {
+        for key: StatisticsHeatmapCacheKey
+    ) async -> StatisticsHeatmapCache {
         let source = source
         let now = now
         let calendar = calendar

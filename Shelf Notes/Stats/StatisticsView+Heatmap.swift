@@ -2,7 +2,7 @@ import Foundation
 
 extension StatisticsView {
 
-    func heatmapHintText(range: HeatmapRange) -> String {
+    func heatmapHintText(range: StatisticsHeatmapRange) -> String {
         switch activityMetric {
         case .readingDays:
             return "„Lesetage“ zählt pro Tag, an dem ein Buch aktiv war (aus readFrom/readTo; bei „Lese ich“ bis heute). Zeitraum: \(range.start.formatted(date: .numeric, time: .omitted))–\(range.end.formatted(date: .numeric, time: .omitted))."
@@ -13,41 +13,12 @@ extension StatisticsView {
         }
     }
 
-    struct HeatmapRange: Sendable {
-        let start: Date
-        let end: Date
-        let gridStart: Date
-        let gridEnd: Date
-    }
-
-    func heatmapRangeForSelectedYear() -> HeatmapRange {
+    func heatmapRangeForSelectedYear() -> StatisticsHeatmapRange {
         heatmapRange(for: selectedYear)
     }
 
-    func heatmapRange(for year: Int) -> HeatmapRange {
+    func heatmapRange(for year: Int) -> StatisticsHeatmapRange {
         StatisticsHeatmapBuilder(now: Date(), calendar: Calendar.current).makeRange(for: year)
     }
 
-    struct HeatmapDay: Identifiable, Sendable {
-        let id: Date
-        let date: Date
-        let count: Int
-        let level: Int
-        let isInRange: Bool
-    }
-
-    struct HeatmapWeek: Identifiable, Sendable {
-        let id: Int
-        let days: [HeatmapDay]
-    }
-
-    struct HeatmapStats: Sendable {
-        let activeDays: Int
-        let maxCount: Int
-        let currentStreak: Int
-        let longestStreak: Int
-        let bestDayLabel: String
-        let bestWeekdayLabel: String
-        let bestWeekLabel: String
-    }
 }

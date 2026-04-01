@@ -95,72 +95,16 @@ extension StatisticsView {
         return signatureHasher.finalize()
     }
 
-    struct StatsCacheKey: Hashable, Sendable {
-        let selectedYear: Int
-        let scope: Scope
-        let booksSignature: Int
-    }
-
-    struct HeatmapCacheKey: Hashable, Sendable {
-        let selectedYear: Int
-        let scope: Scope
-        let activityMetric: ActivityMetric
-        let booksSignature: Int
-    }
-
-    struct StatsCache: Sendable {
-        struct Summary: Sendable {
-            struct Overview: Sendable {
-                let scopedBooksCount: Int
-                let finishedScopedBooksCount: Int
-                let uniqueAuthorsCount: Int
-                let uniquePublishersCount: Int
-                let pagesInSelectedYear: Int
-                let finishedInSelectedYearCount: Int
-                let avgPagesPerBookText: String
-                let avgDaysPerBookText: String
-            }
-
-            let yearOptions: [Int]
-            let heroSubtitle: String
-            let tinyTeaserLine: String?
-            let overview: Overview
-        }
-
-        let key: StatsCacheKey
-        let summary: Summary
-        let monthsCount: Int
-        let monthlySeries: [MonthSeriesPoint]
-        let topGenres: [(label: String, count: Int)]
-        let topSubgenres: [(label: String, count: Int)]
-        let topAuthors: [(label: String, count: Int)]
-        let topPublishers: [(label: String, count: Int)]
-        let topLanguages: [(label: String, count: Int)]
-        let topTags: [(label: String, count: Int)]
-        let fastest: NerdPick?
-        let slowest: NerdPick?
-        let biggest: NerdPick?
-        let highestRated: NerdPick?
-    }
-
-    struct HeatmapCache: Sendable {
-        let key: HeatmapCacheKey
-        let range: HeatmapRange
-        let counts: [Date: Int]
-        let stats: HeatmapStats
-        let weeks: [HeatmapWeek]
-    }
-
-    func makeStatsCacheKey(signature: Int) -> StatsCacheKey {
-        StatsCacheKey(
+    func makeStatsCacheKey(signature: Int) -> StatisticsStatsCacheKey {
+        StatisticsStatsCacheKey(
             selectedYear: selectedYear,
             scope: scope,
             booksSignature: signature
         )
     }
 
-    func makeHeatmapCacheKey(signature: Int) -> HeatmapCacheKey {
-        HeatmapCacheKey(
+    func makeHeatmapCacheKey(signature: Int) -> StatisticsHeatmapCacheKey {
+        StatisticsHeatmapCacheKey(
             selectedYear: selectedYear,
             scope: scope,
             activityMetric: activityMetric,
@@ -168,11 +112,11 @@ extension StatisticsView {
         )
     }
 
-    func makeStatsCacheKey() -> StatsCacheKey {
+    func makeStatsCacheKey() -> StatisticsStatsCacheKey {
         makeStatsCacheKey(signature: booksSignature(books))
     }
 
-    func makeHeatmapCacheKey() -> HeatmapCacheKey {
+    func makeHeatmapCacheKey() -> StatisticsHeatmapCacheKey {
         makeHeatmapCacheKey(signature: booksSignature(books))
     }
 

@@ -4,7 +4,7 @@ extension StatisticsView {
 
     // MARK: - Data plumbing
 
-    func scopedBooks(for scope: Scope, in input: [Book]) -> [Book] {
+    func scopedBooks(for scope: StatisticsScope, in input: [Book]) -> [Book] {
         switch scope {
         case .all:
             return input
@@ -65,13 +65,6 @@ extension StatisticsView {
             let d = cal.date(from: DateComponents(year: year, month: month, day: 1)) ?? Date()
             return d.formatted(.dateTime.month(.abbreviated))
         }
-    }
-
-    struct MonthSeriesPoint: Identifiable, Equatable, Sendable {
-        let id: String
-        let monthLabel: String
-        let finishedCount: Int
-        let pages: Int
     }
 
     // MARK: - Aggregations
@@ -348,19 +341,14 @@ extension StatisticsView {
         return nil
     }
 
-    struct NerdPick: Equatable, Sendable {
-        let label: String
-        let sortKey: Int
-    }
-
-    func fastestBook(_ finishedBooks: [Book]) -> NerdPick? {
-        var best: NerdPick?
+    func fastestBook(_ finishedBooks: [Book]) -> StatisticsNerdPick? {
+        var best: StatisticsNerdPick?
         for b in finishedBooks {
             guard let d = daysBetween(b.readFrom, b.readTo) else { continue }
             let title = b.title.trimmingCharacters(in: .whitespacesAndNewlines)
             let name = title.isEmpty ? "Ohne Titel" : title
             let label = "\(name) • \(formatInt(d)) Tage"
-            let pick = NerdPick(label: label, sortKey: d)
+            let pick = StatisticsNerdPick(label: label, sortKey: d)
             if best == nil || pick.sortKey < (best?.sortKey ?? Int.max) {
                 best = pick
             }
@@ -368,14 +356,14 @@ extension StatisticsView {
         return best
     }
 
-    func slowestBook(_ finishedBooks: [Book]) -> NerdPick? {
-        var best: NerdPick?
+    func slowestBook(_ finishedBooks: [Book]) -> StatisticsNerdPick? {
+        var best: StatisticsNerdPick?
         for b in finishedBooks {
             guard let d = daysBetween(b.readFrom, b.readTo) else { continue }
             let title = b.title.trimmingCharacters(in: .whitespacesAndNewlines)
             let name = title.isEmpty ? "Ohne Titel" : title
             let label = "\(name) • \(formatInt(d)) Tage"
-            let pick = NerdPick(label: label, sortKey: d)
+            let pick = StatisticsNerdPick(label: label, sortKey: d)
             if best == nil || pick.sortKey > (best?.sortKey ?? Int.min) {
                 best = pick
             }
@@ -383,15 +371,15 @@ extension StatisticsView {
         return best
     }
 
-    func biggestBook(_ finishedBooks: [Book]) -> NerdPick? {
-        var best: NerdPick?
+    func biggestBook(_ finishedBooks: [Book]) -> StatisticsNerdPick? {
+        var best: StatisticsNerdPick?
         for b in finishedBooks {
             let pages = b.pageCount ?? 0
             guard pages > 0 else { continue }
             let title = b.title.trimmingCharacters(in: .whitespacesAndNewlines)
             let name = title.isEmpty ? "Ohne Titel" : title
             let label = "\(name) • \(formatInt(pages)) Seiten"
-            let pick = NerdPick(label: label, sortKey: pages)
+            let pick = StatisticsNerdPick(label: label, sortKey: pages)
             if best == nil || pick.sortKey > (best?.sortKey ?? 0) {
                 best = pick
             }
@@ -399,8 +387,8 @@ extension StatisticsView {
         return best
     }
 
-    func highestRatedBook(_ input: [Book]) -> NerdPick? {
-        var best: NerdPick?
+    func highestRatedBook(_ input: [Book]) -> StatisticsNerdPick? {
+        var best: StatisticsNerdPick?
         for b in input {
             let r = b.userRatingAverage1 ?? 0
             guard r > 0 else { continue }
@@ -409,7 +397,7 @@ extension StatisticsView {
             let name = title.isEmpty ? "Ohne Titel" : title
 
             let label = "\(name) • \(String(format: "%.1f", r)) / 5"
-            let pick = NerdPick(label: label, sortKey: Int((r * 10).rounded()))
+            let pick = StatisticsNerdPick(label: label, sortKey: Int((r * 10).rounded()))
 
             if best == nil || pick.sortKey > (best?.sortKey ?? 0) {
                 best = pick

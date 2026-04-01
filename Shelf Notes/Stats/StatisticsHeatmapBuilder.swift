@@ -10,9 +10,9 @@ struct StatisticsHeatmapBuilder {
     }
 
     func makeHeatmapCache(
-        for key: StatisticsView.HeatmapCacheKey,
+        for key: StatisticsHeatmapCacheKey,
         books: [StatisticsBookSnapshot]
-    ) -> StatisticsView.HeatmapCache {
+    ) -> StatisticsHeatmapCache {
         let scoped = scopedBooks(for: key.scope, in: books)
         let range = heatmapRange(for: key.selectedYear)
         let counts = activityDailyCounts(metric: key.activityMetric, range: range, books: scoped)
@@ -24,7 +24,7 @@ struct StatisticsHeatmapBuilder {
         )
         let weeks = heatmapWeeks(counts: counts, range: range)
 
-        return StatisticsView.HeatmapCache(
+        return StatisticsHeatmapCache(
             key: key,
             range: range,
             counts: counts,
@@ -35,14 +35,14 @@ struct StatisticsHeatmapBuilder {
 }
 
 extension StatisticsHeatmapBuilder {
-    func makeRange(for year: Int) -> StatisticsView.HeatmapRange {
+    func makeRange(for year: Int) -> StatisticsHeatmapRange {
         heatmapRange(for: year)
     }
 }
 
 private extension StatisticsHeatmapBuilder {
     func scopedBooks(
-        for scope: StatisticsView.Scope,
+        for scope: StatisticsScope,
         in input: [StatisticsBookSnapshot]
     ) -> [StatisticsBookSnapshot] {
         switch scope {
@@ -57,7 +57,7 @@ private extension StatisticsHeatmapBuilder {
         }
     }
 
-    func heatmapRange(for year: Int) -> StatisticsView.HeatmapRange {
+    func heatmapRange(for year: Int) -> StatisticsHeatmapRange {
         var calendar = Calendar(identifier: .iso8601)
         calendar.timeZone = self.calendar.timeZone
 
@@ -83,7 +83,7 @@ private extension StatisticsHeatmapBuilder {
         ) ?? endDay
         let gridEnd = calendar.date(byAdding: .day, value: 6, to: endWeekStart) ?? endDay
 
-        return StatisticsView.HeatmapRange(
+        return StatisticsHeatmapRange(
             start: startDay,
             end: endDay,
             gridStart: gridStart,
@@ -92,8 +92,8 @@ private extension StatisticsHeatmapBuilder {
     }
 
     func activityDailyCounts(
-        metric: StatisticsView.ActivityMetric,
-        range: StatisticsView.HeatmapRange,
+        metric: StatisticsActivityMetric,
+        range: StatisticsHeatmapRange,
         books: [StatisticsBookSnapshot]
     ) -> [Date: Int] {
         var calendar = Calendar(identifier: .iso8601)
@@ -218,8 +218,8 @@ private extension StatisticsHeatmapBuilder {
 
     func heatmapWeeks(
         counts: [Date: Int],
-        range: StatisticsView.HeatmapRange
-    ) -> [StatisticsView.HeatmapWeek] {
+        range: StatisticsHeatmapRange
+    ) -> [StatisticsHeatmapWeek] {
         var calendar = Calendar(identifier: .iso8601)
         calendar.timeZone = self.calendar.timeZone
 
@@ -227,12 +227,12 @@ private extension StatisticsHeatmapBuilder {
         let weekCount = max(1, (days / 7) + 1)
         let maxCount = counts.values.max() ?? 0
 
-        var weeks: [StatisticsView.HeatmapWeek] = []
+        var weeks: [StatisticsHeatmapWeek] = []
         weeks.reserveCapacity(weekCount)
 
         for weekIndex in 0..<weekCount {
             let weekStart = calendar.date(byAdding: .day, value: weekIndex * 7, to: range.gridStart) ?? range.gridStart
-            var weekDays: [StatisticsView.HeatmapDay] = []
+            var weekDays: [StatisticsHeatmapDay] = []
             weekDays.reserveCapacity(7)
 
             for dayOffset in 0..<7 {
@@ -243,7 +243,7 @@ private extension StatisticsHeatmapBuilder {
                 let level = inRange ? heatLevel(count: count, maxCount: maxCount) : 0
 
                 weekDays.append(
-                    StatisticsView.HeatmapDay(
+                    StatisticsHeatmapDay(
                         id: day,
                         date: day,
                         count: count,
@@ -253,7 +253,7 @@ private extension StatisticsHeatmapBuilder {
                 )
             }
 
-            weeks.append(StatisticsView.HeatmapWeek(id: weekIndex, days: weekDays))
+            weeks.append(StatisticsHeatmapWeek(id: weekIndex, days: weekDays))
         }
 
         return weeks
@@ -261,10 +261,10 @@ private extension StatisticsHeatmapBuilder {
 
     func heatmapStats(
         counts: [Date: Int],
-        range: StatisticsView.HeatmapRange,
-        metric: StatisticsView.ActivityMetric,
+        range: StatisticsHeatmapRange,
+        metric: StatisticsActivityMetric,
         fallbackYear: Int? = nil
-    ) -> StatisticsView.HeatmapStats {
+    ) -> StatisticsHeatmapStats {
         var calendar = Calendar(identifier: .iso8601)
         calendar.timeZone = self.calendar.timeZone
 
@@ -373,7 +373,7 @@ private extension StatisticsHeatmapBuilder {
             day = next
         }
 
-        return StatisticsView.HeatmapStats(
+        return StatisticsHeatmapStats(
             activeDays: activeDays,
             maxCount: maxCount,
             currentStreak: currentStreak,

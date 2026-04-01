@@ -8,7 +8,7 @@ extension StatisticsView {
 
     // MARK: - Header
 
-    func headerCard(summary: StatsCache.Summary?) -> some View {
+    func headerCard(summary: StatisticsStatsCache.Summary?) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -55,7 +55,7 @@ extension StatisticsView {
                 Spacer()
 
                 Picker("Bereich", selection: $scope) {
-                    ForEach(Scope.allCases) { s in
+                    ForEach(StatisticsScope.allCases) { s in
                         Text(s.rawValue).tag(s)
                     }
                 }
@@ -73,7 +73,7 @@ extension StatisticsView {
 
     // MARK: - Overview
 
-    func overviewGrid(summary: StatsCache.Summary?) -> some View {
+    func overviewGrid(summary: StatisticsStatsCache.Summary?) -> some View {
         let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
         let overview = summary?.overview
 
@@ -94,7 +94,7 @@ extension StatisticsView {
 
     // MARK: - Charts
 
-    func readingChartsCard(statsKey: StatsCacheKey, cache: StatsCache?) -> some View {
+    func readingChartsCard(statsKey: StatisticsStatsCacheKey, cache: StatisticsStatsCache?) -> some View {
         let isValid = (cache?.key == statsKey)
         let effective = isValid ? cache : nil
 
@@ -183,12 +183,12 @@ extension StatisticsView {
 
     // MARK: - Activity Heatmap & Streaks
 
-    func activityHeatmapCard(heatmapKey: HeatmapCacheKey, cache: HeatmapCache?) -> some View {
+    func activityHeatmapCard(heatmapKey: StatisticsHeatmapCacheKey, cache: StatisticsHeatmapCache?) -> some View {
         let isValid = (cache?.key == heatmapKey)
         let effective = isValid ? cache : nil
 
         let range = effective?.range ?? heatmapRange(for: heatmapKey.selectedYear)
-        let stats = effective?.stats ?? HeatmapStats(
+        let stats = effective?.stats ?? StatisticsHeatmapStats(
             activeDays: 0,
             maxCount: 0,
             currentStreak: 0,
@@ -207,7 +207,7 @@ extension StatisticsView {
                 Spacer()
 
                 Picker("Metrik", selection: $activityMetric) {
-                    ForEach(ActivityMetric.allCases) { m in
+                    ForEach(StatisticsActivityMetric.allCases) { m in
                         Text(m.rawValue).tag(m)
                     }
                 }
@@ -300,7 +300,7 @@ extension StatisticsView {
 
     // MARK: - Top lists
 
-    func topListsCard(cache: StatsCache?) -> some View {
+    func topListsCard(cache: StatisticsStatsCache?) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Top-Listen")
                 .font(.headline)
@@ -370,7 +370,7 @@ extension StatisticsView {
 
     // MARK: - Nerd corner
 
-    func nerdCornerCard(summary: StatsCache.Summary?, cache: StatsCache?) -> some View {
+    func nerdCornerCard(summary: StatisticsStatsCache.Summary?, cache: StatisticsStatsCache?) -> some View {
         let fastest = cache?.fastest
         let slowest = cache?.slowest
         let biggest = cache?.biggest

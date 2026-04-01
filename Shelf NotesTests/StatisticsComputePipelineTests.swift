@@ -27,6 +27,7 @@ struct StatisticsComputePipelineTests {
         ) ?? .distantPast
     }
 
+    @MainActor
     @Test func bookSnapshotCarriesReadingSessionsIntoValueSnapshot() {
         let book = Book(title: "Night Read", author: "Ada", status: .reading)
         let session = ReadingSession(
@@ -128,8 +129,8 @@ struct StatisticsComputePipelineTests {
 
         let source = StatisticsSourceSnapshot(booksSignature: 77, books: books)
         let pipeline = StatisticsComputePipeline(source: source, now: date(2026, 4, 15), calendar: calendar)
-        let statsKey = StatisticsView.StatsCacheKey(selectedYear: 2026, scope: .all, booksSignature: 77)
-        let heatmapKey = StatisticsView.HeatmapCacheKey(
+        let statsKey = StatisticsStatsCacheKey(selectedYear: 2026, scope: .all, booksSignature: 77)
+        let heatmapKey = StatisticsHeatmapCacheKey(
             selectedYear: 2026,
             scope: .all,
             activityMetric: .readingMinutes,

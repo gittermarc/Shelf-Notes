@@ -57,7 +57,7 @@ struct StatisticsSnapshotBuilderTests {
             )
         ]
 
-        let key = StatisticsView.StatsCacheKey(
+        let key = StatisticsStatsCacheKey(
             selectedYear: 2026,
             scope: .all,
             booksSignature: 123
