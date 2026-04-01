@@ -14,7 +14,7 @@ extension LibraryView {
     // MARK: - Selection helpers
 
     var currentDisplayedBooks: [Book] {
-        derivedReady ? cachedDisplayedBooks : displayedBooks
+        displayedBooksForCurrentDerivedState
     }
 
     var isAllDisplayedSelected: Bool {

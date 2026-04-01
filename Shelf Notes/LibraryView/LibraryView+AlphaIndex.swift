@@ -18,48 +18,30 @@ extension LibraryView {
         let books: [Book]
     }
 
-    func buildAlphaSections(from input: [Book]) -> [AlphaSection] {
-        var buckets: [String: [Book]] = [:]
-
-        for b in input {
-            let key = alphaKey(for: bestTitle(b))
-            buckets[key, default: []].append(b)
+    func makeAlphaSectionsForUI(
+        descriptors: [AlphaSectionDescriptor],
+        booksByID: [UUID: Book]
+    ) -> [AlphaSection] {
+        descriptors.map { descriptor in
+            AlphaSection(
+                id: descriptor.id,
+                key: descriptor.key,
+                books: descriptor.bookIDs.compactMap { booksByID[$0] }
+            )
         }
-
-        let keys = buckets.keys.sorted { a, b in
-            if a == "#" { return false }
-            if b == "#" { return true }
-            return a < b
-        }
-
-        return keys.map { k in
-            AlphaSection(id: k, key: k, books: buckets[k] ?? [])
-        }
-    }
-
-    private func alphaKey(for title: String) -> String {
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let first = trimmed.first else { return "#" }
-
-        let folded = String(first).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-        let upper = folded.uppercased()
-
-        // PERF: Avoid regex here – this is called for every visible row when building the alpha index.
-        // After folding/uppercasing we only accept ASCII A–Z as section headers.
-        guard upper.unicodeScalars.count == 1, let scalar = upper.unicodeScalars.first else { return "#" }
-        let v = scalar.value
-        if v >= 65 && v <= 90 { return upper } // "A".."Z"
-        return "#"
     }
 
     func alphaIndexedList(displayedBooks: [Book]) -> some View {
-        let sections = buildAlphaSections(from: displayedBooks)
-        let letters = sections.map(\.key)
+        let source = LibrarySourceSnapshot(books: displayedBooks)
+        let descriptors = LibraryDerivedStateBuilder.buildAlphaSections(from: source.books)
+        let booksByID = Dictionary(uniqueKeysWithValues: displayedBooks.map { ($0.id, $0) })
+        let sections = makeAlphaSectionsForUI(descriptors: descriptors, booksByID: booksByID)
+        let letters = descriptors.map(\.key)
         return alphaIndexedList(sections: sections, letters: letters)
     }
 
     func alphaIndexedList(sections: [AlphaSection], letters: [String]) -> some View {
-        return ScrollViewReader { proxy in
+        ScrollViewReader { proxy in
             ZStack(alignment: .trailing) {
                 List {
                     ForEach(sections) { section in

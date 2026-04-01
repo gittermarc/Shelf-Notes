@@ -18,28 +18,6 @@ extension LibraryView {
         var id: String { rawValue }
     }
 
-    // MARK: Counts (single-pass)
-
-    struct LibraryStatusCounts: Equatable {
-        var toRead: Int
-        var reading: Int
-        var finished: Int
-
-        static let zero = LibraryStatusCounts(toRead: 0, reading: 0, finished: 0)
-    }
-
-    func statusCounts(in books: [Book]) -> LibraryStatusCounts {
-        var counts = LibraryStatusCounts.zero
-        for b in books {
-            switch b.status {
-            case .toRead: counts.toRead += 1
-            case .reading: counts.reading += 1
-            case .finished: counts.finished += 1
-            }
-        }
-        return counts
-    }
-
     var quickSortModeBinding: Binding<QuickSortMode> {
         Binding(
             get: { sortField == .readDate ? .read : .added },

@@ -9,7 +9,6 @@
 import SwiftUI
 import SwiftData
 import StoreKit
-import Combine
 
 #if canImport(PhotosUI)
 import PhotosUI
@@ -46,14 +45,9 @@ struct LibraryView: View {
     @State var showingBulkAddToCollectionSheet: Bool = false
     @State var showingBulkDeleteConfirm: Bool = false
 
-    // PERF: Cache expensive derived state (filtering/sorting/alpha sections).
-    // Header expand/collapse animates the layout and triggers many body recalculations.
-    // Without caching, we would re-run filter+sort (+ alpha bucketing) every frame.
-    @State var derivedReady: Bool = false
-    @State var cachedDisplayedBooks: [Book] = []
-    @State private var cachedCounts: LibraryStatusCounts = .zero
-    @State private var cachedAlphaSections: [AlphaSection] = []
-    @State private var cachedAlphaLetters: [String] = []
+    // Derived state cache. The pure builder owns filtering, sorting, counts and sections.
+    @State private var derivedState: LibraryDerivedState = .empty
+    @State private var derivedSearchText: String = ""
     @State private var pendingRecomputeTask: Task<Void, Never>? = nil
 
     // Grid delete (LazyVGrid has no swipe-to-delete)
@@ -87,37 +81,75 @@ struct LibraryView: View {
 
     // MARK: - Body building blocks (helps the Swift compiler and keeps the file readable)
 
-    private var displayedForUI: [Book] {
-        derivedReady ? cachedDisplayedBooks : displayedBooks
+    var shouldBuildAlphaSections: Bool {
+        libraryLayoutMode == .list && sortField == .title
+    }
+
+    var activeDerivedInput: LibraryDerivedInput {
+        LibraryDerivedStateBuilder.makeInput(
+            searchText: derivedSearchText,
+            selectedStatus: selectedStatus,
+            selectedTag: selectedTag,
+            onlyWithNotes: onlyWithNotes,
+            sortField: sortField,
+            sortAscending: sortAscending,
+            buildsAlphaSections: shouldBuildAlphaSections
+        )
+    }
+
+    var activeDerivedTaskToken: LibraryDerivedInputToken {
+        LibraryDerivedStateBuilder.makeInputToken(
+            books: books,
+            searchText: derivedSearchText,
+            selectedStatus: selectedStatus,
+            selectedTag: selectedTag,
+            onlyWithNotes: onlyWithNotes,
+            sortField: sortField,
+            sortAscending: sortAscending,
+            buildsAlphaSections: shouldBuildAlphaSections
+        )
+    }
+
+    var currentDerivedStateForUI: LibraryDerivedState {
+        if derivedState.token == activeDerivedTaskToken {
+            return derivedState
+        }
+
+        let source = LibrarySourceSnapshot(books: books)
+        return LibraryDerivedStateBuilder.makeDerivedState(source: source, input: activeDerivedInput)
+    }
+
+    var displayedBooksForCurrentDerivedState: [Book] {
+        let booksByID = Dictionary(uniqueKeysWithValues: books.map { ($0.id, $0) })
+        return currentDerivedStateForUI.displayedBookIDs.compactMap { booksByID[$0] }
     }
 
     private var countsForUI: LibraryStatusCounts {
-        derivedReady ? cachedCounts : statusCounts(in: books)
+        currentDerivedStateForUI.counts
     }
 
-    private func alphaSectionsForUI(displayed: [Book]) -> [AlphaSection] {
-        derivedReady ? cachedAlphaSections : buildAlphaSections(from: displayed)
+    private var alphaSectionsForUI: [AlphaSection] {
+        let booksByID = Dictionary(uniqueKeysWithValues: books.map { ($0.id, $0) })
+        return makeAlphaSectionsForUI(
+            descriptors: currentDerivedStateForUI.alphaSections,
+            booksByID: booksByID
+        )
     }
 
-    private func alphaLettersForUI(sections: [AlphaSection]) -> [String] {
-        derivedReady ? cachedAlphaLetters : sections.map(\.key)
+    private var alphaLettersForUI: [String] {
+        currentDerivedStateForUI.alphaLetters
     }
 
     private func shouldShowAlphaIndexHint(displayedCount: Int) -> Bool {
-        (libraryLayoutMode == .list)
-        && (sortField == .title)
-        && (displayedCount >= Self.alphaIndexHintThreshold)
+        shouldBuildAlphaSections && displayedCount >= Self.alphaIndexHintThreshold
     }
 
     @ViewBuilder
     private var libraryContent: some View {
-        // Explicit types here massively reduce SwiftUI's generic inference work.
-        let displayed: [Book] = displayedForUI
+        let displayed: [Book] = displayedBooksForCurrentDerivedState
         let counts: LibraryStatusCounts = countsForUI
-
-        let alphaSections: [AlphaSection] = alphaSectionsForUI(displayed: displayed)
-        let alphaLetters: [String] = alphaLettersForUI(sections: alphaSections)
-
+        let alphaSections: [AlphaSection] = alphaSectionsForUI
+        let alphaLetters: [String] = alphaLettersForUI
         let showAlphaIndexHint: Bool = shouldShowAlphaIndexHint(displayedCount: displayed.count)
 
         VStack(spacing: 0) {
@@ -134,7 +166,6 @@ struct LibraryView: View {
                     if libraryLayoutMode == .grid {
                         gridView(displayedBooks: displayed)
                     } else {
-                        // Alphabet index makes most sense for title sort
                         if sortField == .title {
                             alphaIndexedList(sections: alphaSections, letters: alphaLetters)
                         } else {
@@ -147,9 +178,6 @@ struct LibraryView: View {
         .navigationTitle(isSelectionMode ? "\(selectedBookIDs.count) ausgewählt" : "Bibliothek")
         .searchable(text: $searchText, prompt: "Suche Titel, Autor, Tag …")
         .toolbar { libraryToolbar }
-        // Bulk-Actions nutzen eine Bottom-Toolbar (.bottomBar). Innerhalb einer TabView
-        // landet diese sonst hinter der TabBar und ist nicht tappable.
-        // Deshalb blenden wir die TabBar nur während der Mehrfachauswahl aus.
         .toolbar(isSelectionMode ? .hidden : .visible, for: .tabBar)
         .onAppear {
             if libraryHeaderStyle == .standard {
@@ -158,36 +186,17 @@ struct LibraryView: View {
                 headerExpanded = false
             }
 
-            if books.isEmpty { headerExpanded = true }
-            enforceRatingRuleIfNeeded()
+            if books.isEmpty {
+                headerExpanded = true
+            }
 
-            // Ensure derived cache exists right away (and refresh when returning from detail views).
-            updateDerivedCacheNow()
+            enforceRatingRuleIfNeeded()
+            syncDerivedSearchTextNow()
         }
-        .onChange(of: books.count) { _, _ in
-            updateDerivedCacheNow()
-        }
-        .onChange(of: selectedStatus) { _, _ in
-            updateDerivedCacheNow()
-        }
-        .onChange(of: selectedTag) { _, _ in
-            updateDerivedCacheNow()
-        }
-        .onChange(of: onlyWithNotes) { _, _ in
-            updateDerivedCacheNow()
-        }
-        .onChange(of: sortFieldRaw) { _, _ in
-            updateDerivedCacheNow()
-        }
-        .onChange(of: sortAscending) { _, _ in
-            updateDerivedCacheNow()
-        }
-        .onChange(of: libraryLayoutModeRaw) { _, _ in
-            // Clears/warms alpha cache depending on list vs grid.
-            updateDerivedCacheNow()
+        .task(id: activeDerivedTaskToken) {
+            rebuildDerivedState(for: activeDerivedTaskToken)
         }
         .onChange(of: searchText) { _, _ in
-            // Debounce typing to avoid re-filtering/sorting the full library for every keystroke.
             scheduleDerivedCacheRecomputeDebounced()
         }
         .onChange(of: libraryHeaderStyleRaw) { _, _ in
@@ -265,37 +274,37 @@ struct LibraryView: View {
             }
     }
 
-// MARK: - Derived cache updates
+    // MARK: - Derived cache updates
 
     @MainActor
-    private func updateDerivedCacheNow() {
-        pendingRecomputeTask?.cancel()
-        pendingRecomputeTask = nil
+    private func rebuildDerivedState(for token: LibraryDerivedInputToken) {
+        let source = LibrarySourceSnapshot(books: books)
+        let input = activeDerivedInput
+        let rebuiltState = LibraryDerivedStateBuilder.makeDerivedState(source: source, input: input)
 
-        let displayed = displayedBooks
-        cachedDisplayedBooks = displayed
-        cachedCounts = statusCounts(in: books)
-
-        if libraryLayoutMode == .list, sortField == .title {
-            let sections = buildAlphaSections(from: displayed)
-            cachedAlphaSections = sections
-            cachedAlphaLetters = sections.map(\.key)
-        } else {
-            cachedAlphaSections = []
-            cachedAlphaLetters = []
+        guard rebuiltState.token == token else {
+            return
         }
 
-        derivedReady = true
+        derivedState = rebuiltState
+    }
+
+    @MainActor
+    private func syncDerivedSearchTextNow() {
+        pendingRecomputeTask?.cancel()
+        pendingRecomputeTask = nil
+        derivedSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     @MainActor
     private func scheduleDerivedCacheRecomputeDebounced() {
         pendingRecomputeTask?.cancel()
         pendingRecomputeTask = Task { @MainActor in
-            // 200ms feels snappy but avoids churn while typing.
             try? await Task.sleep(nanoseconds: 200_000_000)
-            if Task.isCancelled { return }
-            updateDerivedCacheNow()
+            if Task.isCancelled {
+                return
+            }
+            derivedSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 
