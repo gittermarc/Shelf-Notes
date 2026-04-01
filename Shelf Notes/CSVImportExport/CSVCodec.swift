@@ -12,7 +12,7 @@
 
 import Foundation
 
-struct CSVRow: Equatable {
+struct CSVRow: Equatable, Sendable {
     var title: String
     var isbn: String
 
