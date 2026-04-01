@@ -84,59 +84,21 @@ extension BookDetailView {
     // MARK: - Tags
 
     func toggleTag(_ tag: String) {
-        let n = normalizeTagString(tag)
-        guard !n.isEmpty else { return }
-
-        var current = book.tags.map(normalizeTagString).filter { !$0.isEmpty }
-
-        if let idx = current.firstIndex(where: { $0.caseInsensitiveCompare(n) == .orderedSame }) {
-            current.remove(at: idx)
-        } else {
-            current.append(n)
-        }
-
-        // dedupe case-insensitive, preserve order
-        var out: [String] = []
-        for t in current {
-            if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
-                out.append(t)
-            }
-        }
-
+        let out = TagsIndexBuilder.toggledTag(tag, in: book.tags)
+        guard out != book.tags else { return }
         book.tags = out
         tagsText = out.joined(separator: ", ")
         _ = saveDetail()
     }
 
     func addTagsFromDraft() {
-        let parts = tagDraft
-            .split(separator: ",")
-            .map { normalizeTagString(String($0)) }
-            .filter { !$0.isEmpty }
-
-        let single = normalizeTagString(tagDraft)
-        let candidates = parts.isEmpty ? ([single].filter { !$0.isEmpty }) : parts
-
+        let candidates = TagsIndexBuilder.parsedTags(from: tagDraft)
         guard !candidates.isEmpty else {
             tagDraft = ""
             return
         }
 
-        var current = book.tags.map(normalizeTagString).filter { !$0.isEmpty }
-
-        for p in candidates {
-            if !current.contains(where: { $0.caseInsensitiveCompare(p) == .orderedSame }) {
-                current.append(p)
-            }
-        }
-
-        var out: [String] = []
-        for t in current {
-            if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
-                out.append(t)
-            }
-        }
-
+        let out = TagsIndexBuilder.mergedTags(existingTags: book.tags, addedTags: candidates)
         book.tags = out
         tagsText = out.joined(separator: ", ")
         tagDraft = ""
@@ -144,22 +106,11 @@ extension BookDetailView {
     }
 
     func acceptTagSuggestion(_ suggestion: String) {
-        let n = normalizeTagString(suggestion)
-        guard !n.isEmpty else { return }
-
-        var current = book.tags.map(normalizeTagString).filter { !$0.isEmpty }
-        if !current.contains(where: { $0.caseInsensitiveCompare(n) == .orderedSame }) {
-            current.append(n)
+        let out = TagsIndexBuilder.mergedTags(existingTags: book.tags, addedTags: [suggestion])
+        guard out != book.tags else {
+            tagDraft = ""
+            return
         }
-
-        // dedupe case-insensitive, preserve order
-        var out: [String] = []
-        for t in current {
-            if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
-                out.append(t)
-            }
-        }
-
         book.tags = out
         tagsText = out.joined(separator: ", ")
         tagDraft = ""
@@ -167,19 +118,8 @@ extension BookDetailView {
     }
 
     func removeTag(_ tag: String) {
-        let n = normalizeTagString(tag)
-        guard !n.isEmpty else { return }
-
-        var current = book.tags.map(normalizeTagString).filter { !$0.isEmpty }
-        current.removeAll { $0.caseInsensitiveCompare(n) == .orderedSame }
-
-        var out: [String] = []
-        for t in current {
-            if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
-                out.append(t)
-            }
-        }
-
+        let out = TagsIndexBuilder.removingTag(tag, from: book.tags)
+        guard out != book.tags else { return }
         book.tags = out
         tagsText = out.joined(separator: ", ")
         _ = saveDetail()

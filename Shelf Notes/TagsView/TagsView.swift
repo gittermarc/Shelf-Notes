@@ -44,7 +44,7 @@ struct TagsView: View {
         }
         .task(id: signature) {
             // Build the snapshot off the render path (inside the task).
-            let snapshot = books.map { TagsIndexModel.BookTagsSnapshot(id: $0.id, tags: $0.tags) }
+            let snapshot = TagsIndexBuilder.makeSnapshot(books: books)
             indexModel.update(snapshot: snapshot, signature: signature)
         }
     }

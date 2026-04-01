@@ -50,9 +50,6 @@ struct BookDetailView: View {
     @Query(sort: \BookCollection.name, order: .forward)
     var allCollections: [BookCollection]
 
-    // ✅ Für Top-Tags: alle Bücher laden
-    @Query var allBooks: [Book]
-
     @State var showingNewCollectionSheet = false
     @State var showingPaywall = false
 
@@ -196,7 +193,7 @@ struct BookDetailView: View {
             tagDraft = ""
         }
         .task(id: tagsIndexTaskKey) {
-            await updateTagsIndexModelFromAllBooks()
+            await updateTagsIndexModelFromLibrary()
         }
         #if canImport(PhotosUI)
         .onChange(of: pickedCoverItem) { _, newValue in
@@ -225,16 +222,17 @@ struct BookDetailView: View {
         return UInt64(bitPattern: Int64(hasher.finalize()))
     }
 
-    private func updateTagsIndexModelFromAllBooks() async {
-        var snapshot: [TagsIndexModel.BookTagsSnapshot] = []
-        snapshot.reserveCapacity(allBooks.count)
-
-        for b in allBooks {
-            snapshot.append(.init(id: b.id, tags: b.tags))
-        }
-
-        await MainActor.run {
-            tagsIndexModel.update(snapshot: snapshot)
+    @MainActor
+    private func updateTagsIndexModelFromLibrary() {
+        do {
+            let books = try modelContext.fetch(FetchDescriptor<Book>())
+            let snapshot = TagsIndexBuilder.makeSnapshot(books: books)
+            tagsIndexModel.update(
+                snapshot: snapshot,
+                signature: TagsIndexBuilder.computeSignature(snapshot: snapshot)
+            )
+        } catch {
+            return
         }
     }
 }

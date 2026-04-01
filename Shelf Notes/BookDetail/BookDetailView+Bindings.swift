@@ -288,19 +288,11 @@ extension BookDetailView {
     /// - Priorität: Prefix-Matches vor Contains-Matches.
     /// - Excludes: Tags, die am Buch bereits gesetzt sind.
     var tagAutocompleteSuggestions: [String] {
-        let q = tagDraftQuery.lowercased()
-        guard !q.isEmpty else { return [] }
-
-        let selected = Set(book.tags.map { normalizeTagString($0).lowercased() })
-
-        let ordered = cachedTagCountsSorted.filter { !selected.contains($0.tag.lowercased()) }
-        let prefix = ordered.filter { $0.tag.lowercased().hasPrefix(q) }
-        let contains = ordered.filter {
-            let low = $0.tag.lowercased()
-            return !low.hasPrefix(q) && low.contains(q)
-        }
-
-        return Array((prefix + contains).prefix(8)).map { $0.tag }
+        TagsIndexBuilder.autocompleteSuggestions(
+            query: tagDraftQuery,
+            selectedTags: book.tags,
+            tagCounts: cachedTagCountsSorted
+        )
     }
 
     var topTagCounts30: [(tag: String, count: Int)] {
@@ -315,18 +307,7 @@ extension BookDetailView {
     }
 
     func parseTags(_ input: String) -> [String] {
-        let raw = input
-            .split(separator: ",")
-            .map { normalizeTagString(String($0)) }
-            .filter { !$0.isEmpty }
-
-        var out: [String] = []
-        for t in raw {
-            if !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
-                out.append(t)
-            }
-        }
-        return out
+        TagsIndexBuilder.parsedTags(from: input)
     }
 
     // MARK: - Read range
