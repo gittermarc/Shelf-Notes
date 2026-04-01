@@ -13,21 +13,19 @@ import Charts
 #endif
 
 struct StatisticsView: View {
-    @Environment(\.modelContext) private var modelContext
     @Query var books: [Book]
 
     @State var selectedYear: Int = Calendar.current.component(.year, from: Date())
     @State var scope: Scope = .all
     @State var activityMetric: ActivityMetric = .readingDays
 
-    // Cached aggregations to avoid re-computing expensive stats on every UI update
-    // (e.g. expanding/collapsing DisclosureGroups).
+    @State var sourceSnapshot: StatisticsSourceSnapshot? = nil
     @State var statsCache: StatsCache? = nil
     @State var heatmapCache: HeatmapCache? = nil
     @State var isUpdatingStatsCache: Bool = false
     @State var isUpdatingHeatmapCache: Bool = false
 
-    enum Scope: String, CaseIterable, Identifiable {
+    enum Scope: String, CaseIterable, Identifiable, Sendable {
         case all = "Alle"
         case finished = "Gelesen"
         case reading = "Lese ich"
@@ -35,7 +33,7 @@ struct StatisticsView: View {
         var id: String { rawValue }
     }
 
-    enum ActivityMetric: String, CaseIterable, Identifiable {
+    enum ActivityMetric: String, CaseIterable, Identifiable, Sendable {
         case readingDays = "Lesetage"
         case readingMinutes = "Leseminuten"
         case completions = "Abschlüsse"
@@ -103,8 +101,16 @@ struct StatisticsView: View {
         }
         .navigationTitle("Statistiken")
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: signature) {
+            guard !books.isEmpty else {
+                sourceSnapshot = nil
+                statsCache = nil
+                heatmapCache = nil
+                return
+            }
 
-        // Recompute caches only when their inputs change.
+            sourceSnapshot = StatisticsSourceSnapshot(signature: signature, books: books)
+        }
         .task(id: statsKey) {
             guard !books.isEmpty else {
                 statsCache = nil
@@ -114,11 +120,9 @@ struct StatisticsView: View {
             isUpdatingStatsCache = true
             defer { isUpdatingStatsCache = false }
 
-            // Let the UI render first; then crunch numbers.
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-
-            let cache = computeStatsCache(for: statsKey)
+            let source = currentSourceSnapshot(for: signature)
+            let pipeline = makeComputePipeline(for: source)
+            let cache = await pipeline.makeStatsCache(for: statsKey)
             guard !Task.isCancelled else { return }
             statsCache = cache
         }
@@ -131,10 +135,9 @@ struct StatisticsView: View {
             isUpdatingHeatmapCache = true
             defer { isUpdatingHeatmapCache = false }
 
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-
-            let cache = computeHeatmapCache(for: heatmapKey)
+            let source = currentSourceSnapshot(for: signature)
+            let pipeline = makeComputePipeline(for: source)
+            let cache = await pipeline.makeHeatmapCache(for: heatmapKey)
             guard !Task.isCancelled else { return }
             heatmapCache = cache
         }

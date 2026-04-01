@@ -1,6 +1,27 @@
 import Foundation
 
 struct StatisticsBookSnapshot: Sendable {
+    struct ReadingSessionSnapshot: Sendable {
+        let startedAt: Date
+        let endedAt: Date
+        let durationSeconds: Int
+        let pagesRead: Int?
+
+        init(startedAt: Date, endedAt: Date, durationSeconds: Int, pagesRead: Int?) {
+            self.startedAt = startedAt
+            self.endedAt = endedAt
+            self.durationSeconds = durationSeconds
+            self.pagesRead = pagesRead
+        }
+
+        init(session: ReadingSession) {
+            self.startedAt = session.startedAt
+            self.endedAt = session.endedAt
+            self.durationSeconds = session.durationSeconds
+            self.pagesRead = session.pagesReadNormalized
+        }
+    }
+
     let title: String
     let author: String
     let statusRawValue: String
@@ -17,6 +38,7 @@ struct StatisticsBookSnapshot: Sendable {
     let ratingsCount: Int?
     let mainCategory: String?
     let userRatingAverage1: Double?
+    let readingSessions: [ReadingSessionSnapshot]
 
     init(
         title: String,
@@ -34,7 +56,8 @@ struct StatisticsBookSnapshot: Sendable {
         averageRating: Double? = nil,
         ratingsCount: Int? = nil,
         mainCategory: String? = nil,
-        userRatingAverage1: Double? = nil
+        userRatingAverage1: Double? = nil,
+        readingSessions: [ReadingSessionSnapshot] = []
     ) {
         self.title = title
         self.author = author
@@ -52,6 +75,7 @@ struct StatisticsBookSnapshot: Sendable {
         self.ratingsCount = ratingsCount
         self.mainCategory = mainCategory
         self.userRatingAverage1 = userRatingAverage1
+        self.readingSessions = readingSessions
     }
 
     init(book: Book) {
@@ -71,6 +95,7 @@ struct StatisticsBookSnapshot: Sendable {
         self.ratingsCount = book.ratingsCount
         self.mainCategory = book.mainCategory
         self.userRatingAverage1 = book.userRatingAverage1
+        self.readingSessions = book.readingSessionsSafe.map(ReadingSessionSnapshot.init)
     }
 
     var status: ReadingStatus {
