@@ -24,7 +24,7 @@ extension StatisticsView {
 
         return StatisticsReadingChartsSection(
             selectedYear: selectedYear,
-            monthsCount: effectiveCache?.monthsCount ?? monthsForYear(statsKey.selectedYear).count,
+            monthsCount: effectiveCache?.monthsCount ?? fallbackMonthsCount(for: statsKey.selectedYear),
             series: effectiveCache?.monthlySeries ?? [],
             isValid: isValid,
             isUpdating: !isValid && isUpdatingStatsCache

@@ -112,12 +112,39 @@ extension StatisticsView {
         )
     }
 
-    func makeStatsCacheKey() -> StatisticsStatsCacheKey {
-        makeStatsCacheKey(signature: booksSignature(books))
+
+    func resolvedStatsCache(for key: StatisticsStatsCacheKey) -> StatisticsStatsCache? {
+        guard let statsCache, statsCache.key == key else { return nil }
+        return statsCache
     }
 
-    func makeHeatmapCacheKey() -> StatisticsHeatmapCacheKey {
-        makeHeatmapCacheKey(signature: booksSignature(books))
+    func resolvedStatsCacheForCurrentBooks(signature: Int) -> StatisticsStatsCache? {
+        guard let statsCache, statsCache.key.booksSignature == signature else { return nil }
+        return statsCache
+    }
+
+    func resolvedScopeStatsCache(signature: Int) -> StatisticsStatsCache? {
+        guard let statsCache,
+              statsCache.key.scope == scope,
+              statsCache.key.booksSignature == signature else {
+            return nil
+        }
+        return statsCache
+    }
+
+    func resolvedHeatmapCache(for key: StatisticsHeatmapCacheKey) -> StatisticsHeatmapCache? {
+        guard let heatmapCache, heatmapCache.key == key else { return nil }
+        return heatmapCache
+    }
+
+    func availableYearOptions(signature: Int) -> [Int] {
+        resolvedStatsCacheForCurrentBooks(signature: signature)?.summary.yearOptions ?? [selectedYear]
+    }
+
+    func fallbackMonthsCount(for year: Int) -> Int {
+        StatisticsMonthAxisBuilder
+            .months(for: year, now: Date(), calendar: Calendar.current)
+            .count
     }
 
     func currentSourceSnapshot(for signature: Int) -> StatisticsSourceSnapshot {
@@ -132,22 +159,5 @@ extension StatisticsView {
 
     func makeComputePipeline(for source: StatisticsSourceSnapshot) -> StatisticsComputePipeline {
         StatisticsComputePipeline(source: source, now: Date(), calendar: Calendar.current)
-    }
-
-    func monthsForYear(_ year: Int) -> [MonthKey] {
-        let calendar = Calendar.current
-        let currentYear = calendar.component(.year, from: Date())
-        let currentMonth = calendar.component(.month, from: Date())
-
-        let maxMonth: Int
-        if year < currentYear {
-            maxMonth = 12
-        } else if year > currentYear {
-            maxMonth = 12
-        } else {
-            maxMonth = max(1, currentMonth)
-        }
-
-        return (1...maxMonth).map { MonthKey(year: year, month: $0) }
     }
 }

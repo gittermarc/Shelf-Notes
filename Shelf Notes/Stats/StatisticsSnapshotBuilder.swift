@@ -119,7 +119,7 @@ nonisolated struct StatisticsSnapshotBuilder {
         let scoped = scopedBooks(for: key.scope, in: books)
         let finishedInYear = finishedBooks(in: key.selectedYear, from: scoped)
         let summary = makeSummary(allBooks: books, scopedBooks: scoped, finishedInYear: finishedInYear)
-        let months = monthsForYear(key.selectedYear)
+        let months = StatisticsMonthAxisBuilder.months(for: key.selectedYear, now: now, calendar: calendar)
         let topGenres = topGenresList(scoped, limit: 8)
         let topSubgenres = topSubgenresList(scoped, limit: 8)
         let topAuthors = topAuthorsList(scoped, limit: 8)
@@ -147,12 +147,6 @@ nonisolated struct StatisticsSnapshotBuilder {
 }
 
 private nonisolated extension StatisticsSnapshotBuilder {
-    struct MonthKey: Hashable {
-        let year: Int
-        let month: Int
-
-        var id: String { "\(year)-\(month)" }
-    }
 
     func scopedBooks(
         for scope: StatisticsScope,
@@ -282,32 +276,16 @@ private nonisolated extension StatisticsSnapshotBuilder {
         )
     }
 
-    func monthsForYear(_ year: Int) -> [MonthKey] {
-        let currentYear = calendar.component(.year, from: now)
-        let currentMonth = calendar.component(.month, from: now)
-
-        let maxMonth: Int
-        if year < currentYear {
-            maxMonth = 12
-        } else if year > currentYear {
-            maxMonth = 12
-        } else {
-            maxMonth = max(1, currentMonth)
-        }
-
-        return (1...maxMonth).map { MonthKey(year: year, month: $0) }
-    }
-
     func monthlySeriesFor(
-        months: [MonthKey],
+        months: [StatisticsMonthKey],
         finishedBooks: [StatisticsBookSnapshot]
     ) -> [StatisticsMonthSeriesPoint] {
-        var countBy: [MonthKey: Int] = [:]
-        var pagesBy: [MonthKey: Int] = [:]
+        var countBy: [StatisticsMonthKey: Int] = [:]
+        var pagesBy: [StatisticsMonthKey: Int] = [:]
 
         for book in finishedBooks {
             guard let date = readKeyDate(book) else { continue }
-            let key = MonthKey(
+            let key = StatisticsMonthKey(
                 year: calendar.component(.year, from: date),
                 month: calendar.component(.month, from: date)
             )
@@ -325,9 +303,8 @@ private nonisolated extension StatisticsSnapshotBuilder {
         }
     }
 
-    func monthLabel(for month: MonthKey) -> String {
-        let date = calendar.date(from: DateComponents(year: month.year, month: month.month, day: 1)) ?? now
-        return date.formatted(.dateTime.month(.abbreviated))
+    func monthLabel(for month: StatisticsMonthKey) -> String {
+        StatisticsMonthAxisBuilder.monthLabel(for: month, calendar: calendar, fallbackDate: now)
     }
 
     func topGenresList(_ input: [StatisticsBookSnapshot], limit: Int) -> [(label: String, count: Int)] {

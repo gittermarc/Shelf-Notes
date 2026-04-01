@@ -29,16 +29,9 @@ struct StatisticsView: View {
         let signature = booksSignature(books)
         let statsKey = makeStatsCacheKey(signature: signature)
         let heatmapKey = makeHeatmapCacheKey(signature: signature)
-        let exactStatsCache = statsCache?.key == statsKey ? statsCache : nil
-        let scopeStatsCache: StatisticsStatsCache? = {
-            guard let cache = statsCache,
-                  cache.key.scope == scope,
-                  cache.key.booksSignature == signature else {
-                return nil
-            }
-            return cache
-        }()
-        let exactHeatmapCache = heatmapCache?.key == heatmapKey ? heatmapCache : nil
+        let exactStatsCache = resolvedStatsCache(for: statsKey)
+        let scopeStatsCache = resolvedScopeStatsCache(signature: signature)
+        let exactHeatmapCache = resolvedHeatmapCache(for: heatmapKey)
 
         Group {
             if books.isEmpty {
@@ -49,15 +42,8 @@ struct StatisticsView: View {
                 )
                 .padding(.horizontal)
             } else {
-                let sameBooksStatsCache: StatisticsStatsCache? = {
-                    guard let cache = statsCache,
-                          cache.key.booksSignature == signature else {
-                        return nil
-                    }
-                    return cache
-                }()
                 let summary = exactStatsCache?.summary
-                let yearOptions = sameBooksStatsCache?.summary.yearOptions ?? [selectedYear]
+                let yearOptions = availableYearOptions(signature: signature)
 
                 ScrollView {
                     VStack(spacing: 14) {

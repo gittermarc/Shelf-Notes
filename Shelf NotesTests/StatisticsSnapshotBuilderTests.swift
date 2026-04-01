@@ -191,4 +191,63 @@ struct StatisticsSnapshotBuilderTests {
         #expect(cache.topGenres.isEmpty)
         #expect(cache.highestRated == nil)
     }
+
+    @Test func scopeFilterUsesBuilderSemanticsInsteadOfViewSideAggregation() {
+        let builder = StatisticsSnapshotBuilder(now: date(2026, 4, 15), calendar: calendar)
+        let books = [
+            StatisticsBookSnapshot(
+                title: "Finished Thriller",
+                author: "Ada",
+                statusRawValue: ReadingStatus.finished.rawValue,
+                tags: ["Crime"],
+                readFrom: date(2026, 1, 3),
+                readTo: date(2026, 1, 5),
+                publisher: "Alpha",
+                pageCount: 320,
+                language: "DE",
+                categories: ["Fiction / Thriller / Noir"],
+                mainCategory: "Fiction / Thriller / Noir",
+                userRatingAverage1: 4.5
+            ),
+            StatisticsBookSnapshot(
+                title: "Reading History",
+                author: "Bea",
+                statusRawValue: ReadingStatus.reading.rawValue,
+                tags: ["History"],
+                readFrom: date(2026, 2, 1),
+                publisher: "Beta",
+                pageCount: 210,
+                language: "EN",
+                categories: ["Nonfiction / History"],
+                mainCategory: "Nonfiction / History",
+                userRatingAverage1: 3.7
+            ),
+            StatisticsBookSnapshot(
+                title: "Queued Sci-Fi",
+                author: "Cy",
+                statusRawValue: ReadingStatus.toRead.rawValue,
+                tags: ["Sci-Fi"],
+                publisher: "Gamma",
+                pageCount: 410,
+                language: "EN",
+                categories: ["Fiction / Science Fiction"],
+                mainCategory: "Fiction / Science Fiction"
+            )
+        ]
+
+        let cache = builder.makeStatsCache(
+            for: .init(selectedYear: 2026, scope: .finished, booksSignature: 200),
+            books: books
+        )
+
+        #expect(cache.summary.overview.scopedBooksCount == 1)
+        #expect(cache.summary.overview.finishedScopedBooksCount == 1)
+        #expect(cache.summary.overview.uniqueAuthorsCount == 1)
+        #expect(cache.summary.overview.uniquePublishersCount == 1)
+        #expect(cache.summary.heroSubtitle == "1 Bücher • 1 gelesen • 320 Seiten (wo vorhanden)")
+        #expect(cache.topGenres.map { $0.label } == ["Thriller"])
+        #expect(cache.topTags.map { $0.label } == ["Crime"])
+        #expect(cache.highestRated?.label == "Finished Thriller • 4.5 / 5")
+    }
+
 }
