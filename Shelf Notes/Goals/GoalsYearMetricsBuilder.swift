@@ -26,40 +26,37 @@ enum GoalsYearMetricsBuilder {
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> GoalsYearMetrics {
-        let availableYears = availableYears(from: books, goals: goals, now: now, calendar: calendar)
+        let analyticsIndex = ReadingAnalyticsIndexBuilder.make(
+            books: ReadingAnalyticsInputMapper.bookRecords(from: books),
+            sessions: [],
+            now: now,
+            calendar: calendar
+        )
+        let yearSummary = analyticsIndex.summary(forYear: selectedYear)
+        let availableYears = availableYears(
+            from: analyticsIndex.finishedBookYears,
+            goals: goals,
+            now: now,
+            calendar: calendar
+        )
         let finishedBooks = finishedBooks(in: selectedYear, books: books, calendar: calendar)
-        let pagesReadInSelectedYear = finishedBooks.reduce(0) { partial, book in
-            partial + max(0, book.pageCount ?? 0)
-        }
-
-        let countedBooksWithPages = finishedBooks.filter { ($0.pageCount ?? 0) > 0 }
-        let averagePagesPerBook: Int?
-        if countedBooksWithPages.isEmpty {
-            averagePagesPerBook = nil
-        } else {
-            let pages = countedBooksWithPages.reduce(0) { partial, book in
-                partial + max(0, book.pageCount ?? 0)
-            }
-            averagePagesPerBook = Int((Double(pages) / Double(countedBooksWithPages.count)).rounded())
-        }
-
         let monthsCount = monthsCount(for: selectedYear, now: now, calendar: calendar)
-        let pagesPerMonth = Int((Double(pagesReadInSelectedYear) / Double(max(1, monthsCount))).rounded())
+        let pagesPerMonth = Int((Double(yearSummary.pagesRead) / Double(max(1, monthsCount))).rounded())
 
         return GoalsYearMetrics(
             selectedYear: selectedYear,
             availableYears: availableYears,
             finishedBooks: finishedBooks,
-            pagesReadInSelectedYear: pagesReadInSelectedYear,
-            countedBooksWithPagesCount: countedBooksWithPages.count,
-            averagePagesPerBook: averagePagesPerBook,
+            pagesReadInSelectedYear: yearSummary.pagesRead,
+            countedBooksWithPagesCount: yearSummary.countedBooksWithPagesCount,
+            averagePagesPerBook: yearSummary.averagePagesPerBook,
             monthsCount: monthsCount,
             pagesPerMonth: pagesPerMonth
         )
     }
 
     private static func availableYears(
-        from books: [Book],
+        from finishedBookYears: [Int],
         goals: [ReadingGoal],
         now: Date,
         calendar: Calendar
@@ -71,9 +68,8 @@ enum GoalsYearMetricsBuilder {
         years.insert(currentYear)
         years.insert(nextYear)
 
-        for book in books where book.status == .finished {
-            guard let keyDate = readKeyDate(book) else { continue }
-            years.insert(calendar.component(.year, from: keyDate))
+        for year in finishedBookYears {
+            years.insert(year)
         }
 
         for goal in goals {
