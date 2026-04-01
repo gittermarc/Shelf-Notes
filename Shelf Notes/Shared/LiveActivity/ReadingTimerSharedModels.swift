@@ -8,7 +8,7 @@
 
 import Foundation
 
-enum ReadingTimerSharedKeys {
+nonisolated enum ReadingTimerSharedKeys {
     /// Stored in App Group UserDefaults.
     static let activeBlob: String = "reading_timer_active_v1"
 
@@ -20,7 +20,7 @@ enum ReadingTimerSharedKeys {
 ///
 /// This is intentionally duplicated (instead of referencing `ReadingTimerManager.ActiveState`)
 /// so the widget extension can decode it without importing the app module.
-struct ReadingTimerActiveBlob: Codable, Equatable {
+nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
     var bookID: UUID
     var bookTitle: String
     var startedAt: Date
@@ -55,7 +55,7 @@ struct ReadingTimerActiveBlob: Codable, Equatable {
 }
 
 /// Shared, Codable representation of a timer session completion that still needs user input.
-struct ReadingTimerPendingCompletionBlob: Codable, Equatable {
+nonisolated struct ReadingTimerPendingCompletionBlob: Codable, Equatable {
     var id: UUID
     var bookID: UUID
     var bookTitle: String

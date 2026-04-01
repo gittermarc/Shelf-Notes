@@ -67,10 +67,11 @@ struct ReadingSessionTogglePauseIntent: LiveActivityIntent {
             effectiveStartDate: effectiveStartDate,
             pausedElapsedSeconds: elapsed
         )
+        let content = ActivityContent(state: state, staleDate: nil)
 
         for activity in Activity<ReadingSessionActivityAttributes>.activities {
             if activity.attributes.bookID == bookIDString {
-                await activity.update(using: state)
+                await activity.update(content)
             }
         }
     }
@@ -140,10 +141,11 @@ struct ReadingSessionStopIntent: LiveActivityIntent {
             effectiveStartDate: now,
             pausedElapsedSeconds: 0
         )
+        let content = ActivityContent(state: state, staleDate: nil)
 
         for activity in Activity<ReadingSessionActivityAttributes>.activities {
             if activity.attributes.bookID == bookIDString {
-                await activity.end(using: state, dismissalPolicy: .immediate)
+                await activity.end(content, dismissalPolicy: .immediate)
             }
         }
     }

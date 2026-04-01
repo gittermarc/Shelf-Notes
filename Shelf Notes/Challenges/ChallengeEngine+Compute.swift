@@ -335,7 +335,7 @@ private extension ChallengeEngine {
     static func activeReadingDays(in range: Range<Date>, snapshot: Snapshot) -> Set<Date> {
         if snapshot.sessions.isEmpty { return [] }
 
-        var cal = engineCalendar()
+        let cal = engineCalendar()
         var days: Set<Date> = []
 
         for s in snapshot.sessions {

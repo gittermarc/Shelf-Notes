@@ -21,6 +21,7 @@ final class ReadingSessionLiveActivityCoordinator {
 
         let now = Date()
         let (attributes, state) = makePayload(active: active, now: now)
+        let content = makeActivityContent(from: state)
 
         Task { [weak self] in
             guard let self else { return }
@@ -38,14 +39,14 @@ final class ReadingSessionLiveActivityCoordinator {
             }
 
             if let existing = self.activity {
-                await existing.update(using: state)
+                await existing.update(content)
                 return
             }
 
             do {
                 let requested = try Activity.request(
                     attributes: attributes,
-                    contentState: state,
+                    content: content,
                     pushType: nil
                 )
                 self.activity = requested
@@ -74,7 +75,7 @@ final class ReadingSessionLiveActivityCoordinator {
     @available(iOS 16.1, *)
     private func endCurrentActivityInternal(using state: ReadingSessionActivityAttributes.ContentState) async {
         // End immediately so the lock screen doesn't show stale info once the sheet opens.
-        await activity?.end(using: state, dismissalPolicy: .immediate)
+        await activity?.end(makeActivityContent(from: state), dismissalPolicy: .immediate)
     }
 
     @available(iOS 16.1, *)
@@ -85,6 +86,38 @@ final class ReadingSessionLiveActivityCoordinator {
             }
         }
         return nil
+    }
+
+    private func makeActivityContent(
+        from state: ReadingSessionActivityAttributes.ContentState
+    ) -> ActivityContent<ReadingSessionActivityAttributes.ContentState> {
+        ActivityContent(state: state, staleDate: nil)
+    }
+
+    @available(iOS 16.2, *)
+    nonisolated static func refreshExistingActivityFromSharedState(bookID: UUID, now: Date = Date()) async {
+        let shared = LiveActivitySharedStore.userDefaults
+        guard let data = shared.data(forKey: ReadingTimerSharedKeys.activeBlob),
+              let active = try? JSONDecoder().decode(ReadingTimerActiveBlob.self, from: data),
+              active.bookID == bookID else {
+            return
+        }
+
+        let elapsed = active.totalElapsedSeconds(now: now)
+        let effectiveStartDate = now.addingTimeInterval(-Double(elapsed))
+        let state = ReadingSessionActivityAttributes.ContentState(
+            isPaused: active.isPaused,
+            effectiveStartDate: effectiveStartDate,
+            pausedElapsedSeconds: elapsed
+        )
+        let content = ActivityContent(state: state, staleDate: nil)
+        let bookIDString = bookID.uuidString
+
+        for activity in Activity<ReadingSessionActivityAttributes>.activities {
+            if activity.attributes.bookID == bookIDString {
+                await activity.update(content)
+            }
+        }
     }
 
     private func makePayload(active: ReadingTimerManager.ActiveState, now: Date) -> (

@@ -89,6 +89,7 @@ final class ReadingTimerManager: ObservableObject {
 
         let safeTitle = bookTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         let title = safeTitle.isEmpty ? "Buch" : safeTitle
+        let refreshBookID = bookID
 
         self.active = ActiveState(
             bookID: bookID,
@@ -105,17 +106,16 @@ final class ReadingTimerManager: ObservableObject {
         liveActivityCoordinator.startOrUpdate(from: self.active!)
 
         if let coverThumbnailData {
-            Task.detached(priority: .utility) { [weak self] in
+            Task.detached(priority: .utility) {
                 LiveActivityCoverWriter.writeCoverThumbnailIfPossible(
-                    bookID: bookID,
+                    bookID: refreshBookID,
                     sourceThumbnailData: coverThumbnailData
                 )
 
                 // Trigger a lightweight state update so the lock screen re-renders
                 // after the cover thumbnail becomes available.
-                await MainActor.run {
-                    guard let self, let active = self.active, active.bookID == bookID else { return }
-                    self.liveActivityCoordinator.startOrUpdate(from: active)
+                if #available(iOS 16.2, *) {
+                    await ReadingSessionLiveActivityCoordinator.refreshExistingActivityFromSharedState(bookID: refreshBookID)
                 }
             }
         }

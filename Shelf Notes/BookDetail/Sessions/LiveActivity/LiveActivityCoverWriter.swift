@@ -11,7 +11,7 @@ import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
 
-enum LiveActivityCoverWriter {
+nonisolated enum LiveActivityCoverWriter {
 
     /// Writes a downsampled JPEG into the App Group container.
     ///

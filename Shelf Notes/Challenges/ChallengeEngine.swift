@@ -8,7 +8,7 @@
 import Foundation
 import SwiftData
 
-enum ChallengeEngine {
+nonisolated enum ChallengeEngine {
 
     // MARK: - Public API
 
@@ -295,7 +295,7 @@ enum ChallengeEngine {
     }
 
     private static func periodBounds(kind: ChallengeKind, now: Date) -> PeriodBounds {
-        var cal = calendar()
+        let cal = calendar()
 
         switch kind {
         case .weekly:

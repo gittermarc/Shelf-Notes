@@ -9,7 +9,7 @@
 
 import Foundation
 
-enum LiveActivitySharedStore {
+nonisolated enum LiveActivitySharedStore {
 
     /// ⚠️ Must match the App Group you enable in Xcode for both the app and the widget extension.
     ///

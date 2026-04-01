@@ -9,7 +9,7 @@ import Foundation
 import ActivityKit
 
 /// Live Activity attributes for a single active reading session.
-struct ReadingSessionActivityAttributes: ActivityAttributes {
+nonisolated struct ReadingSessionActivityAttributes: ActivityAttributes {
 
     public struct ContentState: Codable, Hashable {
         /// True when the session is currently paused.
@@ -30,7 +30,7 @@ struct ReadingSessionActivityAttributes: ActivityAttributes {
     var bookTitle: String
 }
 
-enum ReadingSessionDurationFormatter {
+nonisolated enum ReadingSessionDurationFormatter {
     static func format(_ seconds: Int) -> String {
         let s = max(0, seconds)
         let h = s / 3600
