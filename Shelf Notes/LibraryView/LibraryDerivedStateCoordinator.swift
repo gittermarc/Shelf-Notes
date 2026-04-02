@@ -8,7 +8,7 @@
 import Foundation
 
 extension LibraryView {
-    struct LibraryDerivedStateCoordinator: Equatable {
+    nonisolated struct LibraryDerivedStateCoordinator: Equatable {
         private(set) var requestedToken: LibraryDerivedInputToken?
         private(set) var lastStableState: LibraryDerivedState
 

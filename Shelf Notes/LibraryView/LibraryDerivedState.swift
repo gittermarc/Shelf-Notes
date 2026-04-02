@@ -9,7 +9,7 @@ import Foundation
 
 extension LibraryView {
 
-    struct LibraryStatusCounts: Equatable {
+    nonisolated struct LibraryStatusCounts: Equatable {
         var toRead: Int
         var reading: Int
         var finished: Int
@@ -17,14 +17,14 @@ extension LibraryView {
         static let zero = LibraryStatusCounts(toRead: 0, reading: 0, finished: 0)
     }
 
-    struct AlphaSectionDescriptor: Equatable {
+    nonisolated struct AlphaSectionDescriptor: Equatable {
         let id: String
         let key: String
         let bookIDs: [UUID]
     }
 
-    struct LibrarySourceSnapshot: Equatable {
-        struct BookSnapshot: Equatable {
+    nonisolated struct LibrarySourceSnapshot: Equatable {
+        nonisolated struct BookSnapshot: Equatable {
             let id: UUID
             let title: String
             let author: String
@@ -42,13 +42,13 @@ extension LibraryView {
                 title = book.title
                 author = book.author
                 createdAt = book.createdAt
-                statusRawValue = book.status.rawValue
+                statusRawValue = book.statusRawValue
                 tags = book.tags
                 hasNotes = book.notes.contains(where: { !$0.isWhitespace })
                 isbn13 = book.isbn13
                 readFrom = book.readFrom
                 readTo = book.readTo
-                userRatingAverage1 = book.userRatingAverage1
+                userRatingAverage1 = LibrarySourceSnapshot.normalizedUserRatingAverage1(for: book)
             }
 
             init(
@@ -107,7 +107,7 @@ extension LibraryView {
                 hasher.combine(book.title)
                 hasher.combine(book.author)
                 hasher.combine(dayStamp(book.createdAt))
-                hasher.combine(book.status.rawValue)
+                hasher.combine(book.statusRawValue)
                 hasher.combine(book.tags.count)
                 for tag in book.tags {
                     hasher.combine(tag.lowercased())
@@ -116,7 +116,7 @@ extension LibraryView {
                 hasher.combine(book.isbn13)
                 hasher.combine(dayStamp(book.readFrom))
                 hasher.combine(dayStamp(book.readTo))
-                hasher.combine(ratingBucket(book.userRatingAverage1))
+                hasher.combine(ratingBucket(normalizedUserRatingAverage1(for: book)))
 
                 let bookHash = hasher.finalize()
                 xorAggregate ^= bookHash
@@ -176,9 +176,26 @@ extension LibraryView {
             guard let value else { return -1 }
             return Int((value * 10).rounded())
         }
+
+        private static func normalizedUserRatingAverage1(for book: Book) -> Double? {
+            let values = [
+                book.userRatingPlot,
+                book.userRatingCharacters,
+                book.userRatingWritingStyle,
+                book.userRatingAtmosphere,
+                book.userRatingGenreFit,
+                book.userRatingPresentation
+            ].filter { $0 > 0 }
+
+            guard values.isEmpty == false else { return nil }
+
+            let sum = values.reduce(0, +)
+            let average = Double(sum) / Double(values.count)
+            return (average * 10).rounded() / 10
+        }
     }
 
-    struct LibraryDerivedInput: Hashable {
+    nonisolated struct LibraryDerivedInput: Hashable {
         let searchText: String
         let selectedStatusRawValue: String?
         let selectedTag: String?
@@ -188,12 +205,12 @@ extension LibraryView {
         let buildsAlphaSections: Bool
     }
 
-    struct LibraryDerivedInputToken: Hashable {
+    nonisolated struct LibraryDerivedInputToken: Hashable {
         let sourceSignature: Int
         let input: LibraryDerivedInput
     }
 
-    struct LibraryDerivedState: Equatable {
+    nonisolated struct LibraryDerivedState: Equatable {
         let token: LibraryDerivedInputToken
         let displayedBookIDs: [UUID]
         let counts: LibraryStatusCounts

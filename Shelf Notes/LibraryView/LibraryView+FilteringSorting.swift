@@ -11,7 +11,7 @@ extension LibraryView {
 
     // MARK: - Sorting
 
-    enum SortField: String, CaseIterable, Identifiable, Hashable {
+    nonisolated enum SortField: String, CaseIterable, Identifiable, Hashable {
         case createdAt = "Hinzugefügt"
         case readDate = "Gelesen"
         case rating = "Bewertung"

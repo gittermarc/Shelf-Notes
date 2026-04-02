@@ -1,6 +1,6 @@
 import Foundation
 
-enum ReadingAnalyticsIndexBuilder {
+nonisolated enum ReadingAnalyticsIndexBuilder {
     static func make(
         books: [ReadingAnalyticsBookRecord],
         sessions: [ReadingAnalyticsSessionRecord],
@@ -142,7 +142,7 @@ enum ReadingAnalyticsIndexBuilder {
     }
 }
 
-private struct YearAccumulator {
+private nonisolated struct YearAccumulator {
     var finishedBookCount: Int = 0
     var pagesRead: Int = 0
     var countedBooksWithPagesCount: Int = 0

@@ -1,6 +1,6 @@
 import Foundation
 
-struct ReadingAnalyticsBookRecord: Hashable, Sendable {
+nonisolated struct ReadingAnalyticsBookRecord: Hashable, Sendable {
     let id: UUID
     let statusRawValue: String
     let createdAt: Date
@@ -48,7 +48,7 @@ struct ReadingAnalyticsBookRecord: Hashable, Sendable {
     }
 }
 
-struct ReadingAnalyticsSessionRecord: Hashable, Sendable {
+nonisolated struct ReadingAnalyticsSessionRecord: Hashable, Sendable {
     let id: UUID
     let startedAt: Date
     let durationSeconds: Int
@@ -80,7 +80,7 @@ struct ReadingAnalyticsSessionRecord: Hashable, Sendable {
     }
 }
 
-struct ReadingAnalyticsYearSummary: Equatable, Sendable {
+nonisolated struct ReadingAnalyticsYearSummary: Equatable, Sendable {
     let year: Int
     let finishedBookCount: Int
     let pagesRead: Int
@@ -100,7 +100,7 @@ struct ReadingAnalyticsYearSummary: Equatable, Sendable {
     }
 }
 
-struct ReadingAnalyticsRecentActivity: Equatable, Sendable {
+nonisolated struct ReadingAnalyticsRecentActivity: Equatable, Sendable {
     let minutesLast7: Int
     let activeDaysLast7: Int
     let currentStreak: Int
@@ -112,7 +112,7 @@ struct ReadingAnalyticsRecentActivity: Equatable, Sendable {
     )
 }
 
-struct ReadingAnalyticsIndex: Equatable, Sendable {
+nonisolated struct ReadingAnalyticsIndex: Equatable, Sendable {
     let finishedBookYears: [Int]
     let yearSummaries: [Int: ReadingAnalyticsYearSummary]
     let recentActivity: ReadingAnalyticsRecentActivity

@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct GoalsYearMetrics {
+nonisolated struct GoalsYearMetrics {
     let selectedYear: Int
     let availableYears: [Int]
     let finishedBooks: [Book]
@@ -18,7 +18,7 @@ struct GoalsYearMetrics {
     let pagesPerMonth: Int
 }
 
-enum GoalsYearMetricsBuilder {
+nonisolated enum GoalsYearMetricsBuilder {
     static func make(
         selectedYear: Int,
         books: [Book],
@@ -89,7 +89,7 @@ enum GoalsYearMetricsBuilder {
 
         return books
             .filter { book in
-                guard book.status == .finished else { return false }
+                guard ReadingStatus.fromPersisted(book.statusRawValue) == .finished else { return false }
                 guard let keyDate = readKeyDate(book) else { return false }
                 return keyDate >= start && keyDate < end
             }

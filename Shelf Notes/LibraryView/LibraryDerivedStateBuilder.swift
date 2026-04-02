@@ -9,7 +9,7 @@ import Foundation
 
 extension LibraryView {
 
-    enum LibraryDerivedStateBuilder {
+    nonisolated enum LibraryDerivedStateBuilder {
 
         static func makeInput(
             searchText: String,

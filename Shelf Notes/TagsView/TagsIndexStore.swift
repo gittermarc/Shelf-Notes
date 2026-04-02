@@ -2,7 +2,7 @@
 //  TagsIndexStore.swift
 //  Shelf Notes
 //
-//  Created by OpenAI on 01.04.26.
+//  Created by Marc Fechner on 01.04.26.
 //  TAGS-INDEX-STORE-1: Central app-wide tag index cache.
 //
 

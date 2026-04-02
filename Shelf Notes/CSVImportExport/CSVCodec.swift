@@ -12,7 +12,7 @@
 
 import Foundation
 
-struct CSVRow: Equatable, Sendable {
+nonisolated struct CSVRow: Equatable, Sendable {
     var title: String
     var isbn: String
 
@@ -30,7 +30,7 @@ struct CSVRow: Equatable, Sendable {
     }
 }
 
-enum CSVCodecError: Error, LocalizedError {
+nonisolated enum CSVCodecError: Error, LocalizedError {
     case unreadableData
 
     var errorDescription: String? {
@@ -41,7 +41,7 @@ enum CSVCodecError: Error, LocalizedError {
     }
 }
 
-enum CSVCodec {
+nonisolated enum CSVCodec {
 
     /// Decodes CSV into canonical rows.
     /// - Returns: rows + used delimiter + whether a header was detected.

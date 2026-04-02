@@ -1,6 +1,6 @@
 import Foundation
 
-enum ReadingAnalyticsInputMapper {
+nonisolated enum ReadingAnalyticsInputMapper {
     static func bookRecords(from books: [Book]) -> [ReadingAnalyticsBookRecord] {
         books.map(ReadingAnalyticsBookRecord.init(book:))
     }

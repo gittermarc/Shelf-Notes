@@ -1,6 +1,6 @@
 import Foundation
 
-struct CSVImportDuplicateIndex: Sendable {
+nonisolated struct CSVImportDuplicateIndex: Sendable {
     private(set) var normalizedISBNs: Set<String>
     private(set) var volumeIDs: Set<String>
     private(set) var normalizedTitles: Set<String>

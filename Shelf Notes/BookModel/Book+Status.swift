@@ -5,7 +5,7 @@
 
 import Foundation
 
-enum ReadingStatus: String, Codable, CaseIterable, Identifiable {
+nonisolated enum ReadingStatus: String, Codable, CaseIterable, Identifiable {
     /// Stable persisted codes (do not localize).
     case toRead = "toRead"
     case reading = "reading"
