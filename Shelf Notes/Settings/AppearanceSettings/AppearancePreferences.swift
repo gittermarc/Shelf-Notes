@@ -256,6 +256,59 @@ enum LibraryCoverSizeOption: String, CaseIterable, Identifiable {
         case .large: return CGSize(width: 52, height: 78)
         }
     }
+
+    /// Preferred minimum tile width for the library grid.
+    ///
+    /// Compact widths keep the effect subtle on iPhone, while wider layouts
+    /// get a stronger response via column count changes.
+    func gridMinimumTileWidth(for contentWidth: CGFloat) -> CGFloat {
+        if contentWidth >= 700 {
+            switch self {
+            case .small:
+                return 170
+            case .standard:
+                return 190
+            case .large:
+                return 220
+            }
+        }
+
+        switch self {
+        case .small:
+            return 130
+        case .standard:
+            return 150
+        case .large:
+            return 180
+        }
+    }
+
+    /// Horizontal breathing room inside a grid card.
+    /// Smaller covers get a little more margin, larger covers a little less.
+    var gridCardHorizontalPadding: CGFloat {
+        switch self {
+        case .small:
+            return 12
+        case .standard:
+            return 10
+        case .large:
+            return 8
+        }
+    }
+
+    /// Relative cover width inside the available card content area.
+    /// This keeps the setting visible even when the device width still resolves
+    /// to the same column count.
+    var gridCoverWidthScale: CGFloat {
+        switch self {
+        case .small:
+            return 0.88
+        case .standard:
+            return 0.94
+        case .large:
+            return 1
+        }
+    }
 }
 
 enum LibraryCoverContentModeOption: String, CaseIterable, Identifiable {

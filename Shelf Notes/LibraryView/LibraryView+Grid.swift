@@ -17,8 +17,7 @@ extension LibraryView {
             let spacing: CGFloat = 16
             let contentWidth = max(0, geo.size.width - sidePadding * 2)
 
-            // Heuristics: iPhone usually lands on 2 columns; iPad on 3–4 columns.
-            let minTileWidth: CGFloat = (contentWidth >= 700) ? 190 : 150
+            let minTileWidth = libraryCoverSizeOption.gridMinimumTileWidth(for: contentWidth)
             let columnsCount = max(2, Int((contentWidth + spacing) / (minTileWidth + spacing)))
             let itemWidth = (contentWidth - CGFloat(columnsCount - 1) * spacing) / CGFloat(columnsCount)
 
@@ -76,6 +75,7 @@ private struct LibraryGridItemView: View {
 
     // Keep behavior aligned with the existing row appearance settings.
     @AppStorage(AppearanceStorageKey.libraryShowCovers) private var showCovers: Bool = true
+    @AppStorage(AppearanceStorageKey.libraryCoverSize) private var coverSizeRaw: String = LibraryCoverSizeOption.standard.rawValue
     @AppStorage(AppearanceStorageKey.libraryCoverCornerRadius) private var coverCornerRadius: Double = 8
     @AppStorage(AppearanceStorageKey.libraryCoverContentMode) private var coverContentModeRaw: String = LibraryCoverContentModeOption.fit.rawValue
     @AppStorage(AppearanceStorageKey.libraryCoverShadowEnabled) private var coverShadowEnabled: Bool = false
@@ -142,7 +142,8 @@ private struct LibraryGridItemView: View {
         LibraryGridCardMetrics(
             itemWidth: itemWidth,
             rowContentSpacing: rowContentSpacing,
-            showsCover: showCovers
+            showsCover: showCovers,
+            coverSizeOption: LibraryCoverSizeOption(rawValue: coverSizeRaw) ?? .standard
         )
     }
 
@@ -213,6 +214,7 @@ private struct LibraryGridItemView: View {
                 contentMode: resolvedContentMode,
                 prefersHighResCover: true
             )
+            .frame(maxWidth: .infinity, alignment: .center)
             .shadow(
                 color: coverShadowEnabled ? .black.opacity(0.12) : .clear,
                 radius: coverShadowEnabled ? 4 : 0,

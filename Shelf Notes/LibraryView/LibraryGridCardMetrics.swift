@@ -5,8 +5,8 @@ struct LibraryGridCardMetrics {
     let itemWidth: CGFloat
     let rowContentSpacing: Double
     let showsCover: Bool
+    let coverSizeOption: LibraryCoverSizeOption
 
-    private let horizontalPadding: CGFloat = 10
     private let verticalPadding: CGFloat = 10
     private let minimumContentSpacing: CGFloat = 4
     private let titleSlotHeight: CGFloat = 38
@@ -14,6 +14,10 @@ struct LibraryGridCardMetrics {
 
     var cardCornerRadius: CGFloat {
         16
+    }
+
+    var horizontalPadding: CGFloat {
+        coverSizeOption.gridCardHorizontalPadding
     }
 
     var contentSpacing: CGFloat {
@@ -24,8 +28,12 @@ struct LibraryGridCardMetrics {
         max(0, itemWidth - (horizontalPadding * 2))
     }
 
+    var coverWidth: CGFloat {
+        max(0, contentWidth * coverSizeOption.gridCoverWidthScale)
+    }
+
     var coverSize: CGSize {
-        CGSize(width: contentWidth, height: contentWidth * 1.5)
+        CGSize(width: coverWidth, height: coverWidth * 1.5)
     }
 
     var infoBlockHeight: CGFloat {

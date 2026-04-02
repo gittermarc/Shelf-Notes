@@ -63,6 +63,7 @@ struct LibraryView: View {
     @AppStorage(AppearanceStorageKey.libraryHeaderDefaultExpanded) var libraryHeaderDefaultExpanded: Bool = false
     @AppStorage(AppearanceStorageKey.libraryRowVerticalInset) var libraryRowVerticalInset: Double = 8
     @AppStorage(AppearanceStorageKey.libraryLayoutMode) var libraryLayoutModeRaw: String = LibraryLayoutModeOption.list.rawValue
+    @AppStorage(AppearanceStorageKey.libraryCoverSize) var libraryCoverSizeRaw: String = LibraryCoverSizeOption.standard.rawValue
 
     // A–Z hint logic (only show when it’s actually helpful)
     static let alphaIndexHintThreshold: Int = 30
@@ -314,5 +315,9 @@ struct LibraryView: View {
 
     var libraryLayoutMode: LibraryLayoutModeOption {
         LibraryLayoutModeOption(rawValue: libraryLayoutModeRaw) ?? .list
+    }
+
+    var libraryCoverSizeOption: LibraryCoverSizeOption {
+        LibraryCoverSizeOption(rawValue: libraryCoverSizeRaw) ?? .standard
     }
 }

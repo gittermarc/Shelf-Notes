@@ -45,5 +45,9 @@ struct LibraryRowAppearanceSettingsCoverSection: View {
             Label("Schatten (sanft)", systemImage: "square.on.circle")
         }
         .disabled(!showCovers.wrappedValue)
+
+        Text("Wirkt in Liste und Grid. Im Grid steuert die Einstellung Coverfläche und Kachelbreite gemeinsam.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 }
