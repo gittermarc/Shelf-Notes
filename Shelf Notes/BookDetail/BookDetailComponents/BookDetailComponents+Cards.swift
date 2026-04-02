@@ -25,34 +25,6 @@ struct BookDetailCard<Content: View>: View {
     }
 }
 
-// MARK: - Sheets
-
-struct NotesEditorSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @Binding var notes: String
-    let onSave: () -> Void
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                TextEditor(text: $notes)
-                    .padding(12)
-            }
-            .navigationTitle("Notiz")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Fertig") {
-                        onSave()
-                        dismiss()
-                    }
-                    .fontWeight(.semibold)
-                }
-            }
-        }
-    }
-}
-
 struct CollectionsPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 

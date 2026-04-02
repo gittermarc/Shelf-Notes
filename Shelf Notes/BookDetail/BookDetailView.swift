@@ -52,6 +52,7 @@ struct BookDetailView: View {
 
     // Apple-Books-ish UX sheets
     @State var showingNotesSheet = false
+    @State var notesDraft = ""
     @State var showingCollectionsSheet = false
     @State var showingRatingSheet = false
 
@@ -135,8 +136,8 @@ struct BookDetailView: View {
             bottomActionBar
         }
         .sheet(isPresented: $showingNotesSheet) {
-            NotesEditorSheet(notes: $book.notes) {
-                _ = modelContext.saveWithDiagnostics()
+            BookNotesEditorSheet(book: book, initialText: notesDraft) { updatedText in
+                saveNotes(updatedText)
             }
         }
         .sheet(isPresented: $showingCollectionsSheet) {
@@ -188,6 +189,7 @@ struct BookDetailView: View {
         .onAppear {
             tagsText = book.tags.joined(separator: ", ")
             tagDraft = ""
+            notesDraft = book.notes
         }
         #if canImport(PhotosUI)
         .onChange(of: pickedCoverItem) { _, newValue in

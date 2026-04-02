@@ -8,6 +8,20 @@ import PhotosUI
 // MARK: - Actions (mutations / UI actions)
 extension BookDetailView {
 
+    // MARK: Notes
+
+    func presentNotesEditor() {
+        notesDraft = book.notes
+        showingNotesSheet = true
+    }
+
+    func saveNotes(_ updatedText: String) {
+        guard updatedText != book.notes else { return }
+        book.notes = updatedText
+        notesDraft = updatedText
+        _ = saveDetail()
+    }
+
     // MARK: Ratings
 
     func resetUserRating() {

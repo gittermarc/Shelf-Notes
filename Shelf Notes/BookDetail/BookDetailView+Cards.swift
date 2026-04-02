@@ -164,21 +164,39 @@ extension BookDetailView {
     var notesPreviewCard: some View {
         BookDetailCard(title: "Notizen") {
             Button {
-                showingNotesSheet = true
+                presentNotesEditor()
             } label: {
-                VStack(alignment: .leading, spacing: 8) {
-                    if book.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text("Tippe, um eine Notiz zu schreiben …")
-                            .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 12) {
+                    if notesMetrics.isEmpty {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "square.and.pencil.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(.secondary)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Lesenotiz starten")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+
+                                Text("Halte Gedanken, Zitate und Aha-Momente fest. Ein bisschen Buch-Therapie schadet nie.")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     } else {
-                        Text(book.notes)
+                        Text(notesMetrics.previewText)
+                            .font(.body)
                             .foregroundStyle(.primary)
                             .lineLimit(4)
+
+                        Label(notesMetrics.summaryLine, systemImage: "text.alignleft")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
                     HStack {
                         Spacer()
-                        Text("Bearbeiten")
+                        Text(notesMetrics.isEmpty ? "Notiz starten" : "Notiz bearbeiten")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                         Image(systemName: "square.and.pencil")
@@ -326,7 +344,7 @@ extension BookDetailView {
     var bottomActionBar: some View {
         BottomActionBar(
             status: statusBinding,
-            onNote: { showingNotesSheet = true },
+            onNote: { presentNotesEditor() },
             onCollections: { showingCollectionsSheet = true }
         )
     }

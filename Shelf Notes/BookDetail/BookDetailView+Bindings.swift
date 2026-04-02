@@ -70,6 +70,10 @@ extension BookDetailView {
         book.userRatingValues.contains(where: { $0 > 0 })
     }
 
+    var notesMetrics: BookNotesMetrics {
+        BookNotesMetrics(text: book.notes)
+    }
+
     var displayedOverallRating: Double? {
         if let u = book.userRatingAverage1 { return u }
         if let g = book.averageRating, g > 0 { return g }
