@@ -14,7 +14,7 @@ extension LibraryView {
     func gridView(displayedBooks: [Book]) -> some View {
         GeometryReader { geo in
             let sidePadding: CGFloat = 16
-            let spacing: CGFloat = 14
+            let spacing: CGFloat = 16
             let contentWidth = max(0, geo.size.width - sidePadding * 2)
 
             // Heuristics: iPhone usually lands on 2 columns; iPad on 3–4 columns.
@@ -138,8 +138,12 @@ private struct LibraryGridItemView: View {
         return parts
     }
 
-    private var coverSize: CGSize {
-        CGSize(width: itemWidth, height: itemWidth * 1.5)
+    private var metrics: LibraryGridCardMetrics {
+        LibraryGridCardMetrics(
+            itemWidth: itemWidth,
+            rowContentSpacing: rowContentSpacing,
+            showsCover: showCovers
+        )
     }
 
     var body: some View {
@@ -149,21 +153,27 @@ private struct LibraryGridItemView: View {
     // MARK: - Card Composition
 
     private var card: some View {
-        VStack(alignment: .leading, spacing: max(4, CGFloat(rowContentSpacing))) {
-            coverBlock
-            titleBlock
-            authorBlock
-            metaBlock
-            tagsBlock
+        VStack(alignment: .leading, spacing: metrics.contentSpacing) {
+            if showCovers {
+                coverBlock
+            }
+
+            detailsBlock
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: metrics.cardHeight,
+            maxHeight: metrics.cardHeight,
+            alignment: .topLeading
+        )
+        .padding(metrics.padding)
         .background(cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: metrics.cardCornerRadius, style: .continuous))
         .overlay(cardBorder)
         .overlay(alignment: .topTrailing) {
             selectionBadge
         }
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: metrics.cardCornerRadius, style: .continuous))
         .contextMenu { contextMenuContent }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(book.title)
@@ -171,12 +181,12 @@ private struct LibraryGridItemView: View {
     }
 
     private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
+        RoundedRectangle(cornerRadius: metrics.cardCornerRadius, style: .continuous)
             .fill(.thinMaterial)
     }
 
     private var cardBorder: some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
+        RoundedRectangle(cornerRadius: metrics.cardCornerRadius, style: .continuous)
             .stroke(borderStrokeStyle, lineWidth: borderLineWidth)
     }
 
@@ -198,7 +208,7 @@ private struct LibraryGridItemView: View {
         if showCovers {
             LibraryRowCoverView(
                 book: book,
-                size: coverSize,
+                size: metrics.coverSize,
                 cornerRadius: resolvedCoverRadius,
                 contentMode: resolvedContentMode,
                 prefersHighResCover: true
@@ -209,9 +219,44 @@ private struct LibraryGridItemView: View {
                 x: 0,
                 y: coverShadowEnabled ? 2 : 0
             )
-        } else {
-            placeholder
         }
+    }
+
+    private var detailsBlock: some View {
+        VStack(alignment: .leading, spacing: metrics.contentSpacing) {
+            titleBlock
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: metrics.reservedTitleHeight,
+                    maxHeight: metrics.reservedTitleHeight,
+                    alignment: .topLeading
+                )
+
+            authorBlock
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: metrics.reservedDetailHeight,
+                    maxHeight: metrics.reservedDetailHeight,
+                    alignment: .topLeading
+                )
+
+            metaBlock
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: metrics.reservedDetailHeight,
+                    maxHeight: metrics.reservedDetailHeight,
+                    alignment: .topLeading
+                )
+
+            tagsBlock
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: metrics.reservedDetailHeight,
+                    maxHeight: metrics.reservedDetailHeight,
+                    alignment: .topLeading
+                )
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var titleBlock: some View {
@@ -219,6 +264,7 @@ private struct LibraryGridItemView: View {
             .font(.subheadline.weight(.semibold))
             .lineLimit(2)
             .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -228,48 +274,23 @@ private struct LibraryGridItemView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            Color.clear
         }
     }
 
     @ViewBuilder
     private var metaBlock: some View {
-        if !metaParts.isEmpty {
-            HStack(spacing: 6) {
-                ForEach(Array(metaParts.enumerated()), id: \.offset) { idx, part in
-                    if idx > 0 {
-                        Text("•")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    metaPartView(part)
-                }
-
-                Spacer(minLength: 0)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func metaPartView(_ part: MetaPart) -> some View {
-        switch part {
-        case .status(let text):
+        if let text = metaText, !text.isEmpty {
             Text(text)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-        case .readDate(let text):
-            Text(text)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .lineLimit(1)
                 .monospacedDigit()
-        case .rating(let value):
-            HStack(spacing: 4) {
-                StarsView(rating: value)
-                Text(String(format: "%.1f", value))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            Color.clear
         }
     }
 
@@ -285,16 +306,14 @@ private struct LibraryGridItemView: View {
 
     @ViewBuilder
     private var tagsBlock: some View {
-        if showTags, !visibleTags.isEmpty {
-            switch resolvedTagStyle {
-            case .hashtags:
-                Text(visibleTags.map { "#\($0)" }.joined(separator: " "))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            case .chips:
-                TagPillsRow(tags: visibleTags, remainingCount: remainingTagsCount)
-            }
+        if let text = tagsText, !text.isEmpty {
+            Text(text)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            Color.clear
         }
     }
 
@@ -326,15 +345,40 @@ private struct LibraryGridItemView: View {
         }
     }
 
-    private var placeholder: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: resolvedCoverRadius, style: .continuous)
-                .fill(.secondary.opacity(0.16))
-
-            Image(systemName: "book.closed")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(.secondary)
+    private var metaText: String? {
+        let parts = metaParts.map { part in
+            switch part {
+            case .status(let text):
+                return text
+            case .readDate(let text):
+                return text
+            case .rating(let value):
+                return "★ \(String(format: "%.1f", value))"
+            }
         }
-        .frame(width: coverSize.width, height: coverSize.height)
+
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " • ")
     }
+
+    private var tagsText: String? {
+        guard showTags, !visibleTags.isEmpty else { return nil }
+
+        let body: String
+        switch resolvedTagStyle {
+        case .hashtags:
+            body = visibleTags.map { "#\($0)" }.joined(separator: " ")
+        case .chips:
+            body = visibleTags.joined(separator: " · ")
+        }
+
+        guard !body.isEmpty else { return nil }
+
+        if remainingTagsCount > 0 {
+            return "\(body) +\(remainingTagsCount)"
+        }
+
+        return body
+    }
+
 }
