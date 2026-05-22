@@ -1,0 +1,225 @@
+import Foundation
+import Testing
+@testable import Shelf_Notes
+
+struct StatisticsSourceStoreTests {
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        return calendar
+    }
+
+    private func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 0, _ minute: Int = 0) -> Date {
+        calendar.date(
+            from: DateComponents(
+                year: year,
+                month: month,
+                day: day,
+                hour: hour,
+                minute: minute
+            )
+        ) ?? .distantPast
+    }
+
+    @MainActor
+    private func makeFinishedBook(
+        title: String = "Alpha",
+        author: String = "Ada",
+        readFrom: Date? = nil,
+        readTo: Date? = nil,
+        pageCount: Int = 320
+    ) -> Book {
+        let book = Book(title: title, author: author, status: .finished, tags: ["Crime"])
+        book.readFrom = readFrom ?? date(2026, 1, 1)
+        book.readTo = readTo ?? date(2026, 1, 5)
+        book.pageCount = pageCount
+        book.publisher = "Pub A"
+        book.language = "DE"
+        book.categories = ["Fiction / Thriller / Noir"]
+        book.mainCategory = "Fiction / Thriller / Noir"
+        book.userRatingPlot = 5
+        book.userRatingCharacters = 4
+        book.userRatingWritingStyle = 4
+        book.userRatingAtmosphere = 5
+        book.userRatingGenreFit = 5
+        book.userRatingPresentation = 4
+        return book
+    }
+
+    @MainActor
+    @Test func bookSignatureChangesForRelevantBookMutations() {
+        let book = makeFinishedBook()
+        let initial = StatisticsSourceStore.booksSignature([book])
+
+        book.pageCount = 444
+        let afterPageChange = StatisticsSourceStore.booksSignature([book])
+
+        book.readTo = date(2026, 2, 3)
+        let afterDateChange = StatisticsSourceStore.booksSignature([book])
+
+        book.status = .reading
+        let afterStatusChange = StatisticsSourceStore.booksSignature([book])
+
+        #expect(afterPageChange != initial)
+        #expect(afterDateChange != afterPageChange)
+        #expect(afterStatusChange != afterDateChange)
+    }
+
+    @MainActor
+    @Test func bookSignatureChangesWhenReadingSessionChanges() {
+        let book = makeFinishedBook()
+        let session = ReadingSession(
+            book: book,
+            startedAt: date(2026, 1, 2, 20, 0),
+            endedAt: date(2026, 1, 2, 21, 0),
+            pagesRead: 40
+        )
+        book.readingSessionsSafe = [session]
+
+        let initial = StatisticsSourceStore.booksSignature([book])
+
+        session.endedAt = date(2026, 1, 2, 21, 30)
+        session.recomputeDuration()
+        let changed = StatisticsSourceStore.booksSignature([book])
+
+        #expect(changed != initial)
+    }
+
+    @MainActor
+    @Test func bookSignatureStaysStableForSameBooksInDifferentOrder() {
+        let first = makeFinishedBook(title: "Alpha", author: "Ada")
+        let second = makeFinishedBook(title: "Beta", author: "Bea", readTo: date(2026, 2, 8), pageCount: 210)
+
+        let left = StatisticsSourceStore.booksSignature([first, second])
+        let right = StatisticsSourceStore.booksSignature([second, first])
+
+        #expect(left == right)
+    }
+
+    @MainActor
+    @Test func storeReusesSnapshotAndCacheDecisionsForSameSignature() async throws {
+        let book = makeFinishedBook()
+        let store = StatisticsSourceStore()
+        store.refreshSourceAndTrack(books: [book])
+
+        let initialState = store.makeViewState(
+            selectedYear: 2026,
+            scope: .all,
+            activityMetric: .readingDays
+        )
+        let initialSignature = initialState.booksSignature
+        let statsKey = try #require(initialState.statsKey)
+        let heatmapKey = try #require(initialState.heatmapKey)
+
+        await store.refreshStatsCache(for: statsKey, now: date(2026, 4, 15), calendar: calendar)
+        await store.refreshHeatmapCache(for: heatmapKey, now: date(2026, 4, 15), calendar: calendar)
+
+        store.refreshSourceAndTrack(books: [book])
+        let reusedState = store.makeViewState(
+            selectedYear: 2026,
+            scope: .all,
+            activityMetric: .readingDays
+        )
+
+        #expect(reusedState.booksSignature == initialSignature)
+        #expect(reusedState.statsDecision == .reusable)
+        #expect(reusedState.heatmapDecision == .reusable)
+        #expect(reusedState.exactStatsCache?.key == statsKey)
+        #expect(reusedState.exactHeatmapCache?.key == heatmapKey)
+    }
+
+    @MainActor
+    @Test func storeInvalidatesStatsDecisionForScopeAndYearSwitches() async throws {
+        let book = makeFinishedBook()
+        let store = StatisticsSourceStore()
+        store.refreshSourceAndTrack(books: [book])
+
+        let baseState = store.makeViewState(
+            selectedYear: 2026,
+            scope: .all,
+            activityMetric: .readingDays
+        )
+        let statsKey = try #require(baseState.statsKey)
+        await store.refreshStatsCache(for: statsKey, now: date(2026, 4, 15), calendar: calendar)
+
+        let sameState = store.makeViewState(
+            selectedYear: 2026,
+            scope: .all,
+            activityMetric: .readingDays
+        )
+        let yearChanged = store.makeViewState(
+            selectedYear: 2027,
+            scope: .all,
+            activityMetric: .readingDays
+        )
+        let scopeChanged = store.makeViewState(
+            selectedYear: 2026,
+            scope: .finished,
+            activityMetric: .readingDays
+        )
+
+        #expect(sameState.statsDecision == .reusable)
+        #expect(yearChanged.statsDecision == .stale)
+        #expect(scopeChanged.statsDecision == .stale)
+        #expect(yearChanged.statsKey != sameState.statsKey)
+        #expect(scopeChanged.statsKey != sameState.statsKey)
+    }
+
+    @MainActor
+    @Test func storeInvalidatesHeatmapDecisionForMetricSwitches() async throws {
+        let book = makeFinishedBook()
+        let store = StatisticsSourceStore()
+        store.refreshSourceAndTrack(books: [book])
+
+        let baseState = store.makeViewState(
+            selectedYear: 2026,
+            scope: .all,
+            activityMetric: .readingDays
+        )
+        let heatmapKey = try #require(baseState.heatmapKey)
+        await store.refreshHeatmapCache(for: heatmapKey, now: date(2026, 4, 15), calendar: calendar)
+
+        let sameState = store.makeViewState(
+            selectedYear: 2026,
+            scope: .all,
+            activityMetric: .readingDays
+        )
+        let metricChanged = store.makeViewState(
+            selectedYear: 2026,
+            scope: .all,
+            activityMetric: .readingMinutes
+        )
+
+        #expect(sameState.heatmapDecision == .reusable)
+        #expect(metricChanged.heatmapDecision == .stale)
+        #expect(metricChanged.heatmapKey != sameState.heatmapKey)
+    }
+
+    @MainActor
+    @Test func storeInvalidatesCacheDecisionWhenBookSignatureChanges() async throws {
+        let book = makeFinishedBook()
+        let store = StatisticsSourceStore()
+        store.refreshSourceAndTrack(books: [book])
+
+        let baseState = store.makeViewState(
+            selectedYear: 2026,
+            scope: .all,
+            activityMetric: .readingDays
+        )
+        let statsKey = try #require(baseState.statsKey)
+        await store.refreshStatsCache(for: statsKey, now: date(2026, 4, 15), calendar: calendar)
+
+        book.readTo = date(2026, 3, 9)
+        store.refreshSourceAndTrack(books: [book])
+
+        let changedState = store.makeViewState(
+            selectedYear: 2026,
+            scope: .all,
+            activityMetric: .readingDays
+        )
+
+        #expect(changedState.booksSignature != baseState.booksSignature)
+        #expect(changedState.statsKey != baseState.statsKey)
+        #expect(changedState.statsDecision == .stale)
+    }
+}

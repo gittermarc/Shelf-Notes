@@ -18,23 +18,25 @@ extension StatisticsView {
         StatisticsOverviewSection(summary: summary)
     }
 
-    func readingChartsCard(statsKey: StatisticsStatsCacheKey, cache: StatisticsStatsCache?) -> some View {
-        let isValid = cache?.key == statsKey
+    func readingChartsCard(statsKey: StatisticsStatsCacheKey?, cache: StatisticsStatsCache?) -> some View {
+        let isValid = statsKey.map { cache?.key == $0 } ?? false
         let effectiveCache = isValid ? cache : nil
+        let fallbackYear = statsKey?.selectedYear ?? selectedYear
 
         return StatisticsReadingChartsSection(
             selectedYear: selectedYear,
-            monthsCount: effectiveCache?.monthsCount ?? fallbackMonthsCount(for: statsKey.selectedYear),
+            monthsCount: effectiveCache?.monthsCount ?? fallbackMonthsCount(for: fallbackYear),
             series: effectiveCache?.monthlySeries ?? [],
             isValid: isValid,
-            isUpdating: !isValid && isUpdatingStatsCache
+            isUpdating: !isValid && sourceStore.isUpdatingStatsCache
         )
     }
 
-    func activityHeatmapCard(heatmapKey: StatisticsHeatmapCacheKey, cache: StatisticsHeatmapCache?) -> some View {
-        let isValid = cache?.key == heatmapKey
+    func activityHeatmapCard(heatmapKey: StatisticsHeatmapCacheKey?, cache: StatisticsHeatmapCache?) -> some View {
+        let isValid = heatmapKey.map { cache?.key == $0 } ?? false
         let effectiveCache = isValid ? cache : nil
-        let range = effectiveCache?.range ?? heatmapRange(for: heatmapKey.selectedYear)
+        let fallbackYear = heatmapKey?.selectedYear ?? selectedYear
+        let range = effectiveCache?.range ?? heatmapRange(for: fallbackYear)
         let stats = effectiveCache?.stats ?? StatisticsHeatmapStats(
             activeDays: 0,
             maxCount: 0,
@@ -51,14 +53,14 @@ extension StatisticsView {
             weeks: effectiveCache?.weeks ?? [],
             hintText: heatmapHintText(range: range),
             isValid: isValid,
-            isUpdating: !isValid && isUpdatingHeatmapCache
+            isUpdating: !isValid && sourceStore.isUpdatingHeatmapCache
         )
     }
 
     func topListsCard(cache: StatisticsStatsCache?) -> some View {
         StatisticsTopListsSection(
             cache: cache,
-            isUpdating: isUpdatingStatsCache
+            isUpdating: sourceStore.isUpdatingStatsCache
         )
     }
 
@@ -66,7 +68,7 @@ extension StatisticsView {
         StatisticsNerdCornerSection(
             summary: summary,
             cache: cache,
-            isUpdating: isUpdatingStatsCache
+            isUpdating: sourceStore.isUpdatingStatsCache
         )
     }
 }

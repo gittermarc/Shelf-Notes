@@ -18,20 +18,14 @@ struct StatisticsView: View {
     @State var selectedYear: Int = Calendar.current.component(.year, from: Date())
     @State var scope: StatisticsScope = .all
     @State var activityMetric: StatisticsActivityMetric = .readingDays
-
-    @State var sourceSnapshot: StatisticsSourceSnapshot? = nil
-    @State var statsCache: StatisticsStatsCache? = nil
-    @State var heatmapCache: StatisticsHeatmapCache? = nil
-    @State var isUpdatingStatsCache: Bool = false
-    @State var isUpdatingHeatmapCache: Bool = false
+    @StateObject var sourceStore = StatisticsSourceStore()
 
     var body: some View {
-        let signature = booksSignature(books)
-        let statsKey = makeStatsCacheKey(signature: signature)
-        let heatmapKey = makeHeatmapCacheKey(signature: signature)
-        let exactStatsCache = resolvedStatsCache(for: statsKey)
-        let scopeStatsCache = resolvedScopeStatsCache(signature: signature)
-        let exactHeatmapCache = resolvedHeatmapCache(for: heatmapKey)
+        let sourceState = sourceStore.makeViewState(
+            selectedYear: selectedYear,
+            scope: scope,
+            activityMetric: activityMetric
+        )
 
         Group {
             if books.isEmpty {
@@ -42,18 +36,24 @@ struct StatisticsView: View {
                 )
                 .padding(.horizontal)
             } else {
-                let summary = exactStatsCache?.summary
-                let yearOptions = availableYearOptions(signature: signature)
+                let summary = sourceState.exactStatsCache?.summary
+                let yearOptions = sourceState.yearOptions
 
                 ScrollView {
                     VStack(spacing: 14) {
                         headerCard(summary: summary)
                         yearAndScopeCard(yearOptions: yearOptions)
                         overviewGrid(summary: summary)
-                        readingChartsCard(statsKey: statsKey, cache: exactStatsCache)
-                        activityHeatmapCard(heatmapKey: heatmapKey, cache: exactHeatmapCache)
-                        topListsCard(cache: scopeStatsCache)
-                        nerdCornerCard(summary: summary, cache: exactStatsCache)
+                        readingChartsCard(
+                            statsKey: sourceState.statsKey,
+                            cache: sourceState.exactStatsCache
+                        )
+                        activityHeatmapCard(
+                            heatmapKey: sourceState.heatmapKey,
+                            cache: sourceState.exactHeatmapCache
+                        )
+                        topListsCard(cache: sourceState.scopeStatsCache)
+                        nerdCornerCard(summary: summary, cache: sourceState.exactStatsCache)
                     }
                     .padding(.horizontal)
                     .padding(.bottom, 18)
@@ -63,45 +63,16 @@ struct StatisticsView: View {
         }
         .navigationTitle("Statistiken")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: signature) {
-            guard !books.isEmpty else {
-                sourceSnapshot = nil
-                statsCache = nil
-                heatmapCache = nil
-                return
-            }
-
-            sourceSnapshot = StatisticsSourceSnapshot(signature: signature, books: books)
+        .task(id: books.count) {
+            sourceStore.refreshSourceAndTrack(books: books)
         }
-        .task(id: statsKey) {
-            guard !books.isEmpty else {
-                statsCache = nil
-                return
-            }
-
-            isUpdatingStatsCache = true
-            defer { isUpdatingStatsCache = false }
-
-            let source = currentSourceSnapshot(for: signature)
-            let pipeline = makeComputePipeline(for: source)
-            let cache = await pipeline.makeStatsCache(for: statsKey)
-            guard !Task.isCancelled else { return }
-            statsCache = cache
+        .task(id: sourceState.statsKey) {
+            guard !books.isEmpty, let statsKey = sourceState.statsKey else { return }
+            await sourceStore.refreshStatsCache(for: statsKey)
         }
-        .task(id: heatmapKey) {
-            guard !books.isEmpty else {
-                heatmapCache = nil
-                return
-            }
-
-            isUpdatingHeatmapCache = true
-            defer { isUpdatingHeatmapCache = false }
-
-            let source = currentSourceSnapshot(for: signature)
-            let pipeline = makeComputePipeline(for: source)
-            let cache = await pipeline.makeHeatmapCache(for: heatmapKey)
-            guard !Task.isCancelled else { return }
-            heatmapCache = cache
+        .task(id: sourceState.heatmapKey) {
+            guard !books.isEmpty, let heatmapKey = sourceState.heatmapKey else { return }
+            await sourceStore.refreshHeatmapCache(for: heatmapKey)
         }
     }
 }
