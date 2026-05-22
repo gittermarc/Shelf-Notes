@@ -17,6 +17,7 @@ struct ChallengesSummaryCard: View {
     var body: some View {
         let weekly = activeChallenge(kind: .weekly)
         let monthly = activeChallenge(kind: .monthly)
+        let summarySignature = ChallengeSummarySignature(challenges: challenges)
 
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -62,7 +63,7 @@ struct ChallengesSummaryCard: View {
         .padding(14)
         .background(.thinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 18))
-        .task(id: challenges.count) {
+        .task(id: summarySignature) {
             await refreshProgress()
         }
     }
