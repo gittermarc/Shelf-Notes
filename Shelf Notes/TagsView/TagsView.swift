@@ -19,9 +19,9 @@ struct TagsView: View {
     @State private var deletePlan: TagDeletePlan?
 
     var body: some View {
-        let dashboard = TagsDashboardBuilder.build(
-            snapshots: TagsDashboardBuilder.makeSnapshots(books: books)
-        )
+        let snapshots = TagsDashboardBuilder.makeSnapshots(books: books)
+        let dashboard = TagsDashboardBuilder.build(snapshots: snapshots)
+        let hygieneReport = TagHygieneBuilder.build(snapshots: snapshots)
         let visibleEntries = TagsDashboardBuilder.filteredEntries(
             dashboard.entries,
             searchText: searchText,
@@ -41,6 +41,8 @@ struct TagsView: View {
                         }
                         .buttonStyle(.plain)
                     }
+
+                    TagHygieneInsightsSection(report: hygieneReport, books: books)
 
                     if dashboard.entries.isEmpty {
                         TagsEmptyState(hasBooks: !books.isEmpty)
