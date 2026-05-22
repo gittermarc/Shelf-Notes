@@ -63,4 +63,16 @@ struct BookCoverURLTests {
         #expect(book.thumbnailURL == .some("https://example.com/first.jpg"))
         #expect(book.coverURLCandidates == ["https://example.com/first.jpg", "https://example.com/second.jpg"])
     }
+
+    @Test @MainActor func bestCoverKeepsRemoteThumbnailWhenSyncedThumbnailExists() {
+        let book = Book(title: "Neuromancer")
+        book.userCoverFileName = "local.jpg"
+        book.userCoverData = Data([1, 2, 3])
+        book.thumbnailURL = "http://example.com/remote.jpg"
+
+        #expect(book.bestCoverURLString == .some("https://example.com/remote.jpg"))
+        #expect(book.coverCandidatesAll.first?.hasPrefix("file://") == true)
+        #expect(book.coverCandidatesAll.dropFirst().first == .some("https://example.com/remote.jpg"))
+    }
+
 }
