@@ -26,6 +26,9 @@ struct BookDetailView: View {
     @EnvironmentObject var tagsIndexStore: TagsIndexStore
     @Bindable var book: Book
 
+    @Query(sort: \Book.createdAt, order: .reverse)
+    var allBooks: [Book]
+
     @State var tagsText: String = ""
     @State var tagDraft: String = ""
 

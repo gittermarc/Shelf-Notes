@@ -14,6 +14,10 @@ import SwiftData
 struct AddBookView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject var tagsIndexStore: TagsIndexStore
+
+    @Query(sort: \Book.createdAt, order: .reverse)
+    var allBooks: [Book]
 
     @StateObject var vm = AddBookViewModel()
 
@@ -25,6 +29,7 @@ struct AddBookView: View {
                     importActionsCard
                     if vm.shouldShowDetailsCard {
                         basicsCard
+                        taggingCard
                     }
 
                     if vm.hasAnyImportedMetadata {

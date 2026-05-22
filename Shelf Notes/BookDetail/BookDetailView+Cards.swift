@@ -211,69 +211,118 @@ extension BookDetailView {
 
     var tagsCard: some View {
         BookDetailCard(title: "Tags") {
-            VStack(alignment: .leading, spacing: 10) {
-                if !book.tags.isEmpty {
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
-                        spacing: 8
-                    ) {
-                        ForEach(book.tags, id: \.self) { t in
-                            SelectedTagPill(text: t) { removeTag(t) }
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    TagSectionHeader(
+                        "Aktuelle Tags",
+                        subtitle: book.tags.isEmpty ? "Noch keine Tags gesetzt." : "Tippe auf das x, um einen Tag zu entfernen."
+                    )
 
-                TextField("Tag hinzufügen …", text: $tagDraft)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.done)
-                    .onSubmit { addTagsFromDraft() }
-                    .onChange(of: tagDraft) { _, newValue in
-                        if newValue.contains(",") {
-                            addTagsFromDraft()
-                        }
-                    }
-
-                if !tagAutocompleteSuggestions.isEmpty {
-                    Text("Vorschläge")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
-                        spacing: 8
-                    ) {
-                        ForEach(tagAutocompleteSuggestions, id: \.self) { suggestion in
-                            TagSuggestionPill(text: suggestion) {
-                                acceptTagSuggestion(suggestion)
+                    if book.tags.isEmpty {
+                        Text("Tags helfen dir später beim Finden, Sortieren und Aufräumen deiner Bibliothek.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
+                            spacing: 8
+                        ) {
+                            ForEach(book.tags, id: \.self) { t in
+                                SelectedTagPill(text: t) { removeTag(t) }
                             }
                         }
+                        .padding(.vertical, 2)
                     }
-                    .padding(.vertical, 2)
                 }
 
-                if !topTagCounts30.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    TagSectionHeader("Neuen Tag eingeben")
+
+                    TextField("Tag hinzufügen", text: $tagDraft)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.done)
+                        .onSubmit { addTagsFromDraft() }
+                        .onChange(of: tagDraft) { _, newValue in
+                            if newValue.contains(",") {
+                                addTagsFromDraft()
+                            }
+                        }
+                }
+
+                if !tagAutocompleteSuggestions.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        TagSectionHeader("Passend zur Eingabe")
+
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
+                            spacing: 8
+                        ) {
+                            ForEach(tagAutocompleteSuggestions, id: \.self) { suggestion in
+                                TagSuggestionPill(text: suggestion) {
+                                    acceptTagSuggestion(suggestion)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+
+                if tagDraftQuery.isEmpty {
+                    if !smartTagSuggestionItems.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            TagSectionHeader(
+                                "Vorgeschlagen für dieses Buch",
+                                subtitle: "Aus Kategorien, ähnlichen Büchern und gemeinsamen Tags."
+                            )
+
+                            LazyVGrid(
+                                columns: [GridItem(.adaptive(minimum: 148), spacing: 8)],
+                                spacing: 8
+                            ) {
+                                ForEach(smartTagSuggestionItems) { item in
+                                    SmartTagSuggestionButton(item: item) {
+                                        acceptTagSuggestion(item.tag)
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    } else if !book.categories.isEmpty || book.mainCategory != nil {
+                        Text("Für dieses Buch gibt es gerade keine neuen Tag-Vorschläge. Deine gesetzten Tags und Kategorien sind schon gut abgedeckt.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if !frequentTagItems.isEmpty {
                     Divider().opacity(0.5)
 
-                    Text("Häufige Tags (Tippen = hinzufügen/entfernen)")
+                    VStack(alignment: .leading, spacing: 8) {
+                        TagSectionHeader(
+                            "Häufig verwendet",
+                            subtitle: "Tippen fügt hinzu oder entfernt den Tag wieder."
+                        )
+
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
+                            spacing: 8
+                        ) {
+                            ForEach(frequentTagItems) { item in
+                                TagPickPill(
+                                    text: item.tag,
+                                    count: item.count,
+                                    isSelected: item.isSelected,
+                                    onTap: { toggleTag(item.tag) }
+                                )
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                } else if tagsIndexStore.tagCounts.isEmpty {
+                    Text("Noch keine häufigen Tags vorhanden. Sobald du mehr Bücher taggst, tauchen hier Schnellzugriffe auf.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
-                        spacing: 8
-                    ) {
-                        ForEach(topTagCounts30, id: \.tag) { entry in
-                            TagPickPill(
-                                text: entry.tag,
-                                count: entry.count,
-                                isSelected: isTagSelected(entry.tag),
-                                onTap: { toggleTag(entry.tag) }
-                            )
-                        }
-                    }
-                    .padding(.vertical, 2)
                 }
             }
         }

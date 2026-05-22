@@ -283,7 +283,7 @@ extension BookDetailView {
     }
 
     /// Query-String für Autocomplete (aktueller Text im Tag-Field).
-    private var tagDraftQuery: String {
+    var tagDraftQuery: String {
         normalizeTagString(tagDraft)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -303,6 +303,31 @@ extension BookDetailView {
         cachedTagCountsSorted
             .prefix(30)
             .map { (tag: $0.tag, count: $0.count) }
+    }
+
+    var smartTagSuggestionItems: [TagSuggestionDisplayItem] {
+        let target = TagSuggestionEngine.makeSnapshot(book: book)
+        let library = TagSuggestionEngine.makeSnapshots(books: allBooks)
+        let suggestions = TagSuggestionEngine.suggestions(
+            for: target,
+            in: library,
+            limit: 8
+        )
+
+        return TagSuggestionPresentationBuilder.suggestedItems(
+            from: suggestions,
+            selectedTags: book.tags,
+            limit: 6
+        )
+    }
+
+    var frequentTagItems: [FrequentTagDisplayItem] {
+        TagSuggestionPresentationBuilder.frequentItems(
+            from: cachedTagCountsSorted,
+            selectedTags: book.tags,
+            excludingTags: smartTagSuggestionItems.map(\.tag),
+            limit: 18
+        )
     }
 
     func isTagSelected(_ tag: String) -> Bool {

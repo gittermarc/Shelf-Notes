@@ -77,6 +77,10 @@ final class AddBookViewModel: ObservableObject {
     @Published var title: String = ""
     @Published var author: String = ""
     @Published var status: ReadingStatus = .toRead
+    @Published var tags: [String] = []
+    @Published var tagDraft: String = ""
+
+    private let draftTagSuggestionID = UUID()
 
     @Published var readFrom: Date = Date()
     @Published var readTo: Date = Date()
@@ -264,7 +268,8 @@ final class AddBookViewModel: ObservableObject {
         let newBook = Book(
             title: trimmedTitle,
             author: trimmedAuthor,
-            status: status
+            status: status,
+            tags: TagsIndexBuilder.uniqueNormalizedTags(tags)
         )
 
         if status == .finished {
@@ -314,6 +319,49 @@ final class AddBookViewModel: ObservableObject {
         Task { @MainActor in
             await CoverThumbnailer.backfillThumbnailIfNeeded(for: newBook, modelContext: modelContext)
         }
+    }
+
+    // MARK: - Tags
+
+    var tagDraftQuery: String {
+        normalizeTagString(tagDraft)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func addTagsFromDraft() {
+        let candidates = TagsIndexBuilder.parsedTags(from: tagDraft)
+        guard !candidates.isEmpty else {
+            tagDraft = ""
+            return
+        }
+
+        tags = TagsIndexBuilder.mergedTags(existingTags: tags, addedTags: candidates)
+        tagDraft = ""
+    }
+
+    func acceptTagSuggestion(_ tag: String) {
+        tags = TagSuggestionPresentationBuilder.tagsAfterAcceptingSuggestion(tag, existingTags: tags)
+        tagDraft = ""
+    }
+
+    func toggleTag(_ tag: String) {
+        tags = TagsIndexBuilder.toggledTag(tag, in: tags)
+    }
+
+    func removeTag(_ tag: String) {
+        tags = TagsIndexBuilder.removingTag(tag, from: tags)
+    }
+
+    func tagSuggestionSnapshot() -> TagSuggestionBookSnapshot {
+        TagSuggestionBookSnapshot(
+            id: draftTagSuggestionID,
+            title: trimmedTitle,
+            author: trimmedAuthor,
+            tags: tags,
+            categories: categories,
+            mainCategory: mainCategory,
+            statusRawValue: status.rawValue
+        )
     }
 
     // MARK: - Helpers
