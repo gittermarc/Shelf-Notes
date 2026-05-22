@@ -489,7 +489,7 @@ private nonisolated extension StatisticsSnapshotBuilder {
         var counts: [String: Int] = [:]
         for book in input {
             for tag in book.tags {
-                let normalized = normalizeLabel(tag.replacingOccurrences(of: "#", with: ""))
+                let normalized = normalizeTagString(tag)
                 guard !normalized.isEmpty else { continue }
                 counts[normalized, default: 0] += 1
             }

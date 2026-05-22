@@ -1,15 +1,27 @@
 import SwiftUI
+import SwiftData
 
 struct TagDetailView: View {
-    let tag: String
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+
     let books: [Book]
+
+    @State private var currentTag: String
+    @State private var editorMode: TagMutationEditorMode?
+    @State private var deletePlan: TagDetailDeletePlan?
+
+    init(tag: String, books: [Book]) {
+        self.books = books
+        _currentTag = State(initialValue: tag)
+    }
 
     private var snapshots: [TagsDashboardBookSnapshot] {
         TagsDashboardBuilder.makeSnapshots(books: books)
     }
 
     private var matchingBooks: [Book] {
-        let matchingIDs = Set(TagsDashboardBuilder.bookIDs(matching: tag, snapshots: snapshots))
+        let matchingIDs = Set(TagsDashboardBuilder.bookIDs(matching: currentTag, snapshots: snapshots))
         return books
             .filter { matchingIDs.contains($0.id) }
             .sorted { lhs, rhs in
@@ -18,7 +30,7 @@ struct TagDetailView: View {
     }
 
     private var relatedTags: [TagsDashboardRelatedTag] {
-        TagsDashboardBuilder.relatedTags(for: tag, snapshots: snapshots, limit: 12)
+        TagsDashboardBuilder.relatedTags(for: currentTag, snapshots: snapshots, limit: 12)
     }
 
     private var statusCounts: TagsDashboardStatusCounts {
@@ -33,7 +45,7 @@ struct TagDetailView: View {
         List {
             Section {
                 TagDetailHeaderCard(
-                    tag: tag,
+                    tag: currentTag,
                     bookCount: matchingBooks.count,
                     statusCounts: statusCounts
                 )
@@ -43,9 +55,29 @@ struct TagDetailView: View {
 
             Section {
                 NavigationLink {
-                    LibraryView(initialTag: tag)
+                    LibraryView(initialTag: currentTag)
                 } label: {
                     Label("In der Bibliothek öffnen", systemImage: "books.vertical")
+                }
+            }
+
+            Section("Tag verwalten") {
+                Button {
+                    editorMode = .rename(sourceTag: currentTag)
+                } label: {
+                    Label("Umbenennen", systemImage: "pencil")
+                }
+
+                Button {
+                    editorMode = .merge(sourceTag: currentTag)
+                } label: {
+                    Label("Zusammenführen", systemImage: "arrow.triangle.merge")
+                }
+
+                Button(role: .destructive) {
+                    prepareDelete()
+                } label: {
+                    Label("Von allen Büchern entfernen", systemImage: "trash")
                 }
             }
 
@@ -86,8 +118,98 @@ struct TagDetailView: View {
                 }
             }
         }
-        .navigationTitle("#\(tag)")
+        .navigationTitle("#\(currentTag)")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button {
+                        editorMode = .rename(sourceTag: currentTag)
+                    } label: {
+                        Label("Umbenennen", systemImage: "pencil")
+                    }
+
+                    Button {
+                        editorMode = .merge(sourceTag: currentTag)
+                    } label: {
+                        Label("Zusammenführen", systemImage: "arrow.triangle.merge")
+                    }
+
+                    Button(role: .destructive) {
+                        prepareDelete()
+                    } label: {
+                        Label("Entfernen", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
+        .sheet(item: $editorMode) { mode in
+            TagMutationEditorSheet(mode: mode, books: books) { result in
+                applyMutation(result)
+            }
+        }
+        .alert(
+            "Tag entfernen?",
+            isPresented: isDeleteAlertPresented,
+            presenting: deletePlan
+        ) { plan in
+            Button("Entfernen", role: .destructive) {
+                applyMutation(plan.result)
+                deletePlan = nil
+                dismiss()
+            }
+
+            Button("Abbrechen", role: .cancel) {
+                deletePlan = nil
+            }
+        } message: { plan in
+            Text("#\(plan.tag) wird von \(plan.result.changedBooksCount) Büchern entfernt.")
+        }
+    }
+
+    private var isDeleteAlertPresented: Binding<Bool> {
+        Binding(
+            get: { deletePlan != nil },
+            set: { isPresented in
+                if !isPresented {
+                    deletePlan = nil
+                }
+            }
+        )
+    }
+
+    private func prepareDelete() {
+        let result = TagLibraryMutation.delete(
+            tag: currentTag,
+            in: TagLibraryMutation.makeSnapshots(books: books)
+        )
+        let normalizedTag = normalizeTagString(currentTag)
+        guard !normalizedTag.isEmpty, result.hasChanges else { return }
+        deletePlan = TagDetailDeletePlan(tag: normalizedTag, result: result)
+    }
+
+    private func applyMutation(_ result: TagLibraryMutationResult) {
+        guard result.hasChanges else { return }
+
+        withAnimation(.snappy) {
+            _ = TagLibraryMutation.apply(result, to: books)
+            if let targetTag = result.targetTag, !targetTag.isEmpty {
+                currentTag = targetTag
+            }
+        }
+
+        _ = modelContext.saveWithDiagnostics()
+    }
+}
+
+private struct TagDetailDeletePlan: Identifiable, Hashable {
+    let tag: String
+    let result: TagLibraryMutationResult
+
+    var id: String {
+        tag.lowercased()
     }
 }
 

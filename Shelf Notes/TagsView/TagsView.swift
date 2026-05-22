@@ -11,9 +11,12 @@ import SwiftData
 
 // MARK: - Tags Tab
 struct TagsView: View {
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \Book.createdAt, order: .reverse) private var books: [Book]
     @State private var searchText: String = ""
     @State private var sortMode: TagsDashboardSortMode = .mostUsed
+    @State private var editorMode: TagMutationEditorMode?
+    @State private var deletePlan: TagDeletePlan?
 
     var body: some View {
         let dashboard = TagsDashboardBuilder.build(
@@ -67,6 +70,9 @@ struct TagsView: View {
                                         TagCardView(entry: entry)
                                     }
                                     .buttonStyle(.plain)
+                                    .contextMenu {
+                                        tagActionsMenu(for: entry.tag)
+                                    }
                                 }
                             }
                         }
@@ -77,7 +83,87 @@ struct TagsView: View {
             }
             .navigationTitle("Tags")
             .searchable(text: $searchText, prompt: "Tags suchen")
+            .sheet(item: $editorMode) { mode in
+                TagMutationEditorSheet(mode: mode, books: books) { result in
+                    applyMutation(result)
+                }
+            }
+            .alert(
+                "Tag entfernen?",
+                isPresented: isDeleteAlertPresented,
+                presenting: deletePlan
+            ) { plan in
+                Button("Entfernen", role: .destructive) {
+                    applyMutation(plan.result)
+                    deletePlan = nil
+                }
+
+                Button("Abbrechen", role: .cancel) {
+                    deletePlan = nil
+                }
+            } message: { plan in
+                Text("#\(plan.tag) wird von \(plan.result.changedBooksCount) Büchern entfernt.")
+            }
         }
+    }
+
+    private var isDeleteAlertPresented: Binding<Bool> {
+        Binding(
+            get: { deletePlan != nil },
+            set: { isPresented in
+                if !isPresented {
+                    deletePlan = nil
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func tagActionsMenu(for tag: String) -> some View {
+        Button {
+            editorMode = .rename(sourceTag: tag)
+        } label: {
+            Label("Umbenennen", systemImage: "pencil")
+        }
+
+        Button {
+            editorMode = .merge(sourceTag: tag)
+        } label: {
+            Label("Zusammenführen", systemImage: "arrow.triangle.merge")
+        }
+
+        Button(role: .destructive) {
+            prepareDelete(tag: tag)
+        } label: {
+            Label("Von allen Büchern entfernen", systemImage: "trash")
+        }
+    }
+
+    private func prepareDelete(tag: String) {
+        let result = TagLibraryMutation.delete(
+            tag: tag,
+            in: TagLibraryMutation.makeSnapshots(books: books)
+        )
+        let normalizedTag = normalizeTagString(tag)
+        guard !normalizedTag.isEmpty, result.hasChanges else { return }
+        deletePlan = TagDeletePlan(tag: normalizedTag, result: result)
+    }
+
+    private func applyMutation(_ result: TagLibraryMutationResult) {
+        guard result.hasChanges else { return }
+        withAnimation(.snappy) {
+            _ = TagLibraryMutation.apply(result, to: books)
+        }
+        _ = modelContext.saveWithDiagnostics()
+    }
+}
+
+private struct TagDeletePlan: Identifiable, Hashable {
+    let tag: String
+    let result: TagLibraryMutationResult
+
+    var id: String {
+        tag.lowercased()
     }
 }
 
