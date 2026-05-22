@@ -8,9 +8,10 @@ import Foundation
 struct ChallengeSummarySignature: Hashable, Sendable {
     private let entries: [Entry]
 
+    @MainActor
     init(challenges: [ChallengeRecord]) {
         self.entries = challenges
-            .map(Entry.init(record:))
+            .map { Entry(record: $0) }
             .sorted()
     }
 }

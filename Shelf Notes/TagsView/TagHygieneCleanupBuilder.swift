@@ -38,7 +38,7 @@ enum TagHygieneCleanupBuilder {
             detail: "Alle Varianten werden auf #\(targetTag) vereinheitlicht. Innere Sonderzeichen wie bei C# bleiben erhalten.",
             sourceTags: sourceTags,
             targetTag: targetTag,
-            affectedBookIDs: result.changedBookIDs.sorted(by: uuidSort),
+            affectedBookIDs: result.changedBookIDs.sorted { uuidSort($0, $1) },
             result: result
         )
     }
@@ -65,7 +65,7 @@ enum TagHygieneCleanupBuilder {
             detail: "Die Varianten werden in #\(targetTag) überführt. Wenn ein Buch mehrere Varianten hat, bleibt nur das Ziel-Tag erhalten.",
             sourceTags: sourceTags,
             targetTag: targetTag,
-            affectedBookIDs: result.changedBookIDs.sorted(by: uuidSort),
+            affectedBookIDs: result.changedBookIDs.sorted { uuidSort($0, $1) },
             result: result
         )
     }
@@ -89,7 +89,7 @@ enum TagHygieneCleanupBuilder {
             detail: "#\(tag) wird von den betroffenen Büchern entfernt. Die Bücher selbst bleiben unverändert erhalten.",
             sourceTags: [tag],
             targetTag: nil,
-            affectedBookIDs: result.changedBookIDs.sorted(by: uuidSort),
+            affectedBookIDs: result.changedBookIDs.sorted { uuidSort($0, $1) },
             result: result
         )
     }

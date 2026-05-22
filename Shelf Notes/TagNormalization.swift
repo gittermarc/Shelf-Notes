@@ -16,7 +16,7 @@ import Foundation
 /// - Whitespace am Rand wird entfernt
 /// - mehrere Whitespace-Zeichen im Tag werden zu einem Leerzeichen verdichtet
 /// - Note: bewusst **internal** (default), damit es in mehreren Views/Files genutzt werden kann.
-func normalizeTagString(_ s: String) -> String {
+nonisolated func normalizeTagString(_ s: String) -> String {
     var value = s
         .trimmingCharacters(in: .whitespacesAndNewlines)
 

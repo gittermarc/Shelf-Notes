@@ -25,7 +25,7 @@ enum TagSuggestionEngine {
     }
 
     static func makeSnapshots(books: [Book]) -> [TagSuggestionBookSnapshot] {
-        books.map(makeSnapshot(book:))
+        books.map { makeSnapshot(book: $0) }
     }
 
     static func makeSnapshot(book: Book) -> TagSuggestionBookSnapshot {
@@ -150,7 +150,7 @@ enum TagSuggestionEngine {
             }
         }
 
-        return uniqueNormalizedTags(candidates).filter(isUsefulCategoryCandidate)
+        return uniqueNormalizedTags(candidates).filter { isUsefulCategoryCandidate($0) }
     }
 
     private static func addCoTagSuggestions(
@@ -335,7 +335,7 @@ enum TagSuggestionEngine {
         return work
             .split(separator: "|")
             .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter(isUsefulCategoryCandidate)
+            .filter { isUsefulCategoryCandidate($0) }
     }
 
     private static func isUsefulCategoryCandidate(_ rawValue: String) -> Bool {

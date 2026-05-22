@@ -8,7 +8,7 @@ enum TagSuggestionPresentationBuilder {
     ) -> [TagSuggestionDisplayItem] {
         guard limit > 0 else { return [] }
 
-        let selectedKeys = Set(TagsIndexBuilder.uniqueNormalizedTags(selectedTags).map(suggestionKey))
+        let selectedKeys = Set(TagsIndexBuilder.uniqueNormalizedTags(selectedTags).map { suggestionKey($0) })
         var seenKeys: Set<String> = []
         var items: [TagSuggestionDisplayItem] = []
         items.reserveCapacity(min(limit, suggestions.count))
@@ -48,8 +48,8 @@ enum TagSuggestionPresentationBuilder {
     ) -> [FrequentTagDisplayItem] {
         guard limit > 0 else { return [] }
 
-        let selectedKeys = Set(TagsIndexBuilder.uniqueNormalizedTags(selectedTags).map(suggestionKey))
-        let excludedKeys = Set(TagsIndexBuilder.uniqueNormalizedTags(excludingTags).map(suggestionKey))
+        let selectedKeys = Set(TagsIndexBuilder.uniqueNormalizedTags(selectedTags).map { suggestionKey($0) })
+        let excludedKeys = Set(TagsIndexBuilder.uniqueNormalizedTags(excludingTags).map { suggestionKey($0) })
         var seenKeys: Set<String> = []
         var items: [FrequentTagDisplayItem] = []
         items.reserveCapacity(min(limit, tagCounts.count))

@@ -218,7 +218,7 @@ struct UntaggedBooksView: View {
 
     private var untaggedBooks: [Book] {
         let snapshots = TagsDashboardBuilder.makeSnapshots(books: books)
-        let untaggedIDs = Set(snapshots.filter(TagsDashboardBuilder.isUntagged).map(\.id))
+        let untaggedIDs = Set(snapshots.filter { TagsDashboardBuilder.isUntagged($0) }.map(\.id))
 
         return books
             .filter { untaggedIDs.contains($0.id) }

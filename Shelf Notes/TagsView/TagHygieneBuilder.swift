@@ -32,7 +32,9 @@ enum TagHygieneBuilder {
         var bookIDsByKey: [String: Set<UUID>] = [:]
 
         var displayTags: [String] {
-            displayTagsByKey.values.sorted(by: localizedTagSort)
+            displayTagsByKey.values.sorted {
+                $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+            }
         }
 
         var bookIDs: Set<UUID> {
@@ -48,7 +50,7 @@ enum TagHygieneBuilder {
     ) -> TagHygieneReport {
         let occurrences = makeOccurrences(from: snapshots)
         let untaggedBookIDs = snapshots
-            .filter(TagsDashboardBuilder.isUntagged)
+            .filter { TagsDashboardBuilder.isUntagged($0) }
             .map(\.id)
 
         var insights: [TagHygieneInsight] = []
@@ -64,7 +66,7 @@ enum TagHygieneBuilder {
         }
 
         let sortedInsights = insights
-            .sorted(by: insightSort)
+            .sorted { insightSort($0, $1) }
             .prefix(max(0, maxInsights))
             .map { $0 }
 
@@ -128,7 +130,7 @@ enum TagHygieneBuilder {
             guard hasCaseConflict || hasRawConflict else { return nil }
 
             let variants = visibleFormattingVariants(group: group)
-            let affectedBookIDs = group.bookIDs.sorted(by: uuidSort)
+            let affectedBookIDs = group.bookIDs.sorted { uuidSort($0, $1) }
             let variantText = variants.prefix(4).joined(separator: " / ")
             let title: String
 
@@ -189,7 +191,7 @@ enum TagHygieneBuilder {
             guard !seenTagSets.contains(signature) else { return nil }
             seenTagSets.insert(signature)
 
-            let affectedBookIDs = group.bookIDs.sorted(by: uuidSort)
+            let affectedBookIDs = group.bookIDs.sorted { uuidSort($0, $1) }
             let title = "Mögliche Duplikate: \(tags.prefix(4).joined(separator: " / "))"
 
             return TagHygieneInsight(
@@ -234,7 +236,7 @@ enum TagHygieneBuilder {
         guard !singleUsePairs.isEmpty else { return nil }
 
         let tags = singleUsePairs.map(\.tag)
-        let bookIDs = singleUsePairs.map(\.bookID).sorted(by: uuidSort)
+        let bookIDs = singleUsePairs.map(\.bookID).sorted { uuidSort($0, $1) }
         let count = tags.count
         let title = count == 1 ? "Einmal-Tag prüfen" : "\(count) Einmal-Tags prüfen"
 
@@ -260,7 +262,7 @@ enum TagHygieneBuilder {
             title: title,
             detail: "Diese Bücher sind noch keinem Thema, Genre oder Kontext zugeordnet.",
             affectedTags: [],
-            affectedBookIDs: bookIDs.sorted(by: uuidSort),
+            affectedBookIDs: bookIDs.sorted { uuidSort($0, $1) },
             primaryTag: nil,
             actionTitle: "Bücher ansehen"
         )
@@ -348,7 +350,7 @@ enum TagHygieneBuilder {
             }
         }
 
-        return output.sorted(by: localizedTagSort)
+        return output.sorted { localizedTagSort($0, $1) }
     }
 
     private static func insightSort(_ lhs: TagHygieneInsight, _ rhs: TagHygieneInsight) -> Bool {
