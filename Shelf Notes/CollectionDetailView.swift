@@ -24,17 +24,12 @@ struct CollectionDetailView: View {
     @Bindable var collection: BookCollection
 
     @State private var nameDraft: String = ""
+    @State private var saveDebouncer = ModelContextSaveDebouncer()
 
     var body: some View {
         List {
             Section("Name") {
-                TextField("Listenname", text: $nameDraft)
-                    .onChange(of: nameDraft) { _, newValue in
-                        let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                        collection.name = t
-                        collection.updatedAt = Date()
-                        modelContext.saveWithDiagnostics()
-                    }
+                TextField("Listenname", text: nameDraftBinding)
             }
 
             Section("Bücher") {
@@ -53,6 +48,7 @@ struct CollectionDetailView: View {
                         }
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
+                                flushPendingNameSave()
                                 var current = b.collections ?? []
                                 current.removeAll(where: { $0.id == collection.id })
                                 b.collections = current
@@ -68,6 +64,35 @@ struct CollectionDetailView: View {
         .navigationTitle(collection.name.isEmpty ? "Liste" : collection.name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { nameDraft = collection.name }
+        .onDisappear { flushPendingNameSave() }
+    }
+
+    private var nameDraftBinding: Binding<String> {
+        Binding(
+            get: { nameDraft },
+            set: { newValue in
+                updateNameDraft(newValue)
+            }
+        )
+    }
+
+    private func updateNameDraft(_ newValue: String) {
+        nameDraft = newValue
+
+        let trimmedName = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard collection.name != trimmedName else {
+            return
+        }
+
+        collection.name = trimmedName
+        collection.updatedAt = Date()
+        saveDebouncer.schedule {
+            modelContext.saveWithDiagnostics()
+        }
+    }
+
+    private func flushPendingNameSave() {
+        saveDebouncer.flush()
     }
 
     private var sortedBooks: [Book] {

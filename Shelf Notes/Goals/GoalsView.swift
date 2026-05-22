@@ -16,7 +16,9 @@ struct GoalsView: View {
     @Query private var books: [Book]
 
     @State private var selectedYear: Int = Calendar.current.component(.year, from: Date())
-    @State private var targetCount: Int = 50
+    @State private var targetCount: Int = ReadingGoalDraftPolicy.defaultTargetCount
+    @State private var pendingInsertedGoalsByYear: [Int: ReadingGoal] = [:]
+    @State private var saveDebouncer = ModelContextSaveDebouncer()
 
     private let columns: [GridItem] = [
         GridItem(.adaptive(minimum: 62), spacing: 10)
@@ -42,7 +44,11 @@ struct GoalsView: View {
         .navigationTitle("Leseziele")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { loadGoalForSelectedYear() }
-        .onChange(of: selectedYear) { _, _ in loadGoalForSelectedYear() }
+        .onChange(of: selectedYear) { _, _ in
+            flushPendingGoalSave()
+            loadGoalForSelectedYear()
+        }
+        .onDisappear { flushPendingGoalSave() }
     }
 
     private func goalCard(metrics: GoalsYearMetrics) -> some View {
@@ -60,12 +66,9 @@ struct GoalsView: View {
 
                 Spacer()
 
-                Stepper(value: $targetCount, in: 1...200, step: 1) {
+                Stepper(value: targetCountBinding, in: 1...200, step: 1) {
                     Text("\(targetCount) Bücher")
                         .monospacedDigit()
-                }
-                .onChange(of: targetCount) { _, newValue in
-                    saveGoal(year: selectedYear, targetCount: newValue)
                 }
             }
 
@@ -142,24 +145,61 @@ struct GoalsView: View {
         return formatInt(value)
     }
 
+    private var targetCountBinding: Binding<Int> {
+        Binding(
+            get: { targetCount },
+            set: { newValue in
+                guard targetCount != newValue else {
+                    return
+                }
+
+                targetCount = newValue
+                saveGoal(year: selectedYear, targetCount: newValue)
+            }
+        )
+    }
+
     private func loadGoalForSelectedYear() {
-        if let existing = goals.first(where: { $0.year == selectedYear }) {
-            targetCount = max(existing.targetCount, 1)
-        } else {
-            targetCount = 50
-            saveGoal(year: selectedYear, targetCount: targetCount)
-        }
+        let draft = ReadingGoalDraftPolicy.draftForLoading(
+            year: selectedYear,
+            existingGoal: goal(for: selectedYear)
+        )
+        targetCount = draft.targetCount
     }
 
     private func saveGoal(year: Int, targetCount: Int) {
-        if let existing = goals.first(where: { $0.year == year }) {
+        guard let change = ReadingGoalDraftPolicy.changeForUserTargetEdit(
+            year: year,
+            targetCount: targetCount,
+            existingGoal: goal(for: year)
+        ) else {
+            return
+        }
+
+        switch change {
+        case .insert(let year, let targetCount):
+            let goal = ReadingGoal(year: year, targetCount: targetCount)
+            pendingInsertedGoalsByYear[year] = goal
+            modelContext.insert(goal)
+        case .update(let year, let targetCount):
+            guard let existing = goal(for: year) else {
+                return
+            }
             existing.targetCount = targetCount
             existing.updatedAt = Date()
-        } else {
-            let goal = ReadingGoal(year: year, targetCount: targetCount)
-            modelContext.insert(goal)
         }
-        modelContext.saveWithDiagnostics()
+
+        saveDebouncer.schedule {
+            modelContext.saveWithDiagnostics()
+        }
+    }
+
+    private func goal(for year: Int) -> ReadingGoal? {
+        goals.first(where: { $0.year == year }) ?? pendingInsertedGoalsByYear[year]
+    }
+
+    private func flushPendingGoalSave() {
+        saveDebouncer.flush()
     }
 }
 
