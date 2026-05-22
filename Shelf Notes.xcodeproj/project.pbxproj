@@ -58,6 +58,9 @@
 		60CF7A4E2F4F22A1000F12A7 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		60CF7A502F4F22A1000F12A7 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		60CF7A7B2F4F373D000F12A7 /* ShelfNotesLiveActivityExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShelfNotesLiveActivityExtension.entitlements; sourceTree = "<group>"; };
+		60F3960C2FC0520900FD171D /* Shelf NotesUITests */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Shelf NotesUITests"; sourceTree = "<group>"; };
+		60F3960D2FC0520900FD171D /* Shelf NotesTests */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Shelf NotesTests"; sourceTree = "<group>"; };
+		60F397F22FC0584100FD171D /* ShelfNotesAppTests.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = ShelfNotesAppTests.xctestplan; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -161,6 +164,9 @@
 		60A8A7ED2EEB1E7600BED10B = {
 			isa = PBXGroup;
 			children = (
+				60F397F22FC0584100FD171D /* ShelfNotesAppTests.xctestplan */,
+				60F3960D2FC0520900FD171D /* Shelf NotesTests */,
+				60F3960C2FC0520900FD171D /* Shelf NotesUITests */,
 				60CF7A7B2F4F373D000F12A7 /* ShelfNotesLiveActivityExtension.entitlements */,
 				60A8A7F82EEB1E7600BED10B /* Shelf Notes */,
 				60A8A80A2EEB1E7800BED10B /* Shelf NotesTests */,
