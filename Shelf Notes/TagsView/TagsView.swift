@@ -42,7 +42,9 @@ struct TagsView: View {
                         .buttonStyle(.plain)
                     }
 
-                    TagHygieneInsightsSection(report: hygieneReport, books: books)
+                    TagHygieneInsightsSection(report: hygieneReport, books: books) { result in
+                        applyMutation(result)
+                    }
 
                     if dashboard.entries.isEmpty {
                         TagsEmptyState(hasBooks: !books.isEmpty)
