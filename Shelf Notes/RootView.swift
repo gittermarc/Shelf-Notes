@@ -41,7 +41,7 @@ struct RootView: View {
     @SceneStorage("root_selected_tab_v1") private var selectedTab: Int = 0
 
     var body: some View {
-        let tagsIndexSignature = TagsIndexStore.taskSignature(books: books)
+        let tagsIndexSignature = AppStartupMaintenanceService.tagsIndexSignature(books: books)
         let appTextColor = resolvedTextColor
         let preferredScheme = resolvedColorSchemeOption.preferredColorScheme
         let design = resolvedFontDesignOption.fontDesign
@@ -88,29 +88,17 @@ struct RootView: View {
         .environment(\.controlSize, density.controlSize)
         .environment(\.defaultMinListRowHeight, density.minListRowHeight)
         // Always apply a tint modifier to keep the view hierarchy stable.
-        // If we conditionally add/remove `.tint(...)`, SwiftUI can rebuild parts of the
+        // If we conditionally add/remove the tint modifier, SwiftUI can rebuild parts of the
         // hierarchy and accidentally reset navigation state in the Settings tab.
         .tint(tintColor)
         .environmentObject(pro)
         .environmentObject(timer)
         .environmentObject(tagsIndexStore)
         .onChange(of: scenePhase) { _, newPhase in
-            timer.handleScenePhaseChange(newPhase)
-
-            // Backfill should never run while the app is not active.
-            if newPhase != .active {
-                coverBackfillTask?.cancel()
-                coverBackfillTask = nil
-            } else {
-                scheduleCoverBackfillIfNeeded()
-            }
+            handleScenePhaseChange(newPhase)
         }
         .onAppear {
-            // One-time first-run hint: offer CSV import if the library is empty.
-            if !didOfferCSVImport && books.isEmpty {
-                didOfferCSVImport = true
-                showingCSVFirstRun = true
-            }
+            offerCSVImportOnFirstRunIfNeeded()
         }
         .sheet(isPresented: $showingCSVFirstRun) {
             NavigationStack {
@@ -118,19 +106,23 @@ struct RootView: View {
             }
         }
         .task(id: tagsIndexSignature) {
-            tagsIndexStore.update(books: books, signature: tagsIndexSignature)
+            AppStartupMaintenanceService.refreshTagsIndex(
+                books: books,
+                signature: tagsIndexSignature,
+                store: tagsIndexStore
+            )
         }
         .task {
-            // One-time: migrate legacy ReadingStatus strings to stable codes
-            await ReadingStatusMigrator.migrateIfNeeded(modelContext: modelContext)
-
-            // One-time: make sure existing books get synced thumbnails.
-            // Important: schedule this "idle" (deferred + chunked), do not block launch.
+            await AppStartupMaintenanceService.migrateReadingStatusIfNeeded(modelContext: modelContext)
             scheduleCoverBackfillIfNeeded()
         }
         .sheet(item: $timer.pendingCompletion) { pending in
             TimerSessionCompletionSheet(
-                book: bookForPending(pending),
+                book: AppStartupMaintenanceService.bookForPending(
+                    pending,
+                    books: books,
+                    modelContext: modelContext
+                ),
                 pending: pending
             )
             .environmentObject(timer)
@@ -169,44 +161,55 @@ struct RootView: View {
         return Color(hex: tintColorHex) ?? .accentColor
     }
 
-    private func bookForPending(_ pending: ReadingTimerManager.PendingCompletion) -> Book? {
-        // Fast path: use already queried list if possible
-        if let match = books.first(where: { $0.id == pending.bookID }) {
-            return match
-        }
-
-        // Fallback: fetch directly from SwiftData (avoids any “Query hasn’t refreshed yet” edge cases)
-        let bookID = pending.bookID
-        let descriptor = FetchDescriptor<Book>(
-            predicate: #Predicate<Book> { $0.id == bookID }
+    private var maintenanceState: AppStartupMaintenanceState {
+        AppStartupMaintenanceService.state(
+            scenePhase: scenePhase,
+            didRunCoverBackfill: didRunCoverBackfill,
+            coverBackfillTask: coverBackfillTask,
+            didOfferCSVImport: didOfferCSVImport,
+            bookCount: books.count
         )
-        return (try? modelContext.fetch(descriptor))?.first
+    }
+
+    private func handleScenePhaseChange(_ newPhase: ScenePhase) {
+        timer.handleScenePhaseChange(newPhase)
+
+        let state = AppStartupMaintenanceService.state(
+            scenePhase: newPhase,
+            didRunCoverBackfill: didRunCoverBackfill,
+            coverBackfillTask: coverBackfillTask,
+            didOfferCSVImport: didOfferCSVImport,
+            bookCount: books.count
+        )
+
+        if state.shouldCancelCoverBackfill {
+            cancelCoverBackfill()
+        } else {
+            scheduleCoverBackfillIfNeeded()
+        }
+    }
+
+    private func offerCSVImportOnFirstRunIfNeeded() {
+        guard maintenanceState.shouldOfferCSVImport else { return }
+        didOfferCSVImport = true
+        showingCSVFirstRun = true
+    }
+
+    private func cancelCoverBackfill() {
+        coverBackfillTask?.cancel()
+        coverBackfillTask = nil
     }
 
     // MARK: - Deferred cover thumbnail backfill
 
-    @MainActor
     private func scheduleCoverBackfillIfNeeded() {
-        guard scenePhase == .active else { return }
-        guard !didRunCoverBackfill else { return }
-        guard coverBackfillTask == nil else { return }
+        guard maintenanceState.shouldScheduleCoverBackfill else { return }
 
-        // Run with low priority and in small bursts so the UI stays responsive.
-        coverBackfillTask = Task(priority: .utility) { @MainActor in
-            // Give SwiftUI one beat to get fully interactive.
-            try? await Task.sleep(nanoseconds: 1_250_000_000)
-            if Task.isCancelled { return }
-            guard scenePhase == .active else { return }
-
-            await CoverThumbnailer.backfillAllBooksIfNeeded(
-                modelContext: modelContext,
-                batchSize: 4,
-                interBatchDelayNanoseconds: 650_000_000
-            )
-
-            if Task.isCancelled { return }
-            didRunCoverBackfill = true
-            coverBackfillTask = nil
-        }
+        coverBackfillTask = AppStartupMaintenanceService.makeCoverBackfillTask(
+            modelContext: modelContext,
+            shouldContinue: { scenePhase == .active },
+            markDidRunCoverBackfill: { didRunCoverBackfill = true },
+            clearCoverBackfillTask: { coverBackfillTask = nil }
+        )
     }
 }
