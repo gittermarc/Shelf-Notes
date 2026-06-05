@@ -41,14 +41,16 @@ extension LibraryView {
     }
 
     func alphaIndexedList(sections: [AlphaSection], letters: [String]) -> some View {
-        ScrollViewReader { proxy in
+        let rowAppearance = libraryRowAppearance
+
+        return ScrollViewReader { proxy in
             ZStack(alignment: .trailing) {
                 List {
                     ForEach(sections) { section in
                         Section {
                             if isSelectionMode {
                                 ForEach(section.books) { book in
-                                    selectableListRow(book)
+                                    selectableListRow(book, appearance: rowAppearance)
                                         .listRowInsets(
                                             EdgeInsets(
                                                 top: CGFloat(libraryRowVerticalInset),
@@ -63,7 +65,7 @@ extension LibraryView {
                                     NavigationLink {
                                         BookDetailView(book: book)
                                     } label: {
-                                        BookRowView(book: book)
+                                        BookRowView(book: book, appearance: rowAppearance)
                                     }
                                     .listRowInsets(
                                         EdgeInsets(

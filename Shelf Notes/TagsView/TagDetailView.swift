@@ -108,11 +108,13 @@ struct TagDetailView: View {
                         description: Text("Dieses Tag ist aktuell keinem Buch zugeordnet.")
                     )
                 } else {
-                    ForEach(matchingBooks) { book in
-                        NavigationLink {
-                            BookDetailView(book: book)
-                        } label: {
-                            BookRowView(book: book)
+                    LibraryRowAppearanceReader { rowAppearance in
+                        ForEach(matchingBooks) { book in
+                            NavigationLink {
+                                BookDetailView(book: book)
+                            } label: {
+                                BookRowView(book: book, appearance: rowAppearance)
+                            }
                         }
                     }
                 }
@@ -237,11 +239,13 @@ struct UntaggedBooksView: View {
                 )
             } else {
                 Section("Bücher ohne Tags") {
-                    ForEach(untaggedBooks) { book in
-                        NavigationLink {
-                            BookDetailView(book: book)
-                        } label: {
-                            BookRowView(book: book)
+                    LibraryRowAppearanceReader { rowAppearance in
+                        ForEach(untaggedBooks) { book in
+                            NavigationLink {
+                                BookDetailView(book: book)
+                            } label: {
+                                BookRowView(book: book, appearance: rowAppearance)
+                            }
                         }
                     }
                 }

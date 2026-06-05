@@ -22,6 +22,7 @@ extension LibraryView {
             let itemWidth = (contentWidth - CGFloat(columnsCount - 1) * spacing) / CGFloat(columnsCount)
 
             let columns = Array(repeating: GridItem(.flexible(), spacing: spacing, alignment: .top), count: columnsCount)
+            let rowAppearance = libraryRowAppearance
 
             ScrollView {
                 LazyVGrid(columns: columns, spacing: spacing) {
@@ -33,6 +34,7 @@ extension LibraryView {
                                 LibraryGridItemView(
                                     book: book,
                                     itemWidth: itemWidth,
+                                    appearance: rowAppearance,
                                     isSelectionMode: true,
                                     isSelected: isSelected(book),
                                     onRequestDelete: {
@@ -48,6 +50,7 @@ extension LibraryView {
                                 LibraryGridItemView(
                                     book: book,
                                     itemWidth: itemWidth,
+                                    appearance: rowAppearance,
                                     isSelectionMode: false,
                                     isSelected: false,
                                     onRequestDelete: {
@@ -69,37 +72,10 @@ extension LibraryView {
 private struct LibraryGridItemView: View {
     let book: Book
     let itemWidth: CGFloat
+    let appearance: LibraryRowAppearanceSnapshot
     let isSelectionMode: Bool
     let isSelected: Bool
     let onRequestDelete: () -> Void
-
-    // Keep behavior aligned with the existing row appearance settings.
-    @AppStorage(AppearanceStorageKey.libraryShowCovers) private var showCovers: Bool = true
-    @AppStorage(AppearanceStorageKey.libraryCoverSize) private var coverSizeRaw: String = LibraryCoverSizeOption.standard.rawValue
-    @AppStorage(AppearanceStorageKey.libraryCoverCornerRadius) private var coverCornerRadius: Double = 8
-    @AppStorage(AppearanceStorageKey.libraryCoverContentMode) private var coverContentModeRaw: String = LibraryCoverContentModeOption.fit.rawValue
-    @AppStorage(AppearanceStorageKey.libraryCoverShadowEnabled) private var coverShadowEnabled: Bool = false
-
-    @AppStorage(AppearanceStorageKey.libraryRowShowAuthor) private var showAuthor: Bool = true
-    @AppStorage(AppearanceStorageKey.libraryRowShowStatus) private var showStatus: Bool = true
-    @AppStorage(AppearanceStorageKey.libraryRowShowReadDate) private var showReadDate: Bool = true
-    @AppStorage(AppearanceStorageKey.libraryRowShowRating) private var showRating: Bool = true
-    @AppStorage(AppearanceStorageKey.libraryRowShowTags) private var showTags: Bool = true
-    @AppStorage(AppearanceStorageKey.libraryRowMaxTags) private var maxTags: Int = 2
-    @AppStorage(AppearanceStorageKey.libraryTagStyle) private var tagStyleRaw: String = LibraryTagStyleOption.hashtags.rawValue
-    @AppStorage(AppearanceStorageKey.libraryRowContentSpacing) private var rowContentSpacing: Double = 2
-
-    private var resolvedCoverRadius: CGFloat {
-        CGFloat(coverCornerRadius)
-    }
-
-    private var resolvedContentMode: ContentMode {
-        (LibraryCoverContentModeOption(rawValue: coverContentModeRaw) ?? .fit).contentMode
-    }
-
-    private var resolvedTagStyle: LibraryTagStyleOption {
-        LibraryTagStyleOption(rawValue: tagStyleRaw) ?? .hashtags
-    }
 
     private enum MetaPart {
         case status(String)
@@ -108,14 +84,14 @@ private struct LibraryGridItemView: View {
     }
 
     private var readMonthYearText: String? {
-        guard showReadDate else { return nil }
+        guard appearance.showReadDate else { return nil }
         guard book.status == .finished else { return nil }
         guard let d = book.readTo ?? book.readFrom else { return nil }
         return d.formatted(.dateTime.month(.abbreviated).year())
     }
 
     private var userRating: Double? {
-        guard showRating else { return nil }
+        guard appearance.showRating else { return nil }
         guard book.status == .finished else { return nil }
         return book.userRatingAverage1
     }
@@ -123,7 +99,7 @@ private struct LibraryGridItemView: View {
     private var metaParts: [MetaPart] {
         var parts: [MetaPart] = []
 
-        if showStatus {
+        if appearance.showStatus {
             parts.append(.status(book.status.displayName))
         }
 
@@ -141,9 +117,9 @@ private struct LibraryGridItemView: View {
     private var metrics: LibraryGridCardMetrics {
         LibraryGridCardMetrics(
             itemWidth: itemWidth,
-            rowContentSpacing: rowContentSpacing,
-            showsCover: showCovers,
-            coverSizeOption: LibraryCoverSizeOption(rawValue: coverSizeRaw) ?? .standard
+            rowContentSpacing: appearance.rowContentSpacing,
+            showsCover: appearance.showCovers,
+            coverSizeOption: appearance.coverSize
         )
     }
 
@@ -155,7 +131,7 @@ private struct LibraryGridItemView: View {
 
     private var card: some View {
         VStack(alignment: .leading, spacing: metrics.contentSpacing) {
-            if showCovers {
+            if appearance.showCovers {
                 coverBlock
             }
 
@@ -206,20 +182,20 @@ private struct LibraryGridItemView: View {
 
     @ViewBuilder
     private var coverBlock: some View {
-        if showCovers {
+        if appearance.showCovers {
             LibraryRowCoverView(
                 book: book,
                 size: metrics.coverSize,
-                cornerRadius: resolvedCoverRadius,
-                contentMode: resolvedContentMode,
+                cornerRadius: appearance.resolvedCoverCornerRadius,
+                contentMode: appearance.resolvedCoverContentMode,
                 prefersHighResCover: true
             )
             .frame(maxWidth: .infinity, alignment: .center)
             .shadow(
-                color: coverShadowEnabled ? .black.opacity(0.12) : .clear,
-                radius: coverShadowEnabled ? 4 : 0,
+                color: appearance.coverShadowEnabled ? .black.opacity(0.12) : .clear,
+                radius: appearance.coverShadowEnabled ? 4 : 0,
                 x: 0,
-                y: coverShadowEnabled ? 2 : 0
+                y: appearance.coverShadowEnabled ? 2 : 0
             )
         }
     }
@@ -271,7 +247,7 @@ private struct LibraryGridItemView: View {
 
     @ViewBuilder
     private var authorBlock: some View {
-        if showAuthor, !book.author.isEmpty {
+        if appearance.showAuthor, !book.author.isEmpty {
             Text(book.author)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -297,8 +273,8 @@ private struct LibraryGridItemView: View {
     }
 
     private var visibleTags: [String] {
-        guard maxTags > 0 else { return [] }
-        let n = max(1, min(maxTags, book.tags.count))
+        guard appearance.maxTags > 0 else { return [] }
+        let n = max(1, min(appearance.maxTags, book.tags.count))
         return Array(book.tags.prefix(n))
     }
 
@@ -364,10 +340,10 @@ private struct LibraryGridItemView: View {
     }
 
     private var tagsText: String? {
-        guard showTags, !visibleTags.isEmpty else { return nil }
+        guard appearance.showTags, !visibleTags.isEmpty else { return nil }
 
         let body: String
-        switch resolvedTagStyle {
+        switch appearance.tagStyle {
         case .hashtags:
             body = visibleTags.map { "#\($0)" }.joined(separator: " ")
         case .chips:

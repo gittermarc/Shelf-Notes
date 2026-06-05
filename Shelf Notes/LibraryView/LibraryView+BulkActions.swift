@@ -68,7 +68,7 @@ extension LibraryView {
     }
 
     @ViewBuilder
-    func selectableListRow(_ book: Book) -> some View {
+    func selectableListRow(_ book: Book, appearance: LibraryRowAppearanceSnapshot) -> some View {
         Button {
             toggleSelection(book)
         } label: {
@@ -76,7 +76,7 @@ extension LibraryView {
                 selectionIndicator(isSelected(book))
                     .padding(.top, 6)
 
-                BookRowView(book: book)
+                BookRowView(book: book, appearance: appearance)
             }
             .contentShape(Rectangle())
         }

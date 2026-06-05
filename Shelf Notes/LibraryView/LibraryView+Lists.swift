@@ -12,10 +12,12 @@ extension LibraryView {
     // MARK: - Lists
 
     func plainList(displayedBooks: [Book]) -> some View {
-        List {
+        let rowAppearance = libraryRowAppearance
+
+        return List {
             if isSelectionMode {
                 ForEach(displayedBooks) { book in
-                    selectableListRow(book)
+                    selectableListRow(book, appearance: rowAppearance)
                         .listRowInsets(
                             EdgeInsets(
                                 top: CGFloat(libraryRowVerticalInset),
@@ -30,7 +32,7 @@ extension LibraryView {
                     NavigationLink {
                         BookDetailView(book: book)
                     } label: {
-                        BookRowView(book: book)
+                        BookRowView(book: book, appearance: rowAppearance)
                     }
                     .listRowInsets(
                         EdgeInsets(

@@ -9,9 +9,11 @@ struct CollectionDetailBookCardView: View {
             NavigationLink {
                 BookDetailView(book: book)
             } label: {
-                BookRowView(book: book)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
+                LibraryRowAppearanceReader { rowAppearance in
+                    BookRowView(book: book, appearance: rowAppearance)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
             }
             .buttonStyle(.plain)
 

@@ -64,6 +64,18 @@ struct LibraryView: View {
     @AppStorage(AppearanceStorageKey.libraryRowVerticalInset) var libraryRowVerticalInset: Double = 8
     @AppStorage(AppearanceStorageKey.libraryLayoutMode) var libraryLayoutModeRaw: String = LibraryLayoutModeOption.list.rawValue
     @AppStorage(AppearanceStorageKey.libraryCoverSize) var libraryCoverSizeRaw: String = LibraryCoverSizeOption.standard.rawValue
+    @AppStorage(AppearanceStorageKey.libraryShowCovers) var libraryShowCovers: Bool = true
+    @AppStorage(AppearanceStorageKey.libraryCoverCornerRadius) var libraryCoverCornerRadius: Double = 8
+    @AppStorage(AppearanceStorageKey.libraryCoverContentMode) var libraryCoverContentModeRaw: String = LibraryCoverContentModeOption.fit.rawValue
+    @AppStorage(AppearanceStorageKey.libraryCoverShadowEnabled) var libraryCoverShadowEnabled: Bool = false
+    @AppStorage(AppearanceStorageKey.libraryRowShowAuthor) var libraryRowShowAuthor: Bool = true
+    @AppStorage(AppearanceStorageKey.libraryRowShowStatus) var libraryRowShowStatus: Bool = true
+    @AppStorage(AppearanceStorageKey.libraryRowShowReadDate) var libraryRowShowReadDate: Bool = true
+    @AppStorage(AppearanceStorageKey.libraryRowShowRating) var libraryRowShowRating: Bool = true
+    @AppStorage(AppearanceStorageKey.libraryRowShowTags) var libraryRowShowTags: Bool = true
+    @AppStorage(AppearanceStorageKey.libraryRowMaxTags) var libraryRowMaxTags: Int = 2
+    @AppStorage(AppearanceStorageKey.libraryTagStyle) var libraryTagStyleRaw: String = LibraryTagStyleOption.hashtags.rawValue
+    @AppStorage(AppearanceStorageKey.libraryRowContentSpacing) var libraryRowContentSpacing: Double = 2
 
     // A–Z hint logic (only show when it’s actually helpful)
     static let alphaIndexHintThreshold: Int = 30
@@ -319,5 +331,23 @@ struct LibraryView: View {
 
     var libraryCoverSizeOption: LibraryCoverSizeOption {
         LibraryCoverSizeOption(rawValue: libraryCoverSizeRaw) ?? .standard
+    }
+
+    var libraryRowAppearance: LibraryRowAppearanceSnapshot {
+        LibraryRowAppearanceSnapshot(
+            showCovers: libraryShowCovers,
+            coverSizeRaw: libraryCoverSizeRaw,
+            coverCornerRadius: libraryCoverCornerRadius,
+            coverContentModeRaw: libraryCoverContentModeRaw,
+            coverShadowEnabled: libraryCoverShadowEnabled,
+            showAuthor: libraryRowShowAuthor,
+            showStatus: libraryRowShowStatus,
+            showReadDate: libraryRowShowReadDate,
+            showRating: libraryRowShowRating,
+            showTags: libraryRowShowTags,
+            maxTags: libraryRowMaxTags,
+            tagStyleRaw: libraryTagStyleRaw,
+            rowContentSpacing: libraryRowContentSpacing
+        )
     }
 }

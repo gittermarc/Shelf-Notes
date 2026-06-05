@@ -7,30 +7,10 @@
 //
 
 import SwiftUI
-import SwiftData
 
 struct BookRowView: View {
     let book: Book
-
-    // Library row appearance
-    @AppStorage(AppearanceStorageKey.libraryShowCovers) private var showCovers: Bool = true
-    @AppStorage(AppearanceStorageKey.libraryCoverSize) private var coverSizeRaw: String = LibraryCoverSizeOption.standard.rawValue
-    @AppStorage(AppearanceStorageKey.libraryCoverCornerRadius) private var coverCornerRadius: Double = 8
-    @AppStorage(AppearanceStorageKey.libraryCoverContentMode) private var coverContentModeRaw: String = LibraryCoverContentModeOption.fit.rawValue
-    @AppStorage(AppearanceStorageKey.libraryCoverShadowEnabled) private var coverShadowEnabled: Bool = false
-
-    @AppStorage(AppearanceStorageKey.libraryRowShowAuthor) private var showAuthor: Bool = true
-    @AppStorage(AppearanceStorageKey.libraryRowShowStatus) private var showStatus: Bool = true
-    @AppStorage(AppearanceStorageKey.libraryRowShowReadDate) private var showReadDate: Bool = true
-    @AppStorage(AppearanceStorageKey.libraryRowShowRating) private var showRating: Bool = true
-    @AppStorage(AppearanceStorageKey.libraryRowShowTags) private var showTags: Bool = true
-    @AppStorage(AppearanceStorageKey.libraryRowMaxTags) private var maxTags: Int = 2
-    @AppStorage(AppearanceStorageKey.libraryTagStyle) private var tagStyleRaw: String = LibraryTagStyleOption.hashtags.rawValue
-    @AppStorage(AppearanceStorageKey.libraryRowContentSpacing) private var rowContentSpacing: Double = 2
-
-    private var resolvedTagStyle: LibraryTagStyleOption {
-        LibraryTagStyleOption(rawValue: tagStyleRaw) ?? .hashtags
-    }
+    let appearance: LibraryRowAppearanceSnapshot
 
     private enum MetaPart {
         case status(String)
@@ -40,15 +20,15 @@ struct BookRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            if showCovers {
+            if appearance.showCovers {
                 cover
             }
 
-            VStack(alignment: .leading, spacing: CGFloat(rowContentSpacing)) {
+            VStack(alignment: .leading, spacing: appearance.resolvedRowContentSpacing) {
                 Text(book.title.isEmpty ? "Ohne Titel" : book.title)
                     .font(.headline)
 
-                if showAuthor, !book.author.isEmpty {
+                if appearance.showAuthor, !book.author.isEmpty {
                     Text(book.author)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -88,12 +68,12 @@ struct BookRowView: View {
                 }
 
                 // Tags eine Zeile tiefer
-                if showTags, !book.tags.isEmpty, maxTags > 0 {
-                    let n = max(1, min(maxTags, book.tags.count))
+                if appearance.showTags, !book.tags.isEmpty, appearance.maxTags > 0 {
+                    let n = max(1, min(appearance.maxTags, book.tags.count))
                     let visible = Array(book.tags.prefix(n))
                     let remaining = max(0, book.tags.count - visible.count)
 
-                    switch resolvedTagStyle {
+                    switch appearance.tagStyle {
                     case .hashtags:
                         Text(visible.map { "#\($0)" }.joined(separator: " "))
                             .font(.caption)
@@ -108,14 +88,14 @@ struct BookRowView: View {
     }
 
     private var readMonthYearText: String? {
-        guard showReadDate else { return nil }
+        guard appearance.showReadDate else { return nil }
         guard book.status == .finished else { return nil }
         guard let d = book.readTo ?? book.readFrom else { return nil }
         return d.formatted(.dateTime.month(.abbreviated).year())
     }
 
     private var rowUserRating: Double? {
-        guard showRating else { return nil }
+        guard appearance.showRating else { return nil }
         guard book.status == .finished else { return nil }
         return book.userRatingAverage1
     }
@@ -123,7 +103,7 @@ struct BookRowView: View {
     private var metaParts: [MetaPart] {
         var parts: [MetaPart] = []
 
-        if showStatus {
+        if appearance.showStatus {
             parts.append(.status(book.status.displayName))
         }
 
@@ -138,20 +118,19 @@ struct BookRowView: View {
         return parts
     }
 
-
     @ViewBuilder
     private var cover: some View {
-        let size = (LibraryCoverSizeOption(rawValue: coverSizeRaw) ?? .standard).size
-        let mode = (LibraryCoverContentModeOption(rawValue: coverContentModeRaw) ?? .fit).contentMode
-        let radius = CGFloat(coverCornerRadius)
-
         LibraryRowCoverView(
             book: book,
-            size: size,
-            cornerRadius: radius,
-            contentMode: mode
+            size: appearance.resolvedCoverSize,
+            cornerRadius: appearance.resolvedCoverCornerRadius,
+            contentMode: appearance.resolvedCoverContentMode
         )
-        .shadow(color: coverShadowEnabled ? .black.opacity(0.12) : .clear, radius: coverShadowEnabled ? 4 : 0, x: 0, y: coverShadowEnabled ? 2 : 0)
+        .shadow(
+            color: appearance.coverShadowEnabled ? .black.opacity(0.12) : .clear,
+            radius: appearance.coverShadowEnabled ? 4 : 0,
+            x: 0,
+            y: appearance.coverShadowEnabled ? 2 : 0
+        )
     }
 }
-
