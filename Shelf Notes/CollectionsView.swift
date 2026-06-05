@@ -6,20 +6,11 @@
 //  Split from ContentView.swift on 05.01.26.
 //
 
-import SwiftUI
+import Foundation
 import SwiftData
-import StoreKit
-import Combine
+import SwiftUI
 
-#if canImport(PhotosUI)
-import PhotosUI
-#endif
-
-#if canImport(UIKit)
-import UIKit
-#endif
-
-// MARK: - Collections (Phase 1)
+// MARK: - Collections
 
 struct CollectionsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -27,44 +18,93 @@ struct CollectionsView: View {
     @Query(sort: \BookCollection.createdAt, order: .reverse)
     private var collections: [BookCollection]
 
+    @Query(sort: \Book.createdAt, order: .reverse)
+    private var books: [Book]
+
+    @State private var searchText: String = ""
+    @State private var sortMode: CollectionsDashboardSortMode = .recentActivity
     @State private var showingNew = false
     @State private var showingPaywall = false
+    @State private var deleteCandidate: BookCollection?
 
     @EnvironmentObject private var pro: ProManager
 
     var body: some View {
-        NavigationStack {
-            List {
-                if collections.isEmpty {
-                    ContentUnavailableView(
-                        "Noch keine Listen",
-                        systemImage: "rectangle.stack",
-                        description: Text("Lege Listen an – z.B. „NYC“, „Justizthriller“, „KI“, „2025 Highlights“…")
-                    )
-                } else {
-                    ForEach(collections) { c in
-                        NavigationLink {
-                            CollectionDetailView(collection: c)
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(c.name.isEmpty ? "Ohne Namen" : c.name)
+        let bookSnapshots = CollectionsDashboardBuilder.makeBookSnapshots(books: books)
+        let collectionSnapshots = CollectionsDashboardBuilder.makeCollectionSnapshots(collections: collections)
+        let dashboard = CollectionsDashboardBuilder.build(
+            collections: collectionSnapshots,
+            allBooks: bookSnapshots
+        )
+        let visibleEntries = CollectionsDashboardBuilder.filteredEntries(
+            dashboard.entries,
+            searchText: searchText,
+            sortMode: sortMode
+        )
+        let booksByID = Dictionary(uniqueKeysWithValues: books.map { ($0.id, $0) })
 
-                                    // ✅ books ist optional -> safe count
-                                    Text("\((c.books ?? []).count) Bücher")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .monospacedDigit()
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    CollectionsHeroCard(
+                        summary: dashboard.summary,
+                        hasPro: pro.hasPro,
+                        freeCollectionLimit: ProManager.maxFreeCollections
+                    )
+
+                    if dashboard.entries.isEmpty {
+                        CollectionsEmptyState(
+                            hasBooks: !books.isEmpty,
+                            onCreate: requestNewCollection
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 24)
+                    } else {
+                        CollectionsExplorerControls(sortMode: $sortMode)
+
+                        if visibleEntries.isEmpty {
+                            ContentUnavailableView(
+                                "Keine Listen gefunden",
+                                systemImage: "magnifyingglass",
+                                description: Text("Für deine Suche gibt es aktuell keine passende Liste.")
+                            )
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 24)
+                        } else {
+                            LazyVGrid(
+                                columns: [GridItem(.adaptive(minimum: 300), spacing: 12)],
+                                alignment: .leading,
+                                spacing: 12
+                            ) {
+                                ForEach(visibleEntries) { entry in
+                                    if let collection = collection(for: entry) {
+                                        NavigationLink {
+                                            CollectionDetailView(collection: collection)
+                                        } label: {
+                                            CollectionCardView(
+                                                entry: entry,
+                                                coverBooks: coverBooks(for: entry, booksByID: booksByID)
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+                                        .contextMenu {
+                                            Button(role: .destructive) {
+                                                deleteCandidate = collection
+                                            } label: {
+                                                Label("Liste löschen", systemImage: "trash")
+                                            }
+                                        }
+                                    }
                                 }
-                                Spacer()
                             }
-                            .padding(.vertical, 2)
                         }
                     }
-                    .onDelete(perform: deleteCollections)
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 18)
             }
             .navigationTitle("Listen")
+            .searchable(text: $searchText, prompt: "Listen suchen")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -77,8 +117,8 @@ struct CollectionsView: View {
             }
             .sheet(isPresented: $showingNew) {
                 NewCollectionSheet { name in
-                    let col = BookCollection(name: name)
-                    modelContext.insert(col)
+                    let collection = BookCollection(name: name)
+                    modelContext.insert(collection)
                     modelContext.saveWithDiagnostics()
                 }
             }
@@ -87,9 +127,35 @@ struct CollectionsView: View {
                     showingNew = true
                 })
             }
+            .alert(
+                "Liste löschen?",
+                isPresented: isDeleteAlertPresented,
+                presenting: deleteCandidate
+            ) { collection in
+                Button("Löschen", role: .destructive) {
+                    deleteCollection(collection)
+                    deleteCandidate = nil
+                }
+
+                Button("Abbrechen", role: .cancel) {
+                    deleteCandidate = nil
+                }
+            } message: { collection in
+                Text("\(collection.name.isEmpty ? "Diese Liste" : collection.name) wird entfernt. Die Bücher bleiben in deiner Bibliothek erhalten.")
+            }
         }
     }
 
+    private var isDeleteAlertPresented: Binding<Bool> {
+        Binding(
+            get: { deleteCandidate != nil },
+            set: { isPresented in
+                if !isPresented {
+                    deleteCandidate = nil
+                }
+            }
+        )
+    }
 
     private func requestNewCollection() {
         let count = collections.count
@@ -100,24 +166,27 @@ struct CollectionsView: View {
         }
     }
 
-    private func deleteCollections(at offsets: IndexSet) {
-        for index in offsets {
-            let col = collections[index]
+    private func collection(for entry: CollectionsDashboardEntry) -> BookCollection? {
+        collections.first { $0.id == entry.id }
+    }
 
-            // ✅ books ist optional
-            let booksInCol = col.books ?? []
+    private func coverBooks(
+        for entry: CollectionsDashboardEntry,
+        booksByID: [UUID: Book]
+    ) -> [Book] {
+        entry.representativeBookIDs.compactMap { booksByID[$0] }
+    }
 
-            // defensive: remove relation explicitly (CloudKit kann sonst manchmal zicken)
-            for b in booksInCol {
-                var current = b.collections ?? []
-                current.removeAll(where: { $0.id == col.id })
-                b.collections = current
-            }
+    private func deleteCollection(_ collection: BookCollection) {
+        let booksInCollection = collection.booksSafe
 
-            modelContext.delete(col)
+        for book in booksInCollection {
+            var current = book.collectionsSafe
+            current.removeAll { $0.id == collection.id }
+            book.collectionsSafe = current
         }
+
+        modelContext.delete(collection)
         modelContext.saveWithDiagnostics()
     }
 }
-
-// ✅ OUTSIDE now: can be linked from anywhere
