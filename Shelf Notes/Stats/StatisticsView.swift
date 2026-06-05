@@ -70,9 +70,19 @@ struct StatisticsView: View {
             guard !books.isEmpty, let statsKey = sourceState.statsKey else { return }
             await sourceStore.refreshStatsCache(for: statsKey)
         }
+        .task(id: sourceState.sessionSourceRequestToken) {
+            guard !books.isEmpty, sourceState.sessionSourceRequestToken != nil else { return }
+            sourceStore.refreshSessionSourceAndTrack(books: books)
+        }
         .task(id: sourceState.heatmapKey) {
             guard !books.isEmpty, let heatmapKey = sourceState.heatmapKey else { return }
             await sourceStore.refreshHeatmapCache(for: heatmapKey)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .readingSessionsDidChange)) { _ in
+            sourceStore.invalidateSessionSource()
+            if activityMetric == .readingMinutes {
+                sourceStore.refreshSessionSourceAndTrack(books: books)
+            }
         }
     }
 }

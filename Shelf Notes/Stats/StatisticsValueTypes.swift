@@ -37,6 +37,21 @@ nonisolated struct StatisticsHeatmapCacheKey: Hashable, Sendable {
     let scope: StatisticsScope
     let activityMetric: StatisticsActivityMetric
     let booksSignature: Int
+    let activitySignature: Int
+
+    init(
+        selectedYear: Int,
+        scope: StatisticsScope,
+        activityMetric: StatisticsActivityMetric,
+        booksSignature: Int,
+        activitySignature: Int? = nil
+    ) {
+        self.selectedYear = selectedYear
+        self.scope = scope
+        self.activityMetric = activityMetric
+        self.booksSignature = booksSignature
+        self.activitySignature = activitySignature ?? booksSignature
+    }
 }
 
 nonisolated struct StatisticsMonthSeriesPoint: Identifiable, Equatable, Sendable {

@@ -11,11 +11,27 @@ nonisolated struct StatisticsHeatmapBuilder {
 
     func makeHeatmapCache(
         for key: StatisticsHeatmapCacheKey,
-        books: [StatisticsBookSnapshot]
+        books: [StatisticsBookSnapshot],
+        sessionBooks: [StatisticsSessionBookSnapshot] = []
     ) -> StatisticsHeatmapCache {
         let scoped = scopedBooks(for: key.scope, in: books)
+        let scopedSessionBooks: [StatisticsSessionBookSnapshot]
+        if key.activityMetric == .readingMinutes {
+            scopedSessionBooks = self.scopedSessionBooks(
+                for: key.scope,
+                books: books,
+                sessionBooks: sessionBooks
+            )
+        } else {
+            scopedSessionBooks = []
+        }
         let range = heatmapRange(for: key.selectedYear)
-        let counts = activityDailyCounts(metric: key.activityMetric, range: range, books: scoped)
+        let counts = activityDailyCounts(
+            metric: key.activityMetric,
+            range: range,
+            books: scoped,
+            sessionBooks: scopedSessionBooks
+        )
         let stats = heatmapStats(
             counts: counts,
             range: range,
@@ -57,6 +73,27 @@ private nonisolated extension StatisticsHeatmapBuilder {
         }
     }
 
+    func scopedSessionBooks(
+        for scope: StatisticsScope,
+        books: [StatisticsBookSnapshot],
+        sessionBooks: [StatisticsSessionBookSnapshot]
+    ) -> [StatisticsSessionBookSnapshot] {
+        let source = sessionBooks.isEmpty
+            ? books.map { StatisticsSessionBookSnapshot(bookSnapshot: $0) }
+            : sessionBooks
+
+        switch scope {
+        case .all:
+            return source
+        case .finished:
+            return source.filter { $0.status == .finished }
+        case .reading:
+            return source.filter { $0.status == .reading }
+        case .toRead:
+            return source.filter { $0.status == .toRead }
+        }
+    }
+
     func heatmapRange(for year: Int) -> StatisticsHeatmapRange {
         var calendar = Calendar(identifier: .iso8601)
         calendar.timeZone = self.calendar.timeZone
@@ -94,7 +131,8 @@ private nonisolated extension StatisticsHeatmapBuilder {
     func activityDailyCounts(
         metric: StatisticsActivityMetric,
         range: StatisticsHeatmapRange,
-        books: [StatisticsBookSnapshot]
+        books: [StatisticsBookSnapshot],
+        sessionBooks: [StatisticsSessionBookSnapshot]
     ) -> [Date: Int] {
         var calendar = Calendar(identifier: .iso8601)
         calendar.timeZone = self.calendar.timeZone
@@ -153,7 +191,7 @@ private nonisolated extension StatisticsHeatmapBuilder {
                 }
             }
 
-            for book in books {
+            for book in sessionBooks {
                 for session in book.readingSessions {
                     addSession(start: session.startedAt, end: session.endedAt)
                 }

@@ -22,15 +22,20 @@ final class StatisticsSourceStore: ObservableObject {
         let statsDecision: CacheDecision
         let heatmapDecision: CacheDecision
         let yearOptions: [Int]
+        let sessionSourceRequestToken: Int?
     }
 
     @Published private(set) var sourceSnapshot: StatisticsSourceSnapshot?
+    @Published private(set) var sessionSourceSnapshot: StatisticsSessionSourceSnapshot?
     @Published private(set) var statsCache: StatisticsStatsCache?
     @Published private(set) var heatmapCache: StatisticsHeatmapCache?
     @Published private(set) var isUpdatingStatsCache = false
     @Published private(set) var isUpdatingHeatmapCache = false
+    @Published private(set) var isUpdatingSessionSource = false
 
     private var trackingGeneration = 0
+    private var sessionTrackingGeneration = 0
+    private var sessionInvalidationGeneration = 0
     private var observedBooks: [Book] = []
 
     var currentBooksSignature: Int? {
@@ -40,6 +45,51 @@ final class StatisticsSourceStore: ObservableObject {
     func refreshSourceAndTrack(books: [Book]) {
         observedBooks = books
         refreshObservedBooksAndTrack()
+    }
+
+    func refreshSessionSourceAndTrack(books: [Book]) {
+        observedBooks = books
+        sessionTrackingGeneration += 1
+        let generation = sessionTrackingGeneration
+
+        guard !observedBooks.isEmpty else {
+            invalidateSessionSource()
+            return
+        }
+
+        if sourceSnapshot == nil {
+            refreshObservedBooksAndTrack()
+        }
+
+        guard let booksSignature = sourceSnapshot?.booksSignature else {
+            invalidateSessionSource()
+            return
+        }
+
+        isUpdatingSessionSource = true
+        defer { isUpdatingSessionSource = false }
+
+        let sessionsSignature = withObservationTracking {
+            Self.sessionsSignature(observedBooks)
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.sessionTrackingGeneration == generation else { return }
+                self.refreshSessionSourceAndTrack(books: self.observedBooks)
+            }
+        }
+
+        updateSessionSource(
+            booksSignature: booksSignature,
+            sessionsSignature: sessionsSignature,
+            books: observedBooks
+        )
+    }
+
+    func invalidateSessionSource() {
+        sessionTrackingGeneration += 1
+        sessionInvalidationGeneration &+= 1
+        sessionSourceSnapshot = nil
+        isUpdatingSessionSource = false
     }
 
     private func refreshObservedBooksAndTrack() {
@@ -79,7 +129,8 @@ final class StatisticsSourceStore: ObservableObject {
                 exactHeatmapCache: nil,
                 statsDecision: .missing,
                 heatmapDecision: .missing,
-                yearOptions: [selectedYear]
+                yearOptions: [selectedYear],
+                sessionSourceRequestToken: nil
             )
         }
 
@@ -89,16 +140,42 @@ final class StatisticsSourceStore: ObservableObject {
             scope: scope,
             booksSignature: signature
         )
-        let heatmapKey = StatisticsHeatmapCacheKey(
-            selectedYear: selectedYear,
-            scope: scope,
-            activityMetric: activityMetric,
+        let activitySignature = heatmapActivitySignature(
+            for: activityMetric,
             booksSignature: signature
         )
+        let heatmapKey = activitySignature.map { activitySignature in
+            StatisticsHeatmapCacheKey(
+                selectedYear: selectedYear,
+                scope: scope,
+                activityMetric: activityMetric,
+                booksSignature: signature,
+                activitySignature: activitySignature
+            )
+        }
         let exactStatsCache = statsCache?.key == statsKey ? statsCache : nil
         let sourceStatsCache = statsCache?.key.booksSignature == signature ? statsCache : nil
         let scopeStatsCache = makeScopeStatsCache(signature: signature, scope: scope)
-        let exactHeatmapCache = heatmapCache?.key == heatmapKey ? heatmapCache : nil
+        let exactHeatmapCache: StatisticsHeatmapCache?
+        if let heatmapKey {
+            exactHeatmapCache = heatmapCache?.key == heatmapKey ? heatmapCache : nil
+        } else {
+            exactHeatmapCache = nil
+        }
+
+        let heatmapDecision: CacheDecision
+        if let heatmapKey {
+            heatmapDecision = cacheDecision(
+                desiredKey: heatmapKey,
+                cachedKey: heatmapCache?.key,
+                exactCacheAvailable: exactHeatmapCache != nil,
+                isUpdating: isUpdatingHeatmapCache || isUpdatingSessionSource
+            )
+        } else if isUpdatingSessionSource {
+            heatmapDecision = .updating
+        } else {
+            heatmapDecision = .missing
+        }
 
         return ViewState(
             booksSignature: signature,
@@ -114,13 +191,12 @@ final class StatisticsSourceStore: ObservableObject {
                 exactCacheAvailable: exactStatsCache != nil,
                 isUpdating: isUpdatingStatsCache
             ),
-            heatmapDecision: cacheDecision(
-                desiredKey: heatmapKey,
-                cachedKey: heatmapCache?.key,
-                exactCacheAvailable: exactHeatmapCache != nil,
-                isUpdating: isUpdatingHeatmapCache
-            ),
-            yearOptions: sourceStatsCache?.summary.yearOptions ?? [selectedYear]
+            heatmapDecision: heatmapDecision,
+            yearOptions: sourceStatsCache?.summary.yearOptions ?? [selectedYear],
+            sessionSourceRequestToken: sessionSourceRequestToken(
+                for: activityMetric,
+                booksSignature: signature
+            )
         )
     }
 
@@ -150,23 +226,38 @@ final class StatisticsSourceStore: ObservableObject {
         guard heatmapCache?.key != key else { return }
         guard let sourceSnapshot, sourceSnapshot.booksSignature == key.booksSignature else { return }
 
+        let sessionSource = matchingSessionSource(for: key)
+        if key.activityMetric == .readingMinutes, sessionSource == nil {
+            return
+        }
+
         isUpdatingHeatmapCache = true
         defer { isUpdatingHeatmapCache = false }
 
-        let pipeline = StatisticsComputePipeline(source: sourceSnapshot, now: now, calendar: calendar)
+        let pipeline = StatisticsComputePipeline(
+            source: sourceSnapshot,
+            sessionSource: sessionSource,
+            now: now,
+            calendar: calendar
+        )
         let cache = await pipeline.makeHeatmapCache(for: key)
         guard !Task.isCancelled else { return }
         guard self.sourceSnapshot?.booksSignature == key.booksSignature else { return }
+        if key.activityMetric == .readingMinutes {
+            guard matchingSessionSource(for: key) != nil else { return }
+        }
         heatmapCache = cache
     }
 
     func reset() {
         observedBooks = []
         sourceSnapshot = nil
+        sessionSourceSnapshot = nil
         statsCache = nil
         heatmapCache = nil
         isUpdatingStatsCache = false
         isUpdatingHeatmapCache = false
+        isUpdatingSessionSource = false
     }
 
     @discardableResult
@@ -177,6 +268,33 @@ final class StatisticsSourceStore: ObservableObject {
 
         let snapshot = StatisticsSourceSnapshot(signature: signature, books: books)
         sourceSnapshot = snapshot
+
+        if let sessionSourceSnapshot, sessionSourceSnapshot.booksSignature != signature {
+            self.sessionSourceSnapshot = nil
+            sessionInvalidationGeneration &+= 1
+        }
+
+        return snapshot
+    }
+
+    @discardableResult
+    private func updateSessionSource(
+        booksSignature: Int,
+        sessionsSignature: Int,
+        books: [Book]
+    ) -> StatisticsSessionSourceSnapshot {
+        if let sessionSourceSnapshot,
+           sessionSourceSnapshot.booksSignature == booksSignature,
+           sessionSourceSnapshot.sessionsSignature == sessionsSignature {
+            return sessionSourceSnapshot
+        }
+
+        let snapshot = StatisticsSessionSourceSnapshot(
+            booksSignature: booksSignature,
+            sessionsSignature: sessionsSignature,
+            books: books
+        )
+        sessionSourceSnapshot = snapshot
         return snapshot
     }
 
@@ -190,6 +308,44 @@ final class StatisticsSourceStore: ObservableObject {
             return nil
         }
         return statsCache
+    }
+
+    private func heatmapActivitySignature(
+        for activityMetric: StatisticsActivityMetric,
+        booksSignature: Int
+    ) -> Int? {
+        guard activityMetric == .readingMinutes else {
+            return booksSignature
+        }
+        guard let sessionSourceSnapshot,
+              sessionSourceSnapshot.booksSignature == booksSignature else {
+            return nil
+        }
+        return sessionSourceSnapshot.sessionsSignature
+    }
+
+    private func sessionSourceRequestToken(
+        for activityMetric: StatisticsActivityMetric,
+        booksSignature: Int
+    ) -> Int? {
+        guard activityMetric == .readingMinutes else { return nil }
+        guard sessionSourceSnapshot?.booksSignature != booksSignature else { return nil }
+
+        return booksSignature &* 31 &+ sessionInvalidationGeneration
+    }
+
+    private func matchingSessionSource(
+        for key: StatisticsHeatmapCacheKey
+    ) -> StatisticsSessionSourceSnapshot? {
+        guard key.activityMetric == .readingMinutes else {
+            return nil
+        }
+        guard let sessionSourceSnapshot,
+              sessionSourceSnapshot.booksSignature == key.booksSignature,
+              sessionSourceSnapshot.sessionsSignature == key.activitySignature else {
+            return nil
+        }
+        return sessionSourceSnapshot
     }
 
     private func cacheDecision<Key: Equatable>(

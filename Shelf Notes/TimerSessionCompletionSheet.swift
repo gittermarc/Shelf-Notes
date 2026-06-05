@@ -105,7 +105,9 @@ struct TimerSessionCompletionSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Speichern") {
-                        save()
+                        Task {
+                            await save()
+                        }
                     }
                     .disabled(book == nil)
                 }
@@ -137,7 +139,8 @@ struct TimerSessionCompletionSheet: View {
         return ReadingSessionLogging.remainingPages(totalPages: book.pageCount, sessions: book.readingSessionsSafe)
     }
 
-    private func save() {
+    @MainActor
+    private func save() async {
         guard let book else {
             lastError = "Buch nicht gefunden – kann nicht speichern."
             return
@@ -185,8 +188,7 @@ struct TimerSessionCompletionSheet: View {
             ReadingSessionChangeNotifier.post()
 
             // Update Challenges (weekly/monthly) after a successful session save.
-            ChallengeEngine.ensureCurrentChallenges(modelContext: modelContext)
-            ChallengeEngine.refreshCompletionForActiveChallenges(modelContext: modelContext)
+            await ChallengeEngine.ensureCurrentChallengesAndRefreshCompletion(modelContext: modelContext)
 
             timer.discardPendingCompletion()
             dismiss()

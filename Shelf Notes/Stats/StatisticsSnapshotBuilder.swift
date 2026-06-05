@@ -1,26 +1,28 @@
 import Foundation
 
-nonisolated struct StatisticsBookSnapshot: Sendable {
-    nonisolated struct ReadingSessionSnapshot: Sendable {
-        let startedAt: Date
-        let endedAt: Date
-        let durationSeconds: Int
-        let pagesRead: Int?
+nonisolated struct StatisticsReadingSessionSnapshot: Sendable {
+    let startedAt: Date
+    let endedAt: Date
+    let durationSeconds: Int
+    let pagesRead: Int?
 
-        init(startedAt: Date, endedAt: Date, durationSeconds: Int, pagesRead: Int?) {
-            self.startedAt = startedAt
-            self.endedAt = endedAt
-            self.durationSeconds = durationSeconds
-            self.pagesRead = pagesRead
-        }
-
-        @MainActor init(session: ReadingSession) {
-            self.startedAt = session.startedAt
-            self.endedAt = session.endedAt
-            self.durationSeconds = session.durationSeconds
-            self.pagesRead = session.pagesReadNormalized
-        }
+    init(startedAt: Date, endedAt: Date, durationSeconds: Int, pagesRead: Int?) {
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.durationSeconds = durationSeconds
+        self.pagesRead = pagesRead
     }
+
+    @MainActor init(session: ReadingSession) {
+        self.startedAt = session.startedAt
+        self.endedAt = session.endedAt
+        self.durationSeconds = session.durationSeconds
+        self.pagesRead = session.pagesReadNormalized
+    }
+}
+
+nonisolated struct StatisticsBookSnapshot: Sendable {
+    typealias ReadingSessionSnapshot = StatisticsReadingSessionSnapshot
 
     let title: String
     let author: String
@@ -78,7 +80,7 @@ nonisolated struct StatisticsBookSnapshot: Sendable {
         self.readingSessions = readingSessions
     }
 
-    @MainActor init(book: Book) {
+    @MainActor init(book: Book, includeReadingSessions: Bool = false) {
         self.title = book.title
         self.author = book.author
         self.statusRawValue = book.statusRawValue
@@ -95,7 +97,33 @@ nonisolated struct StatisticsBookSnapshot: Sendable {
         self.ratingsCount = book.ratingsCount
         self.mainCategory = book.mainCategory
         self.userRatingAverage1 = book.userRatingAverage1
-        self.readingSessions = book.readingSessionsSafe.map(ReadingSessionSnapshot.init)
+        self.readingSessions = includeReadingSessions
+            ? book.readingSessionsSafe.map { ReadingSessionSnapshot(session: $0) }
+            : []
+    }
+
+    var status: ReadingStatus {
+        ReadingStatus.fromPersisted(statusRawValue) ?? .toRead
+    }
+}
+
+nonisolated struct StatisticsSessionBookSnapshot: Sendable {
+    let statusRawValue: String
+    let readingSessions: [StatisticsReadingSessionSnapshot]
+
+    init(statusRawValue: String, readingSessions: [StatisticsReadingSessionSnapshot]) {
+        self.statusRawValue = statusRawValue
+        self.readingSessions = readingSessions
+    }
+
+    init(bookSnapshot: StatisticsBookSnapshot) {
+        self.statusRawValue = bookSnapshot.statusRawValue
+        self.readingSessions = bookSnapshot.readingSessions
+    }
+
+    @MainActor init(book: Book) {
+        self.statusRawValue = book.statusRawValue
+        self.readingSessions = book.readingSessionsSafe.map { StatisticsReadingSessionSnapshot(session: $0) }
     }
 
     var status: ReadingStatus {

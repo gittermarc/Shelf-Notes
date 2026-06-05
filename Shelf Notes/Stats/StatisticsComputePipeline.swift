@@ -6,7 +6,7 @@ nonisolated struct StatisticsSourceSnapshot: Sendable {
 
     @MainActor init(signature: Int, books: [Book]) {
         self.booksSignature = signature
-        self.books = books.map(StatisticsBookSnapshot.init)
+        self.books = books.map { StatisticsBookSnapshot(book: $0) }
     }
 
     init(booksSignature: Int, books: [StatisticsBookSnapshot]) {
@@ -15,17 +15,42 @@ nonisolated struct StatisticsSourceSnapshot: Sendable {
     }
 }
 
+nonisolated struct StatisticsSessionSourceSnapshot: Sendable {
+    let booksSignature: Int
+    let sessionsSignature: Int
+    let sessionBooks: [StatisticsSessionBookSnapshot]
+
+    @MainActor init(booksSignature: Int, sessionsSignature: Int, books: [Book]) {
+        self.booksSignature = booksSignature
+        self.sessionsSignature = sessionsSignature
+        self.sessionBooks = books.map { StatisticsSessionBookSnapshot(book: $0) }
+    }
+
+    init(
+        booksSignature: Int,
+        sessionsSignature: Int,
+        sessionBooks: [StatisticsSessionBookSnapshot]
+    ) {
+        self.booksSignature = booksSignature
+        self.sessionsSignature = sessionsSignature
+        self.sessionBooks = sessionBooks
+    }
+}
+
 nonisolated struct StatisticsComputePipeline {
     let source: StatisticsSourceSnapshot
+    let sessionSource: StatisticsSessionSourceSnapshot?
     let now: Date
     let calendar: Calendar
 
     init(
         source: StatisticsSourceSnapshot,
+        sessionSource: StatisticsSessionSourceSnapshot? = nil,
         now: Date = Date(),
         calendar: Calendar = .current
     ) {
         self.source = source
+        self.sessionSource = sessionSource
         self.now = now
         self.calendar = calendar
     }
@@ -53,12 +78,17 @@ nonisolated struct StatisticsComputePipeline {
         for key: StatisticsHeatmapCacheKey
     ) async -> StatisticsHeatmapCache {
         let source = source
+        let sessionSource = sessionSource
         let now = now
         let calendar = calendar
 
         let task = Task.detached(priority: .utility) {
             let builder = StatisticsHeatmapBuilder(now: now, calendar: calendar)
-            return builder.makeHeatmapCache(for: key, books: source.books)
+            return builder.makeHeatmapCache(
+                for: key,
+                books: source.books,
+                sessionBooks: sessionSource?.sessionBooks ?? []
+            )
         }
 
         return await withTaskCancellationHandler(operation: {

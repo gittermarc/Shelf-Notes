@@ -28,7 +28,7 @@ struct StatisticsComputePipelineTests {
     }
 
     @MainActor
-    @Test func bookSnapshotCarriesReadingSessionsIntoValueSnapshot() {
+    @Test func bookSnapshotOmitsReadingSessionsByDefault() {
         let book = Book(title: "Night Read", author: "Ada", status: .reading)
         let session = ReadingSession(
             book: book,
@@ -40,11 +40,32 @@ struct StatisticsComputePipelineTests {
 
         let snapshot = StatisticsBookSnapshot(book: book)
 
-        #expect(snapshot.readingSessions.count == 1)
-        #expect(snapshot.readingSessions.first?.startedAt == date(2026, 1, 1, 23, 30))
-        #expect(snapshot.readingSessions.first?.endedAt == date(2026, 1, 2, 0, 30))
-        #expect(snapshot.readingSessions.first?.durationSeconds == 3_600)
-        #expect(snapshot.readingSessions.first?.pagesRead == 24)
+        #expect(snapshot.readingSessions.isEmpty)
+    }
+
+    @MainActor
+    @Test func sessionSourceSnapshotCarriesReadingSessionsIntoValueSnapshot() {
+        let book = Book(title: "Night Read", author: "Ada", status: .reading)
+        let session = ReadingSession(
+            book: book,
+            startedAt: date(2026, 1, 1, 23, 30),
+            endedAt: date(2026, 1, 2, 0, 30),
+            pagesRead: 24
+        )
+        book.readingSessionsSafe = [session]
+
+        let snapshot = StatisticsSessionSourceSnapshot(
+            booksSignature: 10,
+            sessionsSignature: 20,
+            books: [book]
+        )
+        let sessionSnapshot = snapshot.sessionBooks.first?.readingSessions.first
+
+        #expect(snapshot.sessionBooks.count == 1)
+        #expect(sessionSnapshot?.startedAt == date(2026, 1, 1, 23, 30))
+        #expect(sessionSnapshot?.endedAt == date(2026, 1, 2, 0, 30))
+        #expect(sessionSnapshot?.durationSeconds == 3_600)
+        #expect(sessionSnapshot?.pagesRead == 24)
     }
 
     @Test func heatmapBuilderSplitsReadingMinutesAcrossDays() {
@@ -95,15 +116,7 @@ struct StatisticsComputePipelineTests {
                 language: "DE",
                 categories: ["Fiction / Thriller / Noir"],
                 mainCategory: "Fiction / Thriller / Noir",
-                userRatingAverage1: 4.6,
-                readingSessions: [
-                    .init(
-                        startedAt: date(2026, 1, 2, 20, 0),
-                        endedAt: date(2026, 1, 2, 21, 0),
-                        durationSeconds: 3_600,
-                        pagesRead: 40
-                    )
-                ]
+                userRatingAverage1: 4.6
             ),
             StatisticsBookSnapshot(
                 title: "Beta",
@@ -115,26 +128,52 @@ struct StatisticsComputePipelineTests {
                 pageCount: 150,
                 language: "EN",
                 categories: ["Nonfiction / History"],
-                mainCategory: "Nonfiction / History",
-                readingSessions: [
-                    .init(
-                        startedAt: date(2026, 2, 12, 9, 0),
-                        endedAt: date(2026, 2, 12, 9, 45),
-                        durationSeconds: 2_700,
-                        pagesRead: 18
-                    )
-                ]
+                mainCategory: "Nonfiction / History"
             )
         ]
 
+        let sessionSource = StatisticsSessionSourceSnapshot(
+            booksSignature: 77,
+            sessionsSignature: 78,
+            sessionBooks: [
+                StatisticsSessionBookSnapshot(
+                    statusRawValue: ReadingStatus.finished.rawValue,
+                    readingSessions: [
+                        .init(
+                            startedAt: date(2026, 1, 2, 20, 0),
+                            endedAt: date(2026, 1, 2, 21, 0),
+                            durationSeconds: 3_600,
+                            pagesRead: 40
+                        )
+                    ]
+                ),
+                StatisticsSessionBookSnapshot(
+                    statusRawValue: ReadingStatus.reading.rawValue,
+                    readingSessions: [
+                        .init(
+                            startedAt: date(2026, 2, 12, 9, 0),
+                            endedAt: date(2026, 2, 12, 9, 45),
+                            durationSeconds: 2_700,
+                            pagesRead: 18
+                        )
+                    ]
+                )
+            ]
+        )
         let source = StatisticsSourceSnapshot(booksSignature: 77, books: books)
-        let pipeline = StatisticsComputePipeline(source: source, now: date(2026, 4, 15), calendar: calendar)
+        let pipeline = StatisticsComputePipeline(
+            source: source,
+            sessionSource: sessionSource,
+            now: date(2026, 4, 15),
+            calendar: calendar
+        )
         let statsKey = StatisticsStatsCacheKey(selectedYear: 2026, scope: .all, booksSignature: 77)
         let heatmapKey = StatisticsHeatmapCacheKey(
             selectedYear: 2026,
             scope: .all,
             activityMetric: .readingMinutes,
-            booksSignature: 77
+            booksSignature: 77,
+            activitySignature: 78
         )
 
         let firstStats = await pipeline.makeStatsCache(for: statsKey)

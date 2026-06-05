@@ -53,7 +53,7 @@ extension StatisticsView {
             weeks: effectiveCache?.weeks ?? [],
             hintText: heatmapHintText(range: range),
             isValid: isValid,
-            isUpdating: !isValid && sourceStore.isUpdatingHeatmapCache
+            isUpdating: !isValid && (sourceStore.isUpdatingHeatmapCache || sourceStore.isUpdatingSessionSource)
         )
     }
 
