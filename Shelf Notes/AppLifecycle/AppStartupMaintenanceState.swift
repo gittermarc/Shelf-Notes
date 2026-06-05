@@ -12,7 +12,7 @@ struct AppStartupMaintenanceState: Equatable {
     let didRunCoverBackfill: Bool
     let hasActiveCoverBackfillTask: Bool
     let didOfferCSVImport: Bool
-    let bookCount: Int
+    let bookCount: Int?
 
     var shouldCancelCoverBackfill: Bool {
         !isSceneActive
@@ -24,5 +24,9 @@ struct AppStartupMaintenanceState: Equatable {
 
     var shouldOfferCSVImport: Bool {
         !didOfferCSVImport && bookCount == 0
+    }
+
+    var shouldRefreshLibraryCaches: Bool {
+        isSceneActive
     }
 }

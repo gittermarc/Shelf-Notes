@@ -28,7 +28,7 @@ enum AppStartupMaintenanceService {
         didRunCoverBackfill: Bool,
         coverBackfillTask: Task<Void, Never>?,
         didOfferCSVImport: Bool,
-        bookCount: Int
+        bookCount: Int?
     ) -> AppStartupMaintenanceState {
         AppStartupMaintenanceState(
             isSceneActive: scenePhase == .active,
@@ -39,16 +39,30 @@ enum AppStartupMaintenanceService {
         )
     }
 
-    static func tagsIndexSignature(books: [Book]) -> UInt64 {
-        TagsIndexStore.taskSignature(books: books)
+    static func fetchBookCount(modelContext: ModelContext) -> Int? {
+        let descriptor = FetchDescriptor<Book>()
+        return try? modelContext.fetchCount(descriptor)
     }
 
     static func refreshTagsIndex(
-        books: [Book],
-        signature: UInt64,
+        modelContext: ModelContext,
         store: TagsIndexStore
     ) {
-        store.update(books: books, signature: signature)
+        let snapshot = fetchBookTagsSnapshot(modelContext: modelContext)
+        let signature = TagsIndexBuilder.computeSignature(snapshot: snapshot)
+        store.update(snapshot: snapshot, signature: signature)
+    }
+
+    static func fetchBookTagsSnapshot(modelContext: ModelContext) -> [TagsIndexBuilder.BookTagsSnapshot] {
+        let descriptor = FetchDescriptor<Book>(
+            sortBy: [SortDescriptor(\Book.createdAt, order: .reverse)]
+        )
+
+        let books = (try? modelContext.fetch(descriptor)) ?? []
+        return TagsIndexBuilder.makeSnapshot(books: books)
+            .sorted { lhs, rhs in
+                lhs.id.uuidString < rhs.id.uuidString
+            }
     }
 
     static func migrateReadingStatusIfNeeded(modelContext: ModelContext) async {
@@ -57,13 +71,8 @@ enum AppStartupMaintenanceService {
 
     static func bookForPending(
         _ pending: ReadingTimerManager.PendingCompletion,
-        books: [Book],
         modelContext: ModelContext
     ) -> Book? {
-        if let match = books.first(where: { $0.id == pending.bookID }) {
-            return match
-        }
-
         let bookID = pending.bookID
         let descriptor = FetchDescriptor<Book>(
             predicate: #Predicate<Book> { $0.id == bookID }

@@ -11,7 +11,6 @@ import SwiftData
 struct RootView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
-    @Query private var books: [Book]
     @StateObject private var pro = ProManager()
     @StateObject private var timer = ReadingTimerManager()
     @StateObject private var tagsIndexStore = TagsIndexStore()
@@ -22,6 +21,7 @@ struct RootView: View {
 
     @AppStorage("did_offer_csv_import_v1") private var didOfferCSVImport: Bool = false
     @State private var showingCSVFirstRun = false
+    @State private var lastKnownBookCount: Int? = nil
 
     // MARK: - Appearance
     @AppStorage(AppearanceStorageKey.colorScheme) private var colorSchemeRaw: String = AppColorSchemeOption.system.rawValue
@@ -41,7 +41,6 @@ struct RootView: View {
     @SceneStorage("root_selected_tab_v1") private var selectedTab: Int = 0
 
     var body: some View {
-        let tagsIndexSignature = AppStartupMaintenanceService.tagsIndexSignature(books: books)
         let appTextColor = resolvedTextColor
         let preferredScheme = resolvedColorSchemeOption.preferredColorScheme
         let design = resolvedFontDesignOption.fontDesign
@@ -97,30 +96,18 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, newPhase in
             handleScenePhaseChange(newPhase)
         }
-        .onAppear {
-            offerCSVImportOnFirstRunIfNeeded()
-        }
         .sheet(isPresented: $showingCSVFirstRun) {
             NavigationStack {
                 CSVImportExportView(title: "Erstimport", showExportSection: false, showDoneButton: true)
             }
         }
-        .task(id: tagsIndexSignature) {
-            AppStartupMaintenanceService.refreshTagsIndex(
-                books: books,
-                signature: tagsIndexSignature,
-                store: tagsIndexStore
-            )
-        }
         .task {
-            await AppStartupMaintenanceService.migrateReadingStatusIfNeeded(modelContext: modelContext)
-            scheduleCoverBackfillIfNeeded()
+            await runStartupMaintenance()
         }
         .sheet(item: $timer.pendingCompletion) { pending in
             TimerSessionCompletionSheet(
                 book: AppStartupMaintenanceService.bookForPending(
                     pending,
-                    books: books,
                     modelContext: modelContext
                 ),
                 pending: pending
@@ -167,7 +154,7 @@ struct RootView: View {
             didRunCoverBackfill: didRunCoverBackfill,
             coverBackfillTask: coverBackfillTask,
             didOfferCSVImport: didOfferCSVImport,
-            bookCount: books.count
+            bookCount: lastKnownBookCount
         )
     }
 
@@ -179,8 +166,12 @@ struct RootView: View {
             didRunCoverBackfill: didRunCoverBackfill,
             coverBackfillTask: coverBackfillTask,
             didOfferCSVImport: didOfferCSVImport,
-            bookCount: books.count
+            bookCount: lastKnownBookCount
         )
+
+        if state.shouldRefreshLibraryCaches {
+            refreshBookCountAndTagsIndex(shouldOfferCSVImport: false)
+        }
 
         if state.shouldCancelCoverBackfill {
             cancelCoverBackfill()
@@ -189,8 +180,31 @@ struct RootView: View {
         }
     }
 
-    private func offerCSVImportOnFirstRunIfNeeded() {
-        guard maintenanceState.shouldOfferCSVImport else { return }
+    private func runStartupMaintenance() async {
+        await AppStartupMaintenanceService.migrateReadingStatusIfNeeded(modelContext: modelContext)
+        refreshBookCountAndTagsIndex(shouldOfferCSVImport: true)
+        scheduleCoverBackfillIfNeeded()
+    }
+
+    private func refreshBookCountAndTagsIndex(shouldOfferCSVImport: Bool) {
+        let bookCount = AppStartupMaintenanceService.fetchBookCount(modelContext: modelContext)
+        lastKnownBookCount = bookCount
+        AppStartupMaintenanceService.refreshTagsIndex(modelContext: modelContext, store: tagsIndexStore)
+
+        guard shouldOfferCSVImport else { return }
+        offerCSVImportOnFirstRunIfNeeded(bookCount: bookCount)
+    }
+
+    private func offerCSVImportOnFirstRunIfNeeded(bookCount: Int?) {
+        let state = AppStartupMaintenanceService.state(
+            scenePhase: scenePhase,
+            didRunCoverBackfill: didRunCoverBackfill,
+            coverBackfillTask: coverBackfillTask,
+            didOfferCSVImport: didOfferCSVImport,
+            bookCount: bookCount
+        )
+
+        guard state.shouldOfferCSVImport else { return }
         didOfferCSVImport = true
         showingCSVFirstRun = true
     }

@@ -91,4 +91,37 @@ struct AppStartupMaintenanceStateTests {
         #expect(!alreadyOffered.shouldOfferCSVImport)
         #expect(!nonEmptyLibrary.shouldOfferCSVImport)
     }
+
+    @Test func doesNotOfferCSVImportBeforeBookCountIsKnown() {
+        let unknownLibrarySize = AppStartupMaintenanceState(
+            isSceneActive: true,
+            didRunCoverBackfill: false,
+            hasActiveCoverBackfillTask: false,
+            didOfferCSVImport: false,
+            bookCount: nil
+        )
+
+        #expect(!unknownLibrarySize.shouldOfferCSVImport)
+    }
+
+    @Test func refreshesLibraryCachesOnlyForActiveScenes() {
+        let active = AppStartupMaintenanceState(
+            isSceneActive: true,
+            didRunCoverBackfill: true,
+            hasActiveCoverBackfillTask: false,
+            didOfferCSVImport: true,
+            bookCount: 3
+        )
+
+        let inactive = AppStartupMaintenanceState(
+            isSceneActive: false,
+            didRunCoverBackfill: true,
+            hasActiveCoverBackfillTask: false,
+            didOfferCSVImport: true,
+            bookCount: 3
+        )
+
+        #expect(active.shouldRefreshLibraryCaches)
+        #expect(!inactive.shouldRefreshLibraryCaches)
+    }
 }
