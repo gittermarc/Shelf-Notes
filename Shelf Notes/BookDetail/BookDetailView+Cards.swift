@@ -210,7 +210,10 @@ extension BookDetailView {
     }
 
     var tagsCard: some View {
-        BookDetailCard(title: "Tags") {
+        let autocompleteSuggestions = tagAutocompleteSuggestions
+        let suggestionState = tagSuggestionViewState
+
+        return BookDetailCard(title: "Tags") {
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
                     TagSectionHeader(
@@ -250,7 +253,7 @@ extension BookDetailView {
                         }
                 }
 
-                if !tagAutocompleteSuggestions.isEmpty {
+                if !autocompleteSuggestions.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         TagSectionHeader("Passend zur Eingabe")
 
@@ -258,7 +261,7 @@ extension BookDetailView {
                             columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
                             spacing: 8
                         ) {
-                            ForEach(tagAutocompleteSuggestions, id: \.self) { suggestion in
+                            ForEach(autocompleteSuggestions, id: \.self) { suggestion in
                                 TagSuggestionPill(text: suggestion) {
                                     acceptTagSuggestion(suggestion)
                                 }
@@ -269,7 +272,7 @@ extension BookDetailView {
                 }
 
                 if tagDraftQuery.isEmpty {
-                    if !smartTagSuggestionItems.isEmpty {
+                    if !suggestionState.smartItems.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             TagSectionHeader(
                                 "Vorgeschlagen für dieses Buch",
@@ -280,7 +283,7 @@ extension BookDetailView {
                                 columns: [GridItem(.adaptive(minimum: 148), spacing: 8)],
                                 spacing: 8
                             ) {
-                                ForEach(smartTagSuggestionItems) { item in
+                                ForEach(suggestionState.smartItems) { item in
                                     SmartTagSuggestionButton(item: item) {
                                         acceptTagSuggestion(item.tag)
                                     }
@@ -295,7 +298,7 @@ extension BookDetailView {
                     }
                 }
 
-                if !frequentTagItems.isEmpty {
+                if !suggestionState.frequentItems.isEmpty {
                     Divider().opacity(0.5)
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -308,7 +311,7 @@ extension BookDetailView {
                             columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
                             spacing: 8
                         ) {
-                            ForEach(frequentTagItems) { item in
+                            ForEach(suggestionState.frequentItems) { item in
                                 TagPickPill(
                                     text: item.tag,
                                     count: item.count,

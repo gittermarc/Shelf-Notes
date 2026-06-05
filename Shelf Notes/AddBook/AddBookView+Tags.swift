@@ -2,7 +2,10 @@ import SwiftUI
 
 extension AddBookView {
     var taggingCard: some View {
-        AddBookCard(title: "Tags") {
+        let autocompleteSuggestions = addBookAutocompleteSuggestions
+        let suggestionState = addBookTagSuggestionViewState
+
+        return AddBookCard(title: "Tags") {
             VStack(alignment: .leading, spacing: 12) {
                 AddBookSubsection(title: "Aktuelle Tags") {
                     if vm.tags.isEmpty {
@@ -37,13 +40,13 @@ extension AddBookView {
                         }
                 }
 
-                if !addBookAutocompleteSuggestions.isEmpty {
+                if !autocompleteSuggestions.isEmpty {
                     AddBookSubsection(title: "Passend zur Eingabe") {
                         LazyVGrid(
                             columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
                             spacing: 8
                         ) {
-                            ForEach(addBookAutocompleteSuggestions, id: \.self) { suggestion in
+                            ForEach(autocompleteSuggestions, id: \.self) { suggestion in
                                 TagSuggestionPill(text: suggestion) {
                                     vm.acceptTagSuggestion(suggestion)
                                 }
@@ -54,7 +57,7 @@ extension AddBookView {
                 }
 
                 if vm.tagDraftQuery.isEmpty {
-                    if !addBookSmartSuggestionItems.isEmpty {
+                    if !suggestionState.smartItems.isEmpty {
                         AddBookSubsection(title: "Vorgeschlagen für dieses Buch") {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Aus Kategorien, ähnlichen Büchern und deiner vorhandenen Bibliothek.")
@@ -65,7 +68,7 @@ extension AddBookView {
                                     columns: [GridItem(.adaptive(minimum: 148), spacing: 8)],
                                     spacing: 8
                                 ) {
-                                    ForEach(addBookSmartSuggestionItems) { item in
+                                    ForEach(suggestionState.smartItems) { item in
                                         SmartTagSuggestionButton(item: item) {
                                             vm.acceptTagSuggestion(item.tag)
                                         }
@@ -81,7 +84,7 @@ extension AddBookView {
                     }
                 }
 
-                if !addBookFrequentTagItems.isEmpty {
+                if !suggestionState.frequentItems.isEmpty {
                     Divider().opacity(0.5)
 
                     AddBookSubsection(title: "Häufig verwendet") {
@@ -89,7 +92,7 @@ extension AddBookView {
                             columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
                             spacing: 8
                         ) {
-                            ForEach(addBookFrequentTagItems) { item in
+                            ForEach(suggestionState.frequentItems) { item in
                                 TagPickPill(
                                     text: item.tag,
                                     count: item.count,
@@ -117,28 +120,26 @@ extension AddBookView {
         )
     }
 
-    var addBookSmartSuggestionItems: [TagSuggestionDisplayItem] {
+    var addBookTagSuggestionViewState: TagSuggestionViewState {
         let target = vm.tagSuggestionSnapshot()
         let library = TagSuggestionEngine.makeSnapshots(books: allBooks)
-        let suggestions = TagSuggestionEngine.suggestions(
-            for: target,
-            in: library,
-            limit: 8
-        )
 
-        return TagSuggestionPresentationBuilder.suggestedItems(
-            from: suggestions,
+        return TagSuggestionViewStateBuilder.make(
+            target: target,
+            library: library,
+            tagCounts: tagsIndexStore.tagCounts,
             selectedTags: vm.tags,
-            limit: 6
+            suggestionLimit: 8,
+            smartLimit: 6,
+            frequentLimit: 18
         )
     }
 
+    var addBookSmartSuggestionItems: [TagSuggestionDisplayItem] {
+        addBookTagSuggestionViewState.smartItems
+    }
+
     var addBookFrequentTagItems: [FrequentTagDisplayItem] {
-        TagSuggestionPresentationBuilder.frequentItems(
-            from: tagsIndexStore.tagCounts,
-            selectedTags: vm.tags,
-            excludingTags: addBookSmartSuggestionItems.map(\.tag),
-            limit: 18
-        )
+        addBookTagSuggestionViewState.frequentItems
     }
 }

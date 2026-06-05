@@ -305,29 +305,27 @@ extension BookDetailView {
             .map { (tag: $0.tag, count: $0.count) }
     }
 
-    var smartTagSuggestionItems: [TagSuggestionDisplayItem] {
+    var tagSuggestionViewState: TagSuggestionViewState {
         let target = TagSuggestionEngine.makeSnapshot(book: book)
         let library = TagSuggestionEngine.makeSnapshots(books: allBooks)
-        let suggestions = TagSuggestionEngine.suggestions(
-            for: target,
-            in: library,
-            limit: 8
-        )
 
-        return TagSuggestionPresentationBuilder.suggestedItems(
-            from: suggestions,
+        return TagSuggestionViewStateBuilder.make(
+            target: target,
+            library: library,
+            tagCounts: cachedTagCountsSorted,
             selectedTags: book.tags,
-            limit: 6
+            suggestionLimit: 8,
+            smartLimit: 6,
+            frequentLimit: 18
         )
     }
 
+    var smartTagSuggestionItems: [TagSuggestionDisplayItem] {
+        tagSuggestionViewState.smartItems
+    }
+
     var frequentTagItems: [FrequentTagDisplayItem] {
-        TagSuggestionPresentationBuilder.frequentItems(
-            from: cachedTagCountsSorted,
-            selectedTags: book.tags,
-            excludingTags: smartTagSuggestionItems.map(\.tag),
-            limit: 18
-        )
+        tagSuggestionViewState.frequentItems
     }
 
     func isTagSelected(_ tag: String) -> Bool {
