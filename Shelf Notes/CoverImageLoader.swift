@@ -31,8 +31,10 @@ enum CoverImageLoader {
 
         // 1) Local file URLs (user uploaded covers)
         if url.isFileURL {
-            return await background(qos: .userInitiated) {
-                try? Data(contentsOf: url)
+            return await CoverImageRequestDeduper.shared.data(for: url) {
+                await background(qos: .userInitiated) {
+                    try? Data(contentsOf: url)
+                }
             }
         }
 
@@ -40,95 +42,67 @@ enum CoverImageLoader {
         if let diskData = await background(qos: .userInitiated, work: {
             ImageDiskCache.shared.data(for: url)
         }) {
+            RemoteCoverFailureCache.shared.recordSuccess(for: url)
             return diskData
         }
 
         if Task.isCancelled { return nil }
+        if RemoteCoverFailureCache.shared.shouldSkip(url) { return nil }
 
-        // 3) Network (URLCache as a bonus)
-        var request = URLRequest(url: url)
-        request.cachePolicy = .returnCacheDataElseLoad
+        // 3) Network (URLCache as a bonus), deduped across concurrent consumers.
+        return await CoverImageRequestDeduper.shared.data(for: url) {
+            if RemoteCoverFailureCache.shared.shouldSkip(url) { return nil }
 
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            if Task.isCancelled { return nil }
+            var request = URLRequest(url: url)
+            request.cachePolicy = .returnCacheDataElseLoad
 
-            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                if Task.isCancelled { return nil }
+
+                if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                    RemoteCoverFailureCache.shared.recordFailure(for: url)
+                    return nil
+                }
+
+                // Disk write + pruning off-main
+                _ = await background(qos: .utility) {
+                    ImageDiskCache.shared.store(data: data, for: url)
+                }
+
+                RemoteCoverFailureCache.shared.recordSuccess(for: url)
+                return data
+            } catch {
+                RemoteCoverFailureCache.shared.recordFailure(for: url)
                 return nil
             }
-
-            // Disk write off-main
-            _ = await background(qos: .utility) {
-                ImageDiskCache.shared.store(data: data, for: url)
-            }
-
-            return data
-        } catch {
-            return nil
         }
     }
 
     static func loadImage(for url: URL) async -> UIImage? {
         if Task.isCancelled { return nil }
 
-        // 1) Local file URLs (user uploaded covers)
-        if url.isFileURL {
-            if let cached = ImageMemoryCache.shared.image(for: url) {
-                return cached
-            }
-
-            let img: UIImage? = await background(qos: .userInitiated) {
-                guard let data = try? Data(contentsOf: url) else { return nil }
-                return autoreleasepool { UIImage(data: data) }
-            }
-
-            if let img {
-                ImageMemoryCache.shared.setImage(img, for: url)
-            }
-            return img
-        }
-
-        // 2) Memory cache
+        // 1) Memory cache
         if let cached = ImageMemoryCache.shared.image(for: url) {
             return cached
         }
 
-        // 3) Disk cache (local-only)
-        if let diskImg = await background(qos: .userInitiated, work: {
-            ImageDiskCache.shared.image(for: url)
-        }) {
-            ImageMemoryCache.shared.setImage(diskImg, for: url)
-            return diskImg
+        // 2) Raw bytes are deduped and failure-cached by `loadImageData(for:)`.
+        guard let data = await loadImageData(for: url) else {
+            return nil
         }
 
         if Task.isCancelled { return nil }
 
-        // 4) Network (URLCache as a bonus)
-        var request = URLRequest(url: url)
-        request.cachePolicy = .returnCacheDataElseLoad
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            if Task.isCancelled { return nil }
-
-            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                return nil
-            }
-
-            // Decode + disk write off-main (these are the expensive parts)
-            let decoded: UIImage? = await background(qos: .userInitiated) {
-                guard let img = autoreleasepool(invoking: { UIImage(data: data) }) else { return nil }
-                ImageDiskCache.shared.store(data: data, for: url)
-                return img
-            }
-
-            if let decoded {
-                ImageMemoryCache.shared.setImage(decoded, for: url)
-            }
-            return decoded
-        } catch {
-            return nil
+        // 3) Decode off-main.
+        let decoded: UIImage? = await background(qos: .userInitiated) {
+            autoreleasepool(invoking: { UIImage(data: data) })
         }
+
+        if let decoded {
+            ImageMemoryCache.shared.setImage(decoded, for: url)
+        }
+        return decoded
     }
 
     // MARK: - Helpers

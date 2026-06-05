@@ -232,6 +232,8 @@ struct SettingsView: View {
                 Button("Löschen", role: .destructive) {
                     ImageDiskCache.shared.clearAll()
                     ImageMemoryCache.shared.clear()
+                    RemoteCoverFailureCache.shared.clear()
+                    CoverImageRequestDeduper.shared.cancelAll()
                     #if canImport(UIKit)
                     SyncedThumbnailMemoryCache.shared.removeAll()
                     #endif
