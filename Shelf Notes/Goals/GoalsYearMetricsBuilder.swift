@@ -18,6 +18,33 @@ nonisolated struct GoalsYearMetrics {
     let pagesPerMonth: Int
 }
 
+extension GoalsYearMetrics: Equatable {
+    static func == (lhs: GoalsYearMetrics, rhs: GoalsYearMetrics) -> Bool {
+        lhs.selectedYear == rhs.selectedYear &&
+        lhs.availableYears == rhs.availableYears &&
+        lhs.finishedBooks.map(\.id) == rhs.finishedBooks.map(\.id) &&
+        lhs.pagesReadInSelectedYear == rhs.pagesReadInSelectedYear &&
+        lhs.countedBooksWithPagesCount == rhs.countedBooksWithPagesCount &&
+        lhs.averagePagesPerBook == rhs.averagePagesPerBook &&
+        lhs.monthsCount == rhs.monthsCount &&
+        lhs.pagesPerMonth == rhs.pagesPerMonth
+    }
+
+    static func placeholder(
+        selectedYear: Int,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> GoalsYearMetrics {
+        GoalsYearMetricsBuilder.make(
+            selectedYear: selectedYear,
+            books: [],
+            goals: [],
+            now: now,
+            calendar: calendar
+        )
+    }
+}
+
 nonisolated enum GoalsYearMetricsBuilder {
     static func make(
         selectedYear: Int,
@@ -36,6 +63,7 @@ nonisolated enum GoalsYearMetricsBuilder {
         let availableYears = availableYears(
             from: analyticsIndex.finishedBookYears,
             goals: goals,
+            selectedYear: selectedYear,
             now: now,
             calendar: calendar
         )
@@ -58,6 +86,7 @@ nonisolated enum GoalsYearMetricsBuilder {
     private static func availableYears(
         from finishedBookYears: [Int],
         goals: [ReadingGoal],
+        selectedYear: Int,
         now: Date,
         calendar: Calendar
     ) -> [Int] {
@@ -67,6 +96,7 @@ nonisolated enum GoalsYearMetricsBuilder {
         var years = Set<Int>()
         years.insert(currentYear)
         years.insert(nextYear)
+        years.insert(selectedYear)
 
         for year in finishedBookYears {
             years.insert(year)

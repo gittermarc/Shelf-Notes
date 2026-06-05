@@ -13,23 +13,30 @@ import SwiftData
 struct GoalsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \ReadingGoal.year, order: .reverse) private var goals: [ReadingGoal]
-    @Query private var books: [Book]
+
+    // Only finished books are relevant for annual goals.
+    // SwiftData predicates should use the persisted strings directly here;
+    // referencing ReadingStatus.finished.rawValue inside #Predicate can fail macro expansion.
+    @Query(filter: #Predicate<Book> { $0.statusRawValue == "finished" || $0.statusRawValue == "Gelesen" })
+    private var finishedBooks: [Book]
 
     @State private var selectedYear: Int = Calendar.current.component(.year, from: Date())
     @State private var targetCount: Int = ReadingGoalDraftPolicy.defaultTargetCount
     @State private var pendingInsertedGoalsByYear: [Int: ReadingGoal] = [:]
     @State private var saveDebouncer = ModelContextSaveDebouncer()
+    @StateObject private var metricsModel = GoalsYearMetricsModel()
 
     private let columns: [GridItem] = [
         GridItem(.adaptive(minimum: 62), spacing: 10)
     ]
 
     var body: some View {
-        let metrics = GoalsYearMetricsBuilder.make(
+        let token = GoalsYearMetricsModel.makeInputToken(
             selectedYear: selectedYear,
-            books: books,
+            books: finishedBooks,
             goals: goals
         )
+        let metrics = metricsModel.metrics
 
         return ScrollView {
             VStack(spacing: 14) {
@@ -43,6 +50,14 @@ struct GoalsView: View {
         }
         .navigationTitle("Leseziele")
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: token) {
+            metricsModel.recompute(
+                selectedYear: selectedYear,
+                books: finishedBooks,
+                goals: goals,
+                token: token
+            )
+        }
         .onAppear { loadGoalForSelectedYear() }
         .onChange(of: selectedYear) { _, _ in
             flushPendingGoalSave()

@@ -53,6 +53,20 @@ struct GoalsYearMetricsBuilderTests {
         #expect(metrics.availableYears == [2028, 2027, 2026, 2024])
     }
 
+    @Test func yearOptionsKeepSelectedYearAvailable() {
+        let now = date(2026, 4, 15)
+
+        let metrics = GoalsYearMetricsBuilder.make(
+            selectedYear: 2030,
+            books: [],
+            goals: [],
+            now: now,
+            calendar: calendar
+        )
+
+        #expect(metrics.availableYears == [2030, 2027, 2026])
+    }
+
     @Test func filtersFinishedBooksBySelectedYearUsingReadToOrReadFrom() {
         let now = date(2026, 4, 15)
         let finishedInYear = makeBook(
@@ -88,6 +102,61 @@ struct GoalsYearMetricsBuilderTests {
 
         #expect(metrics.finishedBooks.map(\.title) == ["In Year"])
         #expect(metrics.pagesReadInSelectedYear == 320)
+    }
+
+    @Test func includesLegacyFinishedStatus() {
+        let now = date(2026, 4, 15)
+        let legacyFinished = makeBook(
+            title: "Legacy",
+            status: .toRead,
+            createdAt: date(2026, 1, 1),
+            readTo: date(2026, 2, 10),
+            pageCount: 220
+        )
+        legacyFinished.statusRawValue = "Gelesen"
+
+        let metrics = GoalsYearMetricsBuilder.make(
+            selectedYear: 2026,
+            books: [legacyFinished],
+            goals: [],
+            now: now,
+            calendar: calendar
+        )
+
+        #expect(metrics.finishedBooks.map(\.title) == ["Legacy"])
+        #expect(metrics.pagesReadInSelectedYear == 220)
+    }
+
+    @Test @MainActor func metricsInputTokenUsesOnlyGoalRelevantBookFields() {
+        let book = makeBook(
+            title: "Relevant",
+            status: .finished,
+            createdAt: date(2026, 1, 1),
+            readTo: date(2026, 2, 10),
+            pageCount: 220
+        )
+        let original = GoalsYearMetricsModel.makeInputToken(
+            selectedYear: 2026,
+            books: [book],
+            goals: []
+        )
+
+        book.notes = "Ändert für Ziele nichts."
+        let notesChanged = GoalsYearMetricsModel.makeInputToken(
+            selectedYear: 2026,
+            books: [book],
+            goals: []
+        )
+
+        book.pageCount = 221
+        let pageCountChanged = GoalsYearMetricsModel.makeInputToken(
+            selectedYear: 2026,
+            books: [book],
+            goals: []
+        )
+
+        #expect(original == notesChanged)
+        #expect(original != pageCountChanged)
     }
 
     @Test func sortsFinishedBooksDeterministicallyByReadDate() {
