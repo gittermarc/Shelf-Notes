@@ -19,11 +19,8 @@ struct TagsView: View {
     @State private var deletePlan: TagDeletePlan?
 
     var body: some View {
-        let snapshots = TagsDashboardBuilder.makeSnapshots(books: books)
-        let dashboard = TagsDashboardBuilder.build(snapshots: snapshots)
-        let hygieneReport = TagHygieneBuilder.build(snapshots: snapshots)
-        let visibleEntries = TagsDashboardBuilder.filteredEntries(
-            dashboard.entries,
+        let overview = TagsOverviewBuilder.build(
+            books: books,
             searchText: searchText,
             sortMode: sortMode
         )
@@ -31,29 +28,29 @@ struct TagsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    TagsDashboardHero(summary: dashboard.summary)
+                    TagsDashboardHero(summary: overview.dashboard.summary)
 
-                    if dashboard.summary.untaggedBooksCount > 0 {
+                    if overview.dashboard.summary.untaggedBooksCount > 0 {
                         NavigationLink {
                             UntaggedBooksView(books: books)
                         } label: {
-                            UntaggedBooksCallout(count: dashboard.summary.untaggedBooksCount)
+                            UntaggedBooksCallout(count: overview.dashboard.summary.untaggedBooksCount)
                         }
                         .buttonStyle(.plain)
                     }
 
-                    TagHygieneInsightsSection(report: hygieneReport, books: books) { result in
+                    TagHygieneInsightsSection(report: overview.hygieneReport, books: books) { result in
                         applyMutation(result)
                     }
 
-                    if dashboard.entries.isEmpty {
+                    if overview.dashboard.entries.isEmpty {
                         TagsEmptyState(hasBooks: !books.isEmpty)
                             .frame(maxWidth: .infinity)
                             .padding(.top, 24)
                     } else {
                         TagsExplorerControls(sortMode: $sortMode)
 
-                        if visibleEntries.isEmpty {
+                        if overview.visibleEntries.isEmpty {
                             ContentUnavailableView(
                                 "Keine Tags gefunden",
                                 systemImage: "magnifyingglass",
@@ -67,7 +64,7 @@ struct TagsView: View {
                                 alignment: .leading,
                                 spacing: 12
                             ) {
-                                ForEach(visibleEntries) { entry in
+                                ForEach(overview.visibleEntries) { entry in
                                     NavigationLink {
                                         TagDetailView(tag: entry.tag, books: books)
                                     } label: {

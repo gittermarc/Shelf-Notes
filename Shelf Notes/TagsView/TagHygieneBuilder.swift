@@ -48,10 +48,23 @@ enum TagHygieneBuilder {
         snapshots: [TagsDashboardBookSnapshot],
         maxInsights: Int = 6
     ) -> TagHygieneReport {
-        let occurrences = makeOccurrences(from: snapshots)
         let untaggedBookIDs = snapshots
             .filter { TagsDashboardBuilder.isUntagged($0) }
             .map(\.id)
+
+        return build(
+            snapshots: snapshots,
+            untaggedBookIDs: untaggedBookIDs,
+            maxInsights: maxInsights
+        )
+    }
+
+    static func build(
+        snapshots: [TagsDashboardBookSnapshot],
+        untaggedBookIDs: [UUID],
+        maxInsights: Int = 6
+    ) -> TagHygieneReport {
+        let occurrences = makeOccurrences(from: snapshots)
 
         var insights: [TagHygieneInsight] = []
         insights.append(contentsOf: formattingInsights(from: occurrences))
@@ -382,7 +395,19 @@ enum TagHygieneBuilder {
     }
 
     private static func localizedTagSort(_ lhs: String, _ rhs: String) -> Bool {
-        lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
+        let caseInsensitiveResult = lhs.localizedCaseInsensitiveCompare(rhs)
+
+        if caseInsensitiveResult != .orderedSame {
+            return caseInsensitiveResult == .orderedAscending
+        }
+
+        let localizedResult = lhs.localizedCompare(rhs)
+
+        if localizedResult != .orderedSame {
+            return localizedResult == .orderedAscending
+        }
+
+        return lhs < rhs
     }
 
     private static func uuidSort(_ lhs: UUID, _ rhs: UUID) -> Bool {

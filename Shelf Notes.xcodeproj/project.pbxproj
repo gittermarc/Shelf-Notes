@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		609C21E32FD3222400AE116A /* ShelfNotesAppTests.xctestplan in Resources */ = {isa = PBXBuildFile; fileRef = 60F397F22FC0584100FD171D /* ShelfNotesAppTests.xctestplan */; };
+		609C21E42FD3222400AE116A /* ShelfNotesAppTests.xctestplan in Resources */ = {isa = PBXBuildFile; fileRef = 60F397F22FC0584100FD171D /* ShelfNotesAppTests.xctestplan */; };
 		60CF7A4F2F4F22A1000F12A7 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 60CF7A4E2F4F22A1000F12A7 /* WidgetKit.framework */; };
 		60CF7A512F4F22A1000F12A7 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 60CF7A502F4F22A1000F12A7 /* SwiftUI.framework */; };
 		60CF7A622F4F22A3000F12A7 /* ShelfNotesLiveActivityExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 60CF7A4C2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -51,6 +53,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		609C21E12FD3212D00AE116A /* Shelf NotesTests */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Shelf NotesTests"; sourceTree = "<group>"; };
+		609C21E22FD321F700AE116A /* ShelfNotesAppTests.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = ShelfNotesAppTests.xctestplan; sourceTree = "<group>"; };
 		60A8A7F62EEB1E7600BED10B /* Shelf Notes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Shelf Notes.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		60A8A8072EEB1E7800BED10B /* Shelf NotesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Shelf NotesTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		60A8A8112EEB1E7800BED10B /* Shelf NotesUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Shelf NotesUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -164,6 +168,8 @@
 		60A8A7ED2EEB1E7600BED10B = {
 			isa = PBXGroup;
 			children = (
+				609C21E22FD321F700AE116A /* ShelfNotesAppTests.xctestplan */,
+				609C21E12FD3212D00AE116A /* Shelf NotesTests */,
 				60F397F22FC0584100FD171D /* ShelfNotesAppTests.xctestplan */,
 				60F3960D2FC0520900FD171D /* Shelf NotesTests */,
 				60F3960C2FC0520900FD171D /* Shelf NotesUITests */,
@@ -352,6 +358,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				609C21E32FD3222400AE116A /* ShelfNotesAppTests.xctestplan in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -359,6 +366,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				609C21E42FD3222400AE116A /* ShelfNotesAppTests.xctestplan in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -428,7 +436,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Shelf Notes/Shelf_Notes.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = HPJKAPZ8A3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -463,7 +471,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Shelf Notes/Shelf_Notes.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = HPJKAPZ8A3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -707,7 +715,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = ShelfNotesLiveActivityExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = HPJKAPZ8A3;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShelfNotesLiveActivity/Info.plist;
@@ -739,7 +747,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = ShelfNotesLiveActivityExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = HPJKAPZ8A3;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShelfNotesLiveActivity/Info.plist;
