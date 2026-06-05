@@ -44,17 +44,10 @@ extension BookCollection {
     }
 
     func addBook(_ book: Book) {
-        if contains(book) { return }
-        var arr = booksSafe
-        arr.append(book)
-        booksSafe = arr
-        updatedAt = Date()
+        CollectionMembershipMutation.add(book, to: self)
     }
 
     func removeBook(_ book: Book) {
-        var arr = booksSafe
-        arr.removeAll { $0.id == book.id }
-        booksSafe = arr
-        updatedAt = Date()
+        CollectionMembershipMutation.remove(book, from: self)
     }
 }

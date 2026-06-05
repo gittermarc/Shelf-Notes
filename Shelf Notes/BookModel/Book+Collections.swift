@@ -23,15 +23,10 @@ extension Book {
     }
 
     func addToCollection(_ collection: BookCollection) {
-        if isInCollection(collection) { return }
-        var items = collectionsSafe
-        items.append(collection)
-        collectionsSafe = items
+        CollectionMembershipMutation.add(self, to: collection)
     }
 
     func removeFromCollection(_ collection: BookCollection) {
-        var items = collectionsSafe
-        items.removeAll { $0.id == collection.id }
-        collectionsSafe = items
+        CollectionMembershipMutation.remove(self, from: collection)
     }
 }

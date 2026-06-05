@@ -178,13 +178,10 @@ struct CollectionsView: View {
     }
 
     private func deleteCollection(_ collection: BookCollection) {
-        let booksInCollection = collection.booksSafe
-
-        for book in booksInCollection {
-            var current = book.collectionsSafe
-            current.removeAll { $0.id == collection.id }
-            book.collectionsSafe = current
-        }
+        CollectionMembershipMutation.removeCollectionReferences(
+            collection,
+            from: collection.booksSafe
+        )
 
         modelContext.delete(collection)
         modelContext.saveWithDiagnostics()

@@ -191,28 +191,9 @@ extension LibraryView {
         let targets = selectedBooks()
         guard !targets.isEmpty else { return }
 
-        var collectionBooks = collection.booksSafe
-        var didChange = false
+        let changedCount = CollectionMembershipMutation.add(targets, to: collection)
+        guard changedCount > 0 else { return }
 
-        for b in targets {
-            // Book -> Collection
-            var cols = b.collectionsSafe
-            if !cols.contains(where: { $0.id == collection.id }) {
-                cols.append(collection)
-                b.collectionsSafe = cols
-                didChange = true
-            }
-
-            // Collection -> Book
-            if !collectionBooks.contains(where: { $0.id == b.id }) {
-                collectionBooks.append(b)
-                didChange = true
-            }
-        }
-
-        guard didChange else { return }
-        collection.booksSafe = collectionBooks
-        collection.updatedAt = Date()
         modelContext.saveWithDiagnostics()
     }
 

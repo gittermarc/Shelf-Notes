@@ -8,61 +8,90 @@
 
 import SwiftUI
 import SwiftData
-import StoreKit
-import Combine
-
-#if canImport(PhotosUI)
-import PhotosUI
-#endif
-
-#if canImport(UIKit)
-import UIKit
-#endif
 
 struct CollectionDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var collection: BookCollection
 
     @State private var nameDraft: String = ""
+    @State private var searchText: String = ""
+    @State private var statusFilter: CollectionDetailStatusFilter = .all
+    @State private var sortMode: CollectionDetailSortMode = .title
+    @State private var showingBookPicker = false
     @State private var saveDebouncer = ModelContextSaveDebouncer()
 
     var body: some View {
-        List {
-            Section("Name") {
-                TextField("Listenname", text: nameDraftBinding)
-            }
+        let books = collection.booksSafe
+        let bookSnapshots = CollectionDetailBuilder.makeBookSnapshots(books: books)
+        let detailState = CollectionDetailBuilder.build(
+            collectionName: collection.name,
+            books: bookSnapshots
+        )
+        let visibleSnapshots = CollectionDetailBuilder.filteredBooks(
+            bookSnapshots,
+            searchText: searchText,
+            statusFilter: statusFilter,
+            sortMode: sortMode
+        )
+        let booksByID = Dictionary(books.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let visibleBooks = visibleSnapshots.compactMap { booksByID[$0.id] }
+        let coverBooks = detailState.representativeBookIDs.compactMap { booksByID[$0] }
 
-            Section("Bücher") {
-                if (collection.books ?? []).isEmpty {
-                    ContentUnavailableView(
-                        "Noch leer",
-                        systemImage: "book",
-                        description: Text("Öffne ein Buch → „Listen“ → Haken setzen.")
-                    )
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                CollectionDetailHeaderView(
+                    state: detailState,
+                    coverBooks: coverBooks,
+                    nameDraft: nameDraftBinding,
+                    onAddBooks: openBookPicker
+                )
+
+                if detailState.isEmpty {
+                    CollectionDetailEmptyState(onAddBooks: openBookPicker)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 14)
                 } else {
-                    ForEach(sortedBooks) { b in
-                        NavigationLink {
-                            BookDetailView(book: b)
-                        } label: {
-                            BookRowView(book: b)
-                        }
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                flushPendingNameSave()
-                                var current = b.collections ?? []
-                                current.removeAll(where: { $0.id == collection.id })
-                                b.collections = current
-                                modelContext.saveWithDiagnostics()
-                            } label: {
-                                Label("Entfernen", systemImage: "trash")
+                    CollectionDetailBookFilterBar(
+                        searchText: $searchText,
+                        statusFilter: $statusFilter,
+                        sortMode: $sortMode
+                    )
+
+                    if visibleBooks.isEmpty {
+                        ContentUnavailableView(
+                            "Keine Bücher gefunden",
+                            systemImage: "line.3.horizontal.decrease.circle",
+                            description: Text("Passe Suche, Status oder Sortierung an, um deine Bücher wiederzufinden.")
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 18)
+                    } else {
+                        LazyVStack(alignment: .leading, spacing: 10) {
+                            ForEach(visibleBooks) { book in
+                                CollectionDetailBookCardView(book: book) {
+                                    remove(book)
+                                }
                             }
                         }
                     }
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 18)
         }
         .navigationTitle(collection.name.isEmpty ? "Liste" : collection.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: openBookPicker) {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("Bücher hinzufügen")
+            }
+        }
+        .sheet(isPresented: $showingBookPicker) {
+            CollectionBookPickerSheet(collection: collection)
+        }
         .onAppear { nameDraft = collection.name }
         .onDisappear { flushPendingNameSave() }
     }
@@ -95,13 +124,54 @@ struct CollectionDetailView: View {
         saveDebouncer.flush()
     }
 
-    private var sortedBooks: [Book] {
-        (collection.books ?? []).sorted { a, b in
-            let ta = a.title.trimmingCharacters(in: .whitespacesAndNewlines)
-            let tb = b.title.trimmingCharacters(in: .whitespacesAndNewlines)
-            return ta.localizedCaseInsensitiveCompare(tb) == .orderedAscending
-        }
+    private func openBookPicker() {
+        flushPendingNameSave()
+        showingBookPicker = true
     }
 
+    private func remove(_ book: Book) {
+        flushPendingNameSave()
+
+        guard CollectionMembershipMutation.remove(book, from: collection) else {
+            return
+        }
+
+        modelContext.saveWithDiagnostics()
+    }
 }
 
+private struct CollectionDetailEmptyState: View {
+    let onAddBooks: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "rectangle.stack.badge.plus")
+                .font(.system(size: 44))
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 6) {
+                Text("Diese Liste wartet auf Bücher")
+                    .font(.headline)
+
+                Text("Füge passende Titel direkt hier hinzu und mache daraus ein kuratiertes Regal statt einer leeren Hülle.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button(action: onAddBooks) {
+                Label("Bücher hinzufügen", systemImage: "plus.circle.fill")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(.primary.opacity(0.06), lineWidth: 1)
+        )
+    }
+}

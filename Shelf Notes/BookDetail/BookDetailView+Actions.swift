@@ -151,20 +151,13 @@ extension BookDetailView {
     }
 
     func setMembership(_ isMember: Bool, for collection: BookCollection) {
-        var cols = book.collectionsSafe
-        var books = collection.booksSafe
-
-        if isMember {
-            if !cols.contains(where: { $0.id == collection.id }) { cols.append(collection) }
-            if !books.contains(where: { $0.id == book.id }) { books.append(book) }
-        } else {
-            cols.removeAll { $0.id == collection.id }
-            books.removeAll { $0.id == book.id }
+        guard CollectionMembershipMutation.setMembership(
+            isMember,
+            book: book,
+            collection: collection
+        ) else {
+            return
         }
-
-        book.collectionsSafe = cols
-        collection.booksSafe = books
-        collection.updatedAt = Date()
 
         _ = saveDetail()
     }
