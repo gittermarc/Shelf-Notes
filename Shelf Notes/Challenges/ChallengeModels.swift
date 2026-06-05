@@ -40,6 +40,11 @@ enum ChallengeMetric: String, Codable, CaseIterable, Identifiable, Sendable {
     case sessions
     case pagesRead
     case booksFinished
+    case shortSessions
+    case booksProgressed
+    case sessionNotes
+    case finishedBooksRated
+    case finishedBooksNoted
 
     nonisolated var id: String { rawValue }
 
@@ -55,6 +60,16 @@ enum ChallengeMetric: String, Codable, CaseIterable, Identifiable, Sendable {
             return "doc.plaintext"
         case .booksFinished:
             return "checkmark.seal"
+        case .shortSessions:
+            return "timer.circle"
+        case .booksProgressed:
+            return "book.pages"
+        case .sessionNotes:
+            return "note.text"
+        case .finishedBooksRated:
+            return "star.bubble"
+        case .finishedBooksNoted:
+            return "text.book.closed"
         }
     }
 
@@ -70,6 +85,16 @@ enum ChallengeMetric: String, Codable, CaseIterable, Identifiable, Sendable {
             return "Seiten"
         case .booksFinished:
             return "Bücher"
+        case .shortSessions:
+            return "Kurz-Sessions"
+        case .booksProgressed:
+            return "Bücher"
+        case .sessionNotes:
+            return "Notizen"
+        case .finishedBooksRated:
+            return "Bewertungen"
+        case .finishedBooksNoted:
+            return "Buchnotizen"
         }
     }
 }

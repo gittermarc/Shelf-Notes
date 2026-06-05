@@ -29,6 +29,7 @@ nonisolated struct ChallengeSessionContribution: Equatable, Sendable {
     let durationSeconds: Int
     let pagesRead: Int
     let didMarkBookFinished: Bool
+    let hasNote: Bool
 
     init(
         bookID: UUID,
@@ -36,7 +37,8 @@ nonisolated struct ChallengeSessionContribution: Equatable, Sendable {
         endedAt: Date,
         durationSeconds: Int,
         pagesRead: Int?,
-        didMarkBookFinished: Bool
+        didMarkBookFinished: Bool,
+        hasNote: Bool = false
     ) {
         self.bookID = bookID
         self.startedAt = startedAt
@@ -44,6 +46,7 @@ nonisolated struct ChallengeSessionContribution: Equatable, Sendable {
         self.durationSeconds = max(0, durationSeconds)
         self.pagesRead = max(0, pagesRead ?? 0)
         self.didMarkBookFinished = didMarkBookFinished
+        self.hasNote = hasNote
     }
 }
 

@@ -13,6 +13,7 @@ nonisolated struct ChallengeDashboardState: Equatable {
     var historyItems: [ChallengeDashboardItem]
     var completedCount: Int
     var unclaimedCount: Int
+    var rewardSummary: ChallengeRewardSummary
 
     var isEmpty: Bool {
         activeItems.isEmpty && historyItems.isEmpty
@@ -23,7 +24,8 @@ nonisolated struct ChallengeDashboardState: Equatable {
         activeItems: [],
         historyItems: [],
         completedCount: 0,
-        unclaimedCount: 0
+        unclaimedCount: 0,
+        rewardSummary: .empty
     )
 }
 
@@ -39,7 +41,7 @@ nonisolated struct ChallengeDashboardHero: Equatable {
 }
 
 nonisolated struct ChallengeDashboardItem: Identifiable, Equatable {
-    enum Status: Equatable {
+    nonisolated enum Status: Equatable {
         case active
         case readyToClaim
         case claimed
@@ -63,6 +65,8 @@ nonisolated struct ChallengeDashboardItem: Identifiable, Equatable {
     let progressText: String
     let remainingText: String
     let motivationText: String
+    let difficultyText: String
+    let rewardText: String
 
     var progressFraction: Double {
         progress?.fraction(target: targetValue) ?? 0

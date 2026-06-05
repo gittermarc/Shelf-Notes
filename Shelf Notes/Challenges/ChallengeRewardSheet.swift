@@ -31,13 +31,13 @@ struct ChallengeRewardSheet: View {
                     .font(.headline)
                     .multilineTextAlignment(.center)
 
-                Text("\(item.progressText) • \(item.kind.displayName)")
+                Text("\(item.progressText) • \(item.kind.displayName) • \(item.difficultyText)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
 
-            Text("Das war kein Zufall. Das war eine kleine, saubere Lese-Serie. Genau so entsteht Momentum.")
+            Text(item.rewardText)
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

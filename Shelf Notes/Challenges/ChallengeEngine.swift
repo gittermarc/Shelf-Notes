@@ -32,7 +32,9 @@ nonisolated enum ChallengeEngine {
             monthly: monthly,
             existingWeekly: fetchChallengeSnapshot(kind: .weekly, periodStart: weekly.start, modelContext: modelContext),
             existingMonthly: fetchChallengeSnapshot(kind: .monthly, periodStart: monthly.start, modelContext: modelContext),
-            snapshot: snapshot
+            snapshot: snapshot,
+            recentWeekly: fetchRecentChallengeSnapshots(kind: .weekly, before: weekly.start, limit: 3, modelContext: modelContext),
+            recentMonthly: fetchRecentChallengeSnapshots(kind: .monthly, before: monthly.start, limit: 3, modelContext: modelContext)
         )
 
         applyEnsurePlans(plans, modelContext: modelContext)
@@ -74,6 +76,8 @@ nonisolated enum ChallengeEngine {
         let existingWeekly = fetchChallengeSnapshot(kind: .weekly, periodStart: weekly.start, modelContext: modelContext)
         let existingMonthly = fetchChallengeSnapshot(kind: .monthly, periodStart: monthly.start, modelContext: modelContext)
         let activeSnapshots = fetchActiveChallenges(now: now, modelContext: modelContext).map { ChallengeRecordSnapshot(from: $0) }
+        let recentWeekly = fetchRecentChallengeSnapshots(kind: .weekly, before: weekly.start, limit: 3, modelContext: modelContext)
+        let recentMonthly = fetchRecentChallengeSnapshots(kind: .monthly, before: monthly.start, limit: 3, modelContext: modelContext)
 
         let plans = await Task.detached(priority: .utility) {
             let ensures = planEnsures(
@@ -81,7 +85,9 @@ nonisolated enum ChallengeEngine {
                 monthly: monthly,
                 existingWeekly: existingWeekly,
                 existingMonthly: existingMonthly,
-                snapshot: snapshot
+                snapshot: snapshot,
+                recentWeekly: recentWeekly,
+                recentMonthly: recentMonthly
             )
             let completions = planCompletions(now: now, active: activeSnapshots, snapshot: snapshot)
             return (ensures, completions)
@@ -129,6 +135,12 @@ nonisolated enum ChallengeEngine {
         let baselineStart = calendar().date(byAdding: .day, value: -daysBack, to: periodStart)
             ?? periodStart.addingTimeInterval(TimeInterval(-daysBack * 24 * 60 * 60))
         let snapshot = buildSnapshot(range: baselineStart..<periodEnd, modelContext: modelContext)
+        let recentMetrics = fetchRecentChallengeSnapshots(
+            kind: kind,
+            before: periodStart,
+            limit: 3,
+            modelContext: modelContext
+        ).map(\.metric)
         let generated = rerollReplacement(
             kind: kind,
             current: challenge.metric,
@@ -136,7 +148,8 @@ nonisolated enum ChallengeEngine {
             periodEnd: periodEnd,
             snapshot: snapshot,
             challengeID: challenge.id,
-            rerollsUsed: challenge.rerollsUsed
+            rerollsUsed: challenge.rerollsUsed,
+            recentMetrics: recentMetrics
         )
 
         challenge.metric = generated.metric

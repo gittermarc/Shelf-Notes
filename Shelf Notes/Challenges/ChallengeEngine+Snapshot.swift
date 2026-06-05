@@ -12,26 +12,58 @@ import SwiftData
 extension ChallengeEngine {
 
     struct SessionSnapshot: Sendable {
+        let bookID: UUID?
         let startedAt: Date
         let endedAt: Date
         let durationSeconds: Int
         let pagesRead: Int
+        let hasNote: Bool
 
-        init(startedAt: Date, endedAt: Date, durationSeconds: Int, pagesRead: Int) {
+        init(
+            bookID: UUID? = nil,
+            startedAt: Date,
+            endedAt: Date,
+            durationSeconds: Int,
+            pagesRead: Int,
+            hasNote: Bool = false
+        ) {
+            self.bookID = bookID
             self.startedAt = startedAt
             self.endedAt = endedAt
             self.durationSeconds = max(0, durationSeconds)
             self.pagesRead = max(0, pagesRead)
+            self.hasNote = hasNote
+        }
+    }
+
+    struct FinishedBookSnapshot: Sendable {
+        let readTo: Date
+        let hasUserNote: Bool
+        let hasUserRating: Bool
+
+        init(readTo: Date, hasUserNote: Bool = false, hasUserRating: Bool = false) {
+            self.readTo = readTo
+            self.hasUserNote = hasUserNote
+            self.hasUserRating = hasUserRating
         }
     }
 
     struct Snapshot: Sendable {
         let sessions: [SessionSnapshot]
-        let finishedBookReadTo: [Date]
+        let finishedBooks: [FinishedBookSnapshot]
+
+        var finishedBookReadTo: [Date] {
+            finishedBooks.map(\.readTo)
+        }
 
         init(sessions: [SessionSnapshot], finishedBookReadTo: [Date]) {
             self.sessions = sessions
-            self.finishedBookReadTo = finishedBookReadTo
+            self.finishedBooks = finishedBookReadTo.map { FinishedBookSnapshot(readTo: $0) }
+        }
+
+        init(sessions: [SessionSnapshot], finishedBooks: [FinishedBookSnapshot]) {
+            self.sessions = sessions
+            self.finishedBooks = finishedBooks
         }
     }
 
@@ -78,8 +110,8 @@ extension ChallengeEngine {
     @MainActor
     static func buildSnapshot(range: Range<Date>, modelContext: ModelContext) -> Snapshot {
         let sessions = fetchSessionSnapshots(in: range, modelContext: modelContext)
-        let finished = fetchFinishedBookReadToDates(in: range, modelContext: modelContext)
-        return Snapshot(sessions: sessions, finishedBookReadTo: finished)
+        let finished = fetchFinishedBookSnapshots(in: range, modelContext: modelContext)
+        return Snapshot(sessions: sessions, finishedBooks: finished)
     }
 
     @MainActor
@@ -93,6 +125,19 @@ extension ChallengeEngine {
 
         guard let record = (try? modelContext.fetch(descriptor))?.first else { return nil }
         return ChallengeRecordSnapshot(from: record)
+    }
+
+    @MainActor
+    static func fetchRecentChallengeSnapshots(kind: ChallengeKind, before periodStart: Date, limit: Int, modelContext: ModelContext) -> [ChallengeRecordSnapshot] {
+        let kindRaw = kind.rawValue
+        let before = periodStart
+        var descriptor = FetchDescriptor<ChallengeRecord>(
+            predicate: #Predicate<ChallengeRecord> { $0.kindRawValue == kindRaw && $0.periodStart < before },
+            sortBy: [SortDescriptor(\ChallengeRecord.periodStart, order: .reverse)]
+        )
+        descriptor.fetchLimit = max(0, limit)
+        let records = (try? modelContext.fetch(descriptor)) ?? []
+        return records.map { ChallengeRecordSnapshot(from: $0) }
     }
 }
 
@@ -112,18 +157,20 @@ private extension ChallengeEngine {
         let results = (try? modelContext.fetch(descriptor)) ?? []
         if results.isEmpty { return [] }
 
-        return results.map {
+        return results.map { session in
             SessionSnapshot(
-                startedAt: $0.startedAt,
-                endedAt: $0.endedAt,
-                durationSeconds: $0.durationSeconds,
-                pagesRead: $0.pagesReadNormalized ?? 0
+                bookID: session.book?.id,
+                startedAt: session.startedAt,
+                endedAt: session.endedAt,
+                durationSeconds: session.durationSeconds,
+                pagesRead: session.pagesReadNormalized ?? 0,
+                hasNote: !(session.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             )
         }
     }
 
     @MainActor
-    static func fetchFinishedBookReadToDates(in range: Range<Date>, modelContext: ModelContext) -> [Date] {
+    static func fetchFinishedBookSnapshots(in range: Range<Date>, modelContext: ModelContext) -> [FinishedBookSnapshot] {
         let start = range.lowerBound
         let end = range.upperBound
 
@@ -142,6 +189,11 @@ private extension ChallengeEngine {
         let results = (try? modelContext.fetch(descriptor)) ?? []
         if results.isEmpty { return [] }
 
-        return results.compactMap { $0.readTo }
+        return results.compactMap { book in
+            guard let readTo = book.readTo else { return nil }
+            let hasNote = !book.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let hasRating = book.userRatingValues.contains { $0 > 0 }
+            return FinishedBookSnapshot(readTo: readTo, hasUserNote: hasNote, hasUserRating: hasRating)
+        }
     }
 }

@@ -189,7 +189,8 @@ struct TimerSessionCompletionSheet: View {
             endedAt: pending.endedAt,
             durationSeconds: pending.durationSeconds,
             pagesRead: pages,
-            didMarkBookFinished: didMarkBookFinished
+            didMarkBookFinished: didMarkBookFinished,
+            hasNote: !noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         )
 
         return ChallengeSessionImpactBuilder.makePendingSessionImpact(

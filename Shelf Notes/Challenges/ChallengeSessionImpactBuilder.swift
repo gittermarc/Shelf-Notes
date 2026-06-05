@@ -132,15 +132,19 @@ enum ChallengeSessionImpactBuilder {
         contribution: ChallengeSessionContribution
     ) -> Int {
         let session = ChallengeEngine.SessionSnapshot(
+            bookID: contribution.bookID,
             startedAt: contribution.startedAt,
             endedAt: contribution.endedAt,
             durationSeconds: contribution.durationSeconds,
-            pagesRead: contribution.pagesRead
+            pagesRead: contribution.pagesRead,
+            hasNote: contribution.hasNote
         )
-        let finishedBookReadTo = contribution.didMarkBookFinished ? [contribution.endedAt] : []
+        let finishedBooks: [ChallengeEngine.FinishedBookSnapshot] = contribution.didMarkBookFinished
+            ? [ChallengeEngine.FinishedBookSnapshot(readTo: contribution.endedAt)]
+            : []
         let snapshot = ChallengeEngine.Snapshot(
             sessions: [session],
-            finishedBookReadTo: finishedBookReadTo
+            finishedBooks: finishedBooks
         )
 
         return ChallengeEngine.computeProgress(

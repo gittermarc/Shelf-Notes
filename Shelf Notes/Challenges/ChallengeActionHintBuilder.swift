@@ -33,12 +33,14 @@ nonisolated enum ChallengeActionHintBuilder {
 
     private static func isSessionRelevant(_ metric: ChallengeMetric, remainingPages: Int?) -> Bool {
         switch metric {
-        case .readingMinutes, .readingDays, .sessions:
+        case .readingMinutes, .readingDays, .sessions, .shortSessions, .sessionNotes:
             return true
-        case .pagesRead:
+        case .pagesRead, .booksProgressed:
             return remainingPages != 0
         case .booksFinished:
             return remainingPages == nil || (remainingPages ?? 0) > 0
+        case .finishedBooksRated, .finishedBooksNoted:
+            return false
         }
     }
 
@@ -70,7 +72,7 @@ nonisolated enum ChallengeActionHintBuilder {
     private static func makePriority(item: ChallengeDashboardItem) -> Int {
         if item.progressFraction >= 0.85 { return 0 }
         if item.kind == .weekly && item.progressFraction >= 0.60 { return 1 }
-        if item.metric == .readingMinutes || item.metric == .sessions { return 2 }
+        if item.metric == .readingMinutes || item.metric == .sessions || item.metric == .shortSessions { return 2 }
         if item.kind == .weekly { return 3 }
         return 4
     }
@@ -97,6 +99,19 @@ nonisolated enum ChallengeActionHintBuilder {
                 return "Noch \(remainingPages) Seiten im Buch. Ein Abschluss kann die Monats-Challenge knacken."
             }
             return "Wenn du dieses Buch abschließt, kann das direkt auf die Challenge einzahlen."
+        case .shortSessions:
+            return "Eine kurze Session mit „\(bookTitle)“ kann diese Mission direkt weiterbringen."
+        case .booksProgressed:
+            if let remainingPages {
+                return "Logge Seitenfortschritt. Für dieses Buch sind noch \(remainingPages) Seiten offen."
+            }
+            return "Logge Seitenfortschritt, damit dieses Buch für die Mission zählt."
+        case .sessionNotes:
+            return "Schreib zur Session eine kurze Notiz. Ein Satz reicht schon."
+        case .finishedBooksRated:
+            return "Bewertungen zählen im Challenge Board, nicht während der Session."
+        case .finishedBooksNoted:
+            return "Buchnotizen zählen im Challenge Board, nicht während der Session."
         }
     }
 
@@ -108,10 +123,16 @@ nonisolated enum ChallengeActionHintBuilder {
         switch item.metric {
         case .readingMinutes, .readingDays, .sessions:
             return "Timer oder manuelle Session zählen beide."
-        case .pagesRead:
+        case .shortSessions:
+            return "5 bis 25 Minuten reichen für diese Mission."
+        case .pagesRead, .booksProgressed:
             return remainingPages == nil ? "Ohne Seitenangabe bleibt diese Mission blind." : "Seitenangaben machen deinen Fortschritt messbar."
         case .booksFinished:
             return "Zählt, sobald das Buch wirklich abgeschlossen ist."
+        case .sessionNotes:
+            return "Session speichern und Notiz nicht leer lassen."
+        case .finishedBooksRated, .finishedBooksNoted:
+            return "Diese Mission wird über beendete Bücher ausgewertet."
         }
     }
 }

@@ -32,6 +32,8 @@ struct ChallengesView: View {
                     unclaimedCount: dashboard.unclaimedCount
                 )
 
+                ChallengeAchievementsCard(summary: dashboard.rewardSummary)
+
                 if dashboard.activeItems.isEmpty {
                     ChallengeBoardEmptyState()
                 } else {
@@ -106,7 +108,7 @@ struct ChallengesView: View {
                     .font(.headline)
             }
 
-            Text("Shelf Notes erzeugt automatisch eine Wochen- und Monats-Challenge. Ziele orientieren sich grob an deinem bisherigen Leseverhalten. Fortschritt kommt aus Lesesessions, Seitenangaben und abgeschlossenen Büchern.")
+            Text("Shelf Notes erzeugt automatisch eine Wochen- und Monats-Challenge. Eine Template-Auswahl variiert die Missionen anhand deines bisherigen Leseverhaltens, ohne dafür neue CloudKit-Felder zu brauchen.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

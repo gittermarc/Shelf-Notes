@@ -35,12 +35,41 @@ nonisolated extension ChallengeEngine {
         let completedAt: Date
     }
 
-    struct BaselineStats: Sendable {
+    struct BaselineStats: Sendable, Equatable {
         var minutes: Int
         var activeDays: Int
         var sessions: Int
         var pagesRead: Int
         var finishedBooks: Int
+        var shortSessions: Int
+        var progressedBooks: Int
+        var sessionNotes: Int
+        var ratedFinishedBooks: Int
+        var notedFinishedBooks: Int
+
+        init(
+            minutes: Int,
+            activeDays: Int,
+            sessions: Int,
+            pagesRead: Int,
+            finishedBooks: Int,
+            shortSessions: Int = 0,
+            progressedBooks: Int = 0,
+            sessionNotes: Int = 0,
+            ratedFinishedBooks: Int = 0,
+            notedFinishedBooks: Int = 0
+        ) {
+            self.minutes = minutes
+            self.activeDays = activeDays
+            self.sessions = sessions
+            self.pagesRead = pagesRead
+            self.finishedBooks = finishedBooks
+            self.shortSessions = shortSessions
+            self.progressedBooks = progressedBooks
+            self.sessionNotes = sessionNotes
+            self.ratedFinishedBooks = ratedFinishedBooks
+            self.notedFinishedBooks = notedFinishedBooks
+        }
     }
 
     struct GeneratedChallenge: Equatable, Sendable {
@@ -55,12 +84,15 @@ nonisolated extension ChallengeEngine {
         monthly: PeriodBounds,
         existingWeekly: ChallengeRecordSnapshot?,
         existingMonthly: ChallengeRecordSnapshot?,
-        snapshot: Snapshot
+        snapshot: Snapshot,
+        recentWeekly: [ChallengeRecordSnapshot] = [],
+        recentMonthly: [ChallengeRecordSnapshot] = []
     ) -> [EnsurePlan] {
         var plans: [EnsurePlan] = []
 
         if existingWeekly == nil {
-            let metric = pickMetric(kind: .weekly, periodStart: weekly.start, snapshot: snapshot)
+            let recentMetrics = recentWeekly.map(\.metric)
+            let metric = pickMetric(kind: .weekly, periodStart: weekly.start, snapshot: snapshot, recentMetrics: recentMetrics)
             let generated = generateChallenge(
                 kind: .weekly,
                 metric: metric,
@@ -82,7 +114,8 @@ nonisolated extension ChallengeEngine {
         }
 
         if existingMonthly == nil {
-            let metric = pickMetric(kind: .monthly, periodStart: monthly.start, snapshot: snapshot)
+            let recentMetrics = recentMonthly.map(\.metric)
+            let metric = pickMetric(kind: .monthly, periodStart: monthly.start, snapshot: snapshot, recentMetrics: recentMetrics)
             let generated = generateChallenge(
                 kind: .monthly,
                 metric: metric,
@@ -144,16 +177,31 @@ nonisolated extension ChallengeEngine {
         case .booksFinished:
             let books = finishedBooksCount(in: window, snapshot: snapshot)
             return ChallengeProgress(value: books, unitSuffix: metric.unitSuffix)
+
+        case .shortSessions:
+            let count = shortSessionCount(in: window, snapshot: snapshot)
+            return ChallengeProgress(value: count, unitSuffix: metric.unitSuffix)
+
+        case .booksProgressed:
+            let count = progressedBooksCount(in: window, snapshot: snapshot)
+            return ChallengeProgress(value: count, unitSuffix: metric.unitSuffix)
+
+        case .sessionNotes:
+            let count = sessionNotesCount(in: window, snapshot: snapshot)
+            return ChallengeProgress(value: count, unitSuffix: metric.unitSuffix)
+
+        case .finishedBooksRated:
+            let count = ratedFinishedBooksCount(in: window, snapshot: snapshot)
+            return ChallengeProgress(value: count, unitSuffix: metric.unitSuffix)
+
+        case .finishedBooksNoted:
+            let count = notedFinishedBooksCount(in: window, snapshot: snapshot)
+            return ChallengeProgress(value: count, unitSuffix: metric.unitSuffix)
         }
     }
 
     static func allowedMetrics(for kind: ChallengeKind) -> [ChallengeMetric] {
-        switch kind {
-        case .weekly:
-            return [.readingDays, .readingMinutes, .sessions, .pagesRead]
-        case .monthly:
-            return [.readingMinutes, .booksFinished, .readingDays, .sessions, .pagesRead]
-        }
+        ChallengeTemplateRegistry.templates(for: kind).map(\.metric)
     }
 
     static func generateChallenge(
@@ -164,113 +212,9 @@ nonisolated extension ChallengeEngine {
         snapshot: Snapshot
     ) -> GeneratedChallenge {
         let baseline = baselineStats(kind: kind, baselineEnd: periodStart, snapshot: snapshot)
-
-        switch (kind, metric) {
-        case (.weekly, .readingDays):
-            let avgDays = max(0, baseline.activeDays / 4)
-            let target = clampInt(avgDays + 1, min: 2, max: 6)
-            return GeneratedChallenge(
-                metric: metric,
-                title: "Lies an \(target) Tagen",
-                detail: "Diese Woche zählt jeder Tag mit mindestens 1 Minute Lesesession.",
-                targetValue: target
-            )
-
-        case (.weekly, .readingMinutes):
-            let avgMinutes = max(0, baseline.minutes / 4)
-            let scaled = avgMinutes > 0 ? Int(Double(avgMinutes) * 1.15) : 60
-            let target = max(60, roundUp(scaled, toMultipleOf: 10))
-            return GeneratedChallenge(
-                metric: metric,
-                title: "\(target) Minuten lesen",
-                detail: "Diese Woche: Leseminuten aus deinen Sessions sammeln (auch kleine Häppchen zählen).",
-                targetValue: target
-            )
-
-        case (.weekly, .sessions):
-            let avgSessions = max(0, baseline.sessions / 4)
-            let scaled = Int((Double(max(1, avgSessions)) * 1.25).rounded(.up))
-            let target = max(3, min(14, scaled))
-            return GeneratedChallenge(
-                metric: metric,
-                title: "\(target) Sessions loggen",
-                detail: "Kurze Sessions zählen auch – Hauptsache du bleibst dran.",
-                targetValue: target
-            )
-
-        case (.weekly, .pagesRead):
-            let avgPages = max(0, baseline.pagesRead / 4)
-            let scaled = avgPages > 0 ? Int(Double(avgPages) * 1.15) : 80
-            let target = max(50, roundUp(scaled, toMultipleOf: 10))
-            return GeneratedChallenge(
-                metric: metric,
-                title: "\(target) Seiten lesen",
-                detail: "Zählt nur, wenn du in Sessions Seiten einträgst.",
-                targetValue: target
-            )
-
-        case (.weekly, .booksFinished):
-            return GeneratedChallenge(
-                metric: metric,
-                title: "1 Buch beenden",
-                detail: "Wenn du diese Woche ein Buch abschließt (mit Datum), ist die Challenge erfüllt.",
-                targetValue: 1
-            )
-
-        case (.monthly, .booksFinished):
-            let avgFinished = max(0, baseline.finishedBooks / 3)
-            let target = clampInt(avgFinished + 1, min: 1, max: 6)
-            return GeneratedChallenge(
-                metric: metric,
-                title: "\(target) Bücher beenden",
-                detail: "Dieser Monat zählt abgeschlossene Bücher (Status „Gelesen“ + readTo).",
-                targetValue: target
-            )
-
-        case (.monthly, .readingMinutes):
-            let avgMinutes = max(0, baseline.minutes / 3)
-            let base = max(300, avgMinutes)
-            let target = roundUp(Int(Double(base) * 1.10), toMultipleOf: 30)
-            return GeneratedChallenge(
-                metric: metric,
-                title: "\(target) Minuten lesen",
-                detail: "Diesen Monat: Leseminuten aus Sessions sammeln. Kleine Sessions zählen mit.",
-                targetValue: target
-            )
-
-        case (.monthly, .readingDays):
-            let avgDays = max(0, baseline.activeDays / 3)
-            let scaled = Int((Double(avgDays) * 1.05).rounded(.up))
-            let target = clampInt(scaled, min: 6, max: 24)
-            return GeneratedChallenge(
-                metric: metric,
-                title: "\(target) Lesetage sammeln",
-                detail: "Ein Lesetag zählt, wenn du mindestens 1 Minute in einer Session geloggt hast.",
-                targetValue: target
-            )
-
-        case (.monthly, .sessions):
-            let avgSessions = max(0, baseline.sessions / 3)
-            let scaled = Int((Double(max(6, avgSessions)) * 1.10).rounded(.up))
-            let target = clampInt(scaled, min: 8, max: 60)
-            return GeneratedChallenge(
-                metric: metric,
-                title: "\(target) Sessions loggen",
-                detail: "Einfach regelmäßig kleine Lesesessions loggen – das bringt Konstanz.",
-                targetValue: target
-            )
-
-        case (.monthly, .pagesRead):
-            let avgPages = max(0, baseline.pagesRead / 3)
-            let base = max(300, avgPages)
-            let target = roundUp(Int(Double(base) * 1.10), toMultipleOf: 50)
-            return GeneratedChallenge(
-                metric: metric,
-                title: "\(target) Seiten lesen",
-                detail: "Zählt nur, wenn du in Sessions Seiten einträgst.",
-                targetValue: target
-            )
-        }
+        let template = ChallengeTemplateRegistry.template(kind: kind, metric: metric)
+            ?? ChallengeTemplateSelector.selectTemplate(kind: kind, baseline: baseline, periodStart: periodStart)
+        return ChallengeTemplateSelector.generatedChallenge(template: template, baseline: baseline)
     }
 
     static func rerollReplacement(
@@ -280,19 +224,18 @@ nonisolated extension ChallengeEngine {
         periodEnd: Date,
         snapshot: Snapshot,
         challengeID: UUID,
-        rerollsUsed: Int
+        rerollsUsed: Int,
+        recentMetrics: [ChallengeMetric] = []
     ) -> GeneratedChallenge {
-        let generatedOptions = allowedMetrics(for: kind)
-            .filter { $0 != current }
-            .map { metric in
-                generateChallenge(
-                    kind: kind,
-                    metric: metric,
-                    periodStart: periodStart,
-                    periodEnd: periodEnd,
-                    snapshot: snapshot
-                )
-            }
+        let baseline = baselineStats(kind: kind, baselineEnd: periodStart, snapshot: snapshot)
+        let generatedOptions = replacementCandidates(
+            kind: kind,
+            current: current,
+            baseline: baseline,
+            recentMetrics: recentMetrics,
+            challengeID: challengeID,
+            rerollsUsed: rerollsUsed
+        )
 
         guard !generatedOptions.isEmpty else {
             return generateChallenge(
@@ -318,22 +261,55 @@ nonisolated extension ChallengeEngine {
 
 private nonisolated extension ChallengeEngine {
 
-    static func pickMetric(kind: ChallengeKind, periodStart: Date, snapshot: Snapshot) -> ChallengeMetric {
+    static func pickMetric(
+        kind: ChallengeKind,
+        periodStart: Date,
+        snapshot: Snapshot,
+        recentMetrics: [ChallengeMetric]
+    ) -> ChallengeMetric {
         let baseline = baselineStats(kind: kind, baselineEnd: periodStart, snapshot: snapshot)
-        let hasPages = baseline.pagesRead > 0
+        let template = ChallengeTemplateSelector.selectTemplate(
+            kind: kind,
+            baseline: baseline,
+            recentMetrics: recentMetrics,
+            periodStart: periodStart
+        )
+        return template.metric
+    }
 
-        if kind == .weekly {
-            let avgDays = baseline.activeDays / 4
-            let avgMinutes = baseline.minutes / 4
+    static func replacementCandidates(
+        kind: ChallengeKind,
+        current: ChallengeMetric,
+        baseline: BaselineStats,
+        recentMetrics: [ChallengeMetric],
+        challengeID: UUID,
+        rerollsUsed: Int
+    ) -> [GeneratedChallenge] {
+        let selected = ChallengeTemplateSelector.replacementTemplate(
+            kind: kind,
+            currentMetric: current,
+            baseline: baseline,
+            recentMetrics: recentMetrics,
+            challengeID: challengeID,
+            rerollsUsed: rerollsUsed
+        )
 
-            if avgDays >= 3 { return .readingDays }
-            if avgMinutes >= 90 { return .readingMinutes }
-            return hasPages ? .sessions : .readingMinutes
+        let candidates = ChallengeTemplateSelector.eligibleTemplates(kind: kind, baseline: baseline)
+            .filter { $0.metric != current }
+
+        let blocked = Set(recentMetrics.prefix(2))
+        let nonRepeated = candidates.filter { !blocked.contains($0.metric) }
+        let pool = nonRepeated.isEmpty ? candidates : nonRepeated
+        let ordered = pool.sorted { lhs, rhs in
+            let lhsMatches = lhs.difficulty == selected.difficulty
+            let rhsMatches = rhs.difficulty == selected.difficulty
+            if lhsMatches != rhsMatches { return lhsMatches }
+            return lhs.id < rhs.id
         }
 
-        let avgFinished = baseline.finishedBooks / 3
-        if avgFinished >= 1 { return .booksFinished }
-        return .readingMinutes
+        return ordered.map { template in
+            ChallengeTemplateSelector.generatedChallenge(template: template, baseline: baseline)
+        }
     }
 
     static func baselineStats(kind: ChallengeKind, baselineEnd: Date, snapshot: Snapshot) -> BaselineStats {
@@ -347,13 +323,23 @@ private nonisolated extension ChallengeEngine {
         let sessions = sessionCount(in: range, snapshot: snapshot)
         let pages = totalPagesRead(in: range, snapshot: snapshot)
         let finished = finishedBooksCount(in: range, snapshot: snapshot)
+        let short = shortSessionCount(in: range, snapshot: snapshot)
+        let progressed = progressedBooksCount(in: range, snapshot: snapshot)
+        let notes = sessionNotesCount(in: range, snapshot: snapshot)
+        let rated = ratedFinishedBooksCount(in: range, snapshot: snapshot)
+        let noted = notedFinishedBooksCount(in: range, snapshot: snapshot)
 
         return BaselineStats(
             minutes: max(0, seconds / 60),
             activeDays: days.count,
             sessions: sessions,
             pagesRead: pages,
-            finishedBooks: finished
+            finishedBooks: finished,
+            shortSessions: short,
+            progressedBooks: progressed,
+            sessionNotes: notes,
+            ratedFinishedBooks: rated,
+            notedFinishedBooks: noted
         )
     }
 }
@@ -422,10 +408,73 @@ private nonisolated extension ChallengeEngine {
     }
 
     static func finishedBooksCount(in range: Range<Date>, snapshot: Snapshot) -> Int {
-        if snapshot.finishedBookReadTo.isEmpty { return 0 }
+        if snapshot.finishedBooks.isEmpty { return 0 }
         let start = range.lowerBound
         let end = range.upperBound
-        return snapshot.finishedBookReadTo.filter { $0 >= start && $0 < end }.count
+        return snapshot.finishedBooks.filter { $0.readTo >= start && $0.readTo < end }.count
+    }
+
+    static func shortSessionCount(in range: Range<Date>, snapshot: Snapshot) -> Int {
+        if snapshot.sessions.isEmpty { return 0 }
+
+        var count = 0
+        for s in snapshot.sessions {
+            let secs = overlapSeconds(start: s.startedAt, end: s.endedAt, window: range)
+            if secs >= 5 * 60 && secs <= 25 * 60 {
+                count += 1
+            }
+        }
+        return count
+    }
+
+    static func progressedBooksCount(in range: Range<Date>, snapshot: Snapshot) -> Int {
+        if snapshot.sessions.isEmpty { return 0 }
+
+        var bookIDs: Set<UUID> = []
+        var anonymousProgressSessions = 0
+
+        for s in snapshot.sessions {
+            let secs = overlapSeconds(start: s.startedAt, end: s.endedAt, window: range)
+            guard secs > 0, s.pagesRead > 0 else { continue }
+            if let bookID = s.bookID {
+                bookIDs.insert(bookID)
+            } else {
+                anonymousProgressSessions += 1
+            }
+        }
+
+        return bookIDs.count + anonymousProgressSessions
+    }
+
+    static func sessionNotesCount(in range: Range<Date>, snapshot: Snapshot) -> Int {
+        if snapshot.sessions.isEmpty { return 0 }
+
+        var count = 0
+        for s in snapshot.sessions {
+            let secs = overlapSeconds(start: s.startedAt, end: s.endedAt, window: range)
+            if secs > 0 && s.hasNote {
+                count += 1
+            }
+        }
+        return count
+    }
+
+    static func ratedFinishedBooksCount(in range: Range<Date>, snapshot: Snapshot) -> Int {
+        if snapshot.finishedBooks.isEmpty { return 0 }
+        let start = range.lowerBound
+        let end = range.upperBound
+        return snapshot.finishedBooks.filter { book in
+            book.readTo >= start && book.readTo < end && book.hasUserRating
+        }.count
+    }
+
+    static func notedFinishedBooksCount(in range: Range<Date>, snapshot: Snapshot) -> Int {
+        if snapshot.finishedBooks.isEmpty { return 0 }
+        let start = range.lowerBound
+        let end = range.upperBound
+        return snapshot.finishedBooks.filter { book in
+            book.readTo >= start && book.readTo < end && book.hasUserNote
+        }.count
     }
 }
 
@@ -459,18 +508,6 @@ private nonisolated extension ChallengeEngine {
         let clamped = clampWindow(start: start, end: end, window: window)
         guard let cs = clamped.start, let ce = clamped.end, ce > cs else { return 0 }
         return Int(max(0, ce.timeIntervalSince(cs)).rounded(.down))
-    }
-
-    static func roundUp(_ value: Int, toMultipleOf step: Int) -> Int {
-        guard step > 0 else { return value }
-        let v = max(0, value)
-        let rem = v % step
-        if rem == 0 { return v }
-        return v + (step - rem)
-    }
-
-    static func clampInt(_ value: Int, min: Int, max: Int) -> Int {
-        Swift.max(min, Swift.min(max, value))
     }
 
     static func stableRerollIndex(challengeID: UUID, rerollsUsed: Int, optionCount: Int) -> Int {

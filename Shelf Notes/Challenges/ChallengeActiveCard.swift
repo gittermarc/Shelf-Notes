@@ -68,7 +68,7 @@ struct ChallengeActiveCard: View {
                     .font(.headline)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text("\(item.kind.displayName) • \(item.periodLabel)")
+                Text("\(item.kind.displayName) • \(item.difficultyText) • \(item.periodLabel)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

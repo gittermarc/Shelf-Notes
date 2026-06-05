@@ -53,7 +53,8 @@ enum ChallengeRefreshCoordinator {
             endedAt: session.endedAt,
             durationSeconds: session.durationSeconds,
             pagesRead: session.pagesRead,
-            didMarkBookFinished: didMarkBookFinished
+            didMarkBookFinished: didMarkBookFinished,
+            hasNote: !(session.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         )
         let impact = ChallengeSessionImpactBuilder.makeSavedSessionImpact(
             challenges: active,

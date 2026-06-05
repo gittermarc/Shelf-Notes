@@ -46,13 +46,15 @@ enum ChallengeDashboardBuilder {
         let completedCount = items.filter(\.isCompleted).count
         let unclaimedCount = items.filter(\.isRewardReady).count
         let hero = makeHero(from: activeItems)
+        let rewardSummary = ChallengeRewardSummaryBuilder.make(items: items, now: now)
 
         return ChallengeDashboardState(
             hero: hero,
             activeItems: activeItems,
             historyItems: historyItems,
             completedCount: completedCount,
-            unclaimedCount: unclaimedCount
+            unclaimedCount: unclaimedCount,
+            rewardSummary: rewardSummary
         )
     }
 
@@ -69,6 +71,8 @@ enum ChallengeDashboardBuilder {
         let timeRemaining = makeTimeRemainingText(record: record, now: now, calendar: calendar)
         let deadline = makeDeadlineText(record: record, calendar: calendar)
         let motivation = makeMotivationText(record: record, progress: progress, status: status, now: now, calendar: calendar)
+        let difficultyText = ChallengeTemplateRegistry.difficulty(kind: record.kind, metric: record.metric)?.displayName ?? "Mission"
+        let rewardText = ChallengeTemplateRegistry.rewardText(kind: record.kind, metric: record.metric)
 
         return ChallengeDashboardItem(
             id: record.id,
@@ -87,7 +91,9 @@ enum ChallengeDashboardBuilder {
             deadlineText: deadline,
             progressText: progressText,
             remainingText: remainingText,
-            motivationText: motivation
+            motivationText: motivation,
+            difficultyText: difficultyText,
+            rewardText: rewardText
         )
     }
 
@@ -193,6 +199,16 @@ enum ChallengeDashboardBuilder {
             return "Noch \(remaining) Seiten. Ein Kapitel bringt dich sichtbar näher ran."
         case .booksFinished:
             return "Noch \(remaining) Buch/Bücher. Das aktuelle Buch ist dein bester Hebel."
+        case .shortSessions:
+            return "Noch \(remaining) kurze Session(s). 5 bis 25 Minuten reichen."
+        case .booksProgressed:
+            return "Noch \(remaining) Buch/Bücher mit Seitenfortschritt. Ein Eintrag genügt."
+        case .sessionNotes:
+            return "Noch \(remaining) Session-Notiz(en). Ein kurzer Gedanke reicht."
+        case .finishedBooksRated:
+            return "Noch \(remaining) Bewertung(en) für beendete Bücher."
+        case .finishedBooksNoted:
+            return "Noch \(remaining) Buchnotiz(en) für beendete Bücher."
         }
     }
 }

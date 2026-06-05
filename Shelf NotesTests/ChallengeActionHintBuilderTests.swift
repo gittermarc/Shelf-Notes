@@ -28,7 +28,9 @@ struct ChallengeActionHintBuilderTests {
             deadlineText: "bis 07.06.",
             progressText: "\(progressValue)/\(targetValue) \(metric.unitSuffix)",
             remainingText: "Noch \(max(0, targetValue - progressValue)) \(metric.unitSuffix)",
-            motivationText: "Dranbleiben."
+            motivationText: "Dranbleiben.",
+            difficultyText: "Dranbleiben",
+            rewardText: "Belohnungstext."
         )
     }
 
