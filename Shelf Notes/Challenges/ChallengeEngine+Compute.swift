@@ -43,7 +43,7 @@ nonisolated extension ChallengeEngine {
         var finishedBooks: Int
     }
 
-    struct GeneratedChallenge: Sendable {
+    struct GeneratedChallenge: Equatable, Sendable {
         let metric: ChallengeMetric
         let title: String
         let detail: String
@@ -272,6 +272,46 @@ nonisolated extension ChallengeEngine {
             )
         }
     }
+
+    static func rerollReplacement(
+        kind: ChallengeKind,
+        current: ChallengeMetric,
+        periodStart: Date,
+        periodEnd: Date,
+        snapshot: Snapshot,
+        challengeID: UUID,
+        rerollsUsed: Int
+    ) -> GeneratedChallenge {
+        let generatedOptions = allowedMetrics(for: kind)
+            .filter { $0 != current }
+            .map { metric in
+                generateChallenge(
+                    kind: kind,
+                    metric: metric,
+                    periodStart: periodStart,
+                    periodEnd: periodEnd,
+                    snapshot: snapshot
+                )
+            }
+
+        guard !generatedOptions.isEmpty else {
+            return generateChallenge(
+                kind: kind,
+                metric: current,
+                periodStart: periodStart,
+                periodEnd: periodEnd,
+                snapshot: snapshot
+            )
+        }
+
+        let unfinishedOptions = generatedOptions.filter { option in
+            let progress = computeProgress(metric: option.metric, window: periodStart..<periodEnd, snapshot: snapshot)
+            return progress.value < option.targetValue
+        }
+        let options = unfinishedOptions.isEmpty ? generatedOptions : unfinishedOptions
+        let index = stableRerollIndex(challengeID: challengeID, rerollsUsed: rerollsUsed, optionCount: options.count)
+        return options[index]
+    }
 }
 
 // MARK: - Metric selection + baselines
@@ -431,5 +471,14 @@ private nonisolated extension ChallengeEngine {
 
     static func clampInt(_ value: Int, min: Int, max: Int) -> Int {
         Swift.max(min, Swift.min(max, value))
+    }
+
+    static func stableRerollIndex(challengeID: UUID, rerollsUsed: Int, optionCount: Int) -> Int {
+        guard optionCount > 0 else { return 0 }
+        let seed = challengeID.uuidString.unicodeScalars.reduce(into: 17) { partialResult, scalar in
+            partialResult = (partialResult &* 31) &+ Int(scalar.value)
+        }
+        let mixed = seed &+ (rerollsUsed &* 7)
+        return abs(mixed % optionCount)
     }
 }

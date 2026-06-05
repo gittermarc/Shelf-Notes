@@ -125,16 +125,19 @@ nonisolated enum ChallengeEngine {
         let periodStart = challenge.periodStart
         let periodEnd = challenge.periodEnd
 
-        // Pick a different metric for the same kind.
-        let candidates = allowedMetrics(for: kind)
-        let current = challenge.metric
-        let newMetric = candidates.first(where: { $0 != current }) ?? current
-
         let daysBack = (kind == .weekly) ? 28 : 90
         let baselineStart = calendar().date(byAdding: .day, value: -daysBack, to: periodStart)
             ?? periodStart.addingTimeInterval(TimeInterval(-daysBack * 24 * 60 * 60))
         let snapshot = buildSnapshot(range: baselineStart..<periodEnd, modelContext: modelContext)
-        let generated = generateChallenge(kind: kind, metric: newMetric, periodStart: periodStart, periodEnd: periodEnd, snapshot: snapshot)
+        let generated = rerollReplacement(
+            kind: kind,
+            current: challenge.metric,
+            periodStart: periodStart,
+            periodEnd: periodEnd,
+            snapshot: snapshot,
+            challengeID: challenge.id,
+            rerollsUsed: challenge.rerollsUsed
+        )
 
         challenge.metric = generated.metric
         challenge.title = generated.title
@@ -171,7 +174,7 @@ nonisolated enum ChallengeEngine {
 
     // MARK: - Types
 
-    struct ChallengeProgress {
+    struct ChallengeProgress: Equatable, Sendable {
         let value: Int
         let unitSuffix: String
 

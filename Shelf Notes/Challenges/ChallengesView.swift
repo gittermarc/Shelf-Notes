@@ -2,7 +2,7 @@
 //  ChallengesView.swift
 //  Shelf Notes
 //
-//  Simple motivation layer: weekly + monthly challenges.
+//  Motivation board for weekly and monthly reading challenges.
 //
 
 import SwiftUI
@@ -15,270 +15,182 @@ struct ChallengesView: View {
     private var allChallenges: [ChallengeRecord]
 
     @State private var progressByID: [UUID: ChallengeEngine.ChallengeProgress] = [:]
-    @State private var didInitialRefresh = false
+    @State private var rewardItem: ChallengeDashboardItem?
 
     var body: some View {
-        List {
-            if !activeChallenges.isEmpty {
-                Section("Aktiv") {
-                    ForEach(activeChallenges) { ch in
-                        ChallengeCard(
-                            challenge: ch,
-                            progress: progressByID[ch.id],
-                            onRefresh: {
-                                Task { await refresh() }
-                            }
-                        )
-                    }
-                }
-            }
+        let dashboard = ChallengeDashboardBuilder.make(
+            challenges: allChallenges,
+            progressByID: progressByID
+        )
+        let signature = ChallengeSummarySignature(challenges: allChallenges)
 
-            let past = pastChallenges
-            if !past.isEmpty {
-                Section("Vergangenheit") {
-                    ForEach(past) { ch in
-                        ChallengeCompactRow(challenge: ch, progress: progressByID[ch.id])
-                    }
-                }
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                ChallengeHeroCard(
+                    hero: dashboard.hero,
+                    completedCount: dashboard.completedCount,
+                    unclaimedCount: dashboard.unclaimedCount
+                )
 
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Wie das funktioniert")
-                        .font(.headline)
-
-                    Text("Challenges werden pro Woche/Monat automatisch erzeugt. Die Ziele passen sich grob an dein Verhalten an (letzte Wochen/Monate). Fortschritt wird aus deinen Sessions und (bei Buch-Challenges) aus 'Gelesen + readTo' berechnet.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                if dashboard.activeItems.isEmpty {
+                    ChallengeBoardEmptyState()
+                } else {
+                    activeChallengesSection(items: dashboard.activeItems)
                 }
-                .padding(.vertical, 4)
+
+                if !dashboard.historyItems.isEmpty {
+                    ChallengeHistorySection(items: dashboard.historyItems, onClaim: claim)
+                }
+
+                challengeInfoCard
             }
+            .padding(.horizontal)
+            .padding(.top, 12)
+            .padding(.bottom, 24)
         }
         .navigationTitle("Challenges")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            if !didInitialRefresh {
-                didInitialRefresh = true
-                await refresh()
-            }
+        .task(id: signature) {
+            await refresh()
         }
         .refreshable {
             await refresh()
         }
+        .sheet(item: $rewardItem) { item in
+            ChallengeRewardSheet(item: item)
+        }
     }
 
-    private var activeChallenges: [ChallengeRecord] {
-        allChallenges
-            .filter { $0.isActive }
-            .sorted { $0.kindRawValue < $1.kindRawValue }
+    private func activeChallengesSection(items: [ChallengeDashboardItem]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Aktive Missionen")
+                        .font(.headline)
+                    Text("Woche und Monat auf einen Blick")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+            }
+
+            LazyVGrid(columns: activeColumns, spacing: 12) {
+                ForEach(items) { item in
+                    ChallengeActiveCard(
+                        item: item,
+                        onClaim: claim,
+                        onReroll: reroll
+                    )
+                }
+            }
+        }
     }
 
-    private var pastChallenges: [ChallengeRecord] {
-        // Show last ~12 entries; active ones are already shown above.
-        let now = Date()
-        return allChallenges
-            .filter { $0.periodEnd <= now }
-            .prefix(12)
-            .map { $0 }
+    private var activeColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 310, maximum: 520), spacing: 12, alignment: .top)]
+    }
+
+    private var challengeInfoCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "lightbulb")
+                    .font(.headline)
+                    .foregroundStyle(Color.accentColor)
+                    .accessibilityHidden(true)
+
+                Text("Wie das funktioniert")
+                    .font(.headline)
+            }
+
+            Text("Shelf Notes erzeugt automatisch eine Wochen- und Monats-Challenge. Ziele orientieren sich grob an deinem bisherigen Leseverhalten. Fortschritt kommt aus Lesesessions, Seitenangaben und abgeschlossenen Büchern.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Pro Zeitraum kannst du einmal eine Alternative wählen. Das bleibt bewusst begrenzt, damit die Mission nicht beliebig wird.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.secondary.opacity(0.22), lineWidth: 1)
+        }
     }
 
     @MainActor
     private func refresh() async {
         await ChallengeEngine.ensureCurrentChallengesAndRefreshCompletion(modelContext: modelContext)
 
-        let interesting = activeChallenges + pastChallenges
+        let interesting = interestingChallenges()
         let newMap = await ChallengeEngine.computeProgressMap(for: interesting, modelContext: modelContext)
         progressByID = newMap
     }
+
+    @MainActor
+    private func claim(_ item: ChallengeDashboardItem) {
+        guard let challenge = allChallenges.first(where: { $0.id == item.id }) else { return }
+        ChallengeEngine.claim(challenge, modelContext: modelContext)
+        rewardItem = item
+        Task { await refresh() }
+    }
+
+    @MainActor
+    private func reroll(_ item: ChallengeDashboardItem) {
+        guard let challenge = allChallenges.first(where: { $0.id == item.id }) else { return }
+        ChallengeEngine.reroll(challenge, modelContext: modelContext)
+        Task { await refresh() }
+    }
+
+    private func interestingChallenges() -> [ChallengeRecord] {
+        let now = Date()
+        let active = allChallenges
+            .filter { $0.periodStart <= now && $0.periodEnd > now }
+            .sorted { lhs, rhs in
+                if lhs.kind != rhs.kind { return lhs.kind == .weekly }
+                return lhs.periodStart < rhs.periodStart
+            }
+
+        let history = allChallenges
+            .filter { $0.periodEnd <= now }
+            .sorted { lhs, rhs in
+                if lhs.periodEnd != rhs.periodEnd { return lhs.periodEnd > rhs.periodEnd }
+                return lhs.kind == .weekly
+            }
+            .prefix(12)
+
+        return active + history
+    }
 }
 
-// MARK: - UI pieces
-
-private struct ChallengeCard: View {
-    @Environment(\.modelContext) private var modelContext
-
-    let challenge: ChallengeRecord
-    let progress: ChallengeEngine.ChallengeProgress?
-    let onRefresh: () -> Void
-
-    @State private var showClaimToast = false
-
+private struct ChallengeBoardEmptyState: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Image(systemName: challenge.metric.systemImage)
-                    .font(.title3)
-                    .accessibilityHidden(true)
+            Image(systemName: "flag.checkered")
+                .font(.title2)
+                .foregroundStyle(Color.accentColor)
+                .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(challenge.title)
-                        .font(.headline)
+            Text("Missionen werden vorbereitet")
+                .font(.headline)
 
-                    Text("\(challenge.kind.displayName) • \(challenge.periodLabel)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                if challenge.isCompleted {
-                    Label("Erledigt", systemImage: "checkmark.circle.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.green)
-                        .labelStyle(.titleAndIcon)
-                }
-            }
-
-            Text(challenge.detail)
+            Text("Sobald die aktuelle Woche und der aktuelle Monat angelegt sind, erscheinen hier deine aktiven Challenges mit Fortschritt und nächstem Ziel.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-
-            Divider().opacity(0.6)
-
-            Group {
-                if let p = progress {
-                    ProgressView(value: p.fraction(target: challenge.targetValue))
-                        .progressViewStyle(.linear)
-
-                    HStack {
-                        Text(p.valueText(target: challenge.targetValue))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-
-                        Spacer()
-
-                        if let remaining = p.remainingText(target: challenge.targetValue) {
-                            Text(remaining)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("Ziel erreicht")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    if let hint = suggestionText(progress: p) {
-                        Text(hint)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    ProgressView(value: 0)
-                        .progressViewStyle(.linear)
-
-                    HStack {
-                        Text("…")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                        Spacer()
-                        Text("…")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-
-            HStack(spacing: 10) {
-                if challenge.isCompleted && !challenge.isClaimed {
-                    Button {
-                        ChallengeEngine.claim(challenge, modelContext: modelContext)
-                        showClaimToast = true
-                        onRefresh()
-                    } label: {
-                        Label("Abholen", systemImage: "sparkles")
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-
-                if challenge.canReroll {
-                    Button {
-                        ChallengeEngine.reroll(challenge, modelContext: modelContext)
-                        onRefresh()
-                    } label: {
-                        Label("Neu würfeln", systemImage: "dice")
-                    }
-                    .buttonStyle(.bordered)
-                }
-
-                Spacer()
-            }
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, 6)
-        .alert("Challenge abgehakt!", isPresented: $showClaimToast) {
-            Button("Nice.", role: .cancel) { }
-        } message: {
-            Text("Das war kein Zufall. Das war Disziplin. 😄")
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.secondary.opacity(0.22), lineWidth: 1)
         }
-    }
-
-    private func suggestionText(progress: ChallengeEngine.ChallengeProgress) -> String? {
-        let remaining = max(0, challenge.targetValue - progress.value)
-        guard remaining > 0 else { return "✅ Sauber. Jetzt einfach nur noch so tun, als wäre das völlig normal." }
-
-        var cal = Calendar(identifier: .iso8601)
-        cal.timeZone = .current
-
-        let today = cal.startOfDay(for: Date())
-        let end = cal.startOfDay(for: challenge.periodEnd)
-        let daysLeft = max(0, cal.dateComponents([.day], from: today, to: end).day ?? 0)
-
-        switch challenge.metric {
-        case .readingMinutes:
-            guard daysLeft > 0 else { return nil }
-            let perDay = Int((Double(remaining) / Double(daysLeft)).rounded(.up))
-            return "Wenn du ab heute ~\(perDay) Min/Tag liest, bist du safe im Ziel."
-
-        case .readingDays:
-            return "Noch \(remaining) Lesetag(e). Heute wäre ein guter Tag – nur so als Idee."
-
-        case .sessions:
-            guard daysLeft > 0 else { return nil }
-            return "Noch \(remaining) Session(s). Mini-Sessions zählen auch: 5 Minuten sind 5 Minuten."
-
-        case .pagesRead:
-            return "Noch \(remaining) Seiten. Klingt viel – ist aber meistens nur ein Kapitel und ein Kaffee."
-
-        case .booksFinished:
-            return "Noch \(remaining) Buch/Bücher. Vielleicht das aktuelle einfach gnadenlos zu Ende bringen?"
-        }
-    }
-}
-
-private struct ChallengeCompactRow: View {
-    let challenge: ChallengeRecord
-    let progress: ChallengeEngine.ChallengeProgress?
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: challenge.metric.systemImage)
-                .foregroundStyle(.secondary)
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack {
-                    Text(challenge.title)
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
-                    if challenge.isCompleted {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    }
-                }
-
-                Text("\(challenge.kind.displayName) • \(challenge.periodLabel)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                if let p = progress {
-                    Text(p.valueText(target: challenge.targetValue))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-            }
-        }
-        .padding(.vertical, 4)
     }
 }

@@ -11,142 +11,154 @@ struct ChallengesSummaryCard: View {
 
     let challenges: [ChallengeRecord]
 
-    @State private var weeklyProgress: ChallengeEngine.ChallengeProgress? = nil
-    @State private var monthlyProgress: ChallengeEngine.ChallengeProgress? = nil
+    @State private var progressByID: [UUID: ChallengeEngine.ChallengeProgress] = [:]
 
     var body: some View {
-        let weekly = activeChallenge(kind: .weekly)
-        let monthly = activeChallenge(kind: .monthly)
         let summarySignature = ChallengeSummarySignature(challenges: challenges)
+        let dashboard = ChallengeDashboardBuilder.make(
+            challenges: challenges,
+            progressByID: progressByID
+        )
 
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Challenges")
-                    .font(.headline)
+        VStack(alignment: .leading, spacing: 13) {
+            header(unclaimedCount: dashboard.unclaimedCount)
 
-                Spacer()
-
-                if let badge = unclaimedBadgeCount {
-                    Text("\(badge)")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.thinMaterial)
-                        .clipShape(Capsule())
-                        .accessibilityLabel("\(badge) unerledigte Belohnungen")
-                }
-
-                Image(systemName: "trophy")
-                    .foregroundStyle(.secondary)
-            }
-
-            if let weekly {
-                ChallengeMiniRow(kind: .weekly, challenge: weekly, progress: weeklyProgress)
+            if let hero = dashboard.hero {
+                summaryHero(hero)
             } else {
-                Text("Wöchentliche Challenge wird vorbereitet …")
+                Text("Aktuelle Challenges werden vorbereitet.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            if let monthly {
-                ChallengeMiniRow(kind: .monthly, challenge: monthly, progress: monthlyProgress)
-            } else {
-                Text("Monats-Challenge wird vorbereitet …")
+            ForEach(dashboard.activeItems) { item in
+                ChallengeSummaryMiniRow(item: item)
+            }
+
+            if dashboard.activeItems.isEmpty && dashboard.hero == nil {
+                Text("Logge eine Lesesession, dann wird dein Fortschritt hier sichtbar.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-
-            Text("Tipp: Du kannst pro Challenge einmal pro Zeitraum neu würfeln.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(.thinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.secondary.opacity(0.22), lineWidth: 1)
+        }
         .task(id: summarySignature) {
             await refreshProgress()
         }
+        .accessibilityElement(children: .combine)
     }
 
-    private var unclaimedBadgeCount: Int? {
-        let count = challenges.filter { $0.isActive && $0.isCompleted && !$0.isClaimed }.count
-        return count > 0 ? count : nil
+    private func header(unclaimedCount: Int) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Challenges")
+                    .font(.headline)
+                Text("Nächster kleiner Lesesieg")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if unclaimedCount > 0 {
+                Label("\(unclaimedCount)", systemImage: "sparkles")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(.regularMaterial)
+                    .clipShape(Capsule())
+                    .accessibilityLabel("\(unclaimedCount) Belohnungen bereit")
+            }
+
+            Image(systemName: "trophy")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        }
     }
 
-    private func activeChallenge(kind: ChallengeKind) -> ChallengeRecord? {
-        challenges.first(where: { $0.kind == kind && $0.isActive })
+    private func summaryHero(_ hero: ChallengeDashboardHero) -> some View {
+        HStack(spacing: 12) {
+            ChallengeProgressRing(
+                fraction: hero.progressFraction,
+                lineWidth: 7,
+                size: 54
+            )
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(hero.title)
+                    .font(.subheadline.weight(.semibold))
+
+                Text(hero.subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(hero.progressText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+
+            Spacer(minLength: 8)
+        }
+        .padding(10)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     @MainActor
     private func refreshProgress() async {
         await ChallengeEngine.ensureCurrentChallengesAndRefreshCompletion(modelContext: modelContext)
 
-        let weekly = activeChallenge(kind: .weekly)
-        let monthly = activeChallenge(kind: .monthly)
-
-        let toCompute = [weekly, monthly].compactMap { $0 }
-        let map = await ChallengeEngine.computeProgressMap(for: toCompute, modelContext: modelContext)
-
-        weeklyProgress = weekly.flatMap { map[$0.id] }
-        monthlyProgress = monthly.flatMap { map[$0.id] }
+        let now = Date()
+        let active = challenges.filter { $0.periodStart <= now && $0.periodEnd > now }
+        let map = await ChallengeEngine.computeProgressMap(for: active, modelContext: modelContext)
+        progressByID = map
     }
 }
 
-private struct ChallengeMiniRow: View {
-    let kind: ChallengeKind
-    let challenge: ChallengeRecord
-    let progress: ChallengeEngine.ChallengeProgress?
+private struct ChallengeSummaryMiniRow: View {
+    let item: ChallengeDashboardItem
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                Image(systemName: kind.badgeSystemImage)
+            HStack(spacing: 8) {
+                Image(systemName: item.kind.badgeSystemImage)
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(kind == .weekly ? "Diese Woche" : "Dieser Monat")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(challenge.title)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(2)
-                }
+                Text(item.kind.displayName)
+                    .font(.caption.weight(.semibold))
 
                 Spacer()
 
-                if challenge.isCompleted {
-                    Image(systemName: "checkmark.seal.fill")
-                        .foregroundStyle(.green)
-                        .accessibilityLabel("Erledigt")
-                }
+                Text(item.timeRemainingText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
-            if let p = progress {
-                ProgressView(value: p.fraction(target: challenge.targetValue))
-                    .progressViewStyle(.linear)
+            ProgressView(value: item.progressFraction)
+                .progressViewStyle(.linear)
 
-                HStack {
-                    Text(p.valueText(target: challenge.targetValue))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
+            HStack {
+                Text(item.progressText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
 
-                    Spacer()
+                Spacer()
 
-                    Text("bis \(deadlineLabel(for: challenge))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            } else {
-                ProgressView()
+                Text(item.remainingText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
-    }
-
-    private func deadlineLabel(for challenge: ChallengeRecord) -> String {
-        var cal = Calendar(identifier: .iso8601)
-        cal.timeZone = .current
-        let lastDay = cal.date(byAdding: .day, value: -1, to: challenge.periodEnd) ?? challenge.periodEnd
-        return lastDay.formatted(date: .abbreviated, time: .omitted)
     }
 }

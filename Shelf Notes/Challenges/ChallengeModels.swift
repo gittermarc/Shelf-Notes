@@ -9,7 +9,7 @@
 import Foundation
 import SwiftData
 
-enum ChallengeKind: String, Codable, CaseIterable, Identifiable {
+enum ChallengeKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case weekly
     case monthly
 
@@ -34,7 +34,7 @@ enum ChallengeKind: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-enum ChallengeMetric: String, Codable, CaseIterable, Identifiable {
+enum ChallengeMetric: String, Codable, CaseIterable, Identifiable, Sendable {
     case readingMinutes
     case readingDays
     case sessions
