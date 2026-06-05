@@ -110,42 +110,55 @@ struct LibraryView: View {
         )
     }
 
+    var activeBooksIndex: LibraryBooksIndex {
+        LibraryBooksIndex(books: books)
+    }
+
     var activeDerivedTaskToken: LibraryDerivedInputToken {
-        LibraryDerivedStateBuilder.makeInputToken(
-            books: books,
-            searchText: derivedSearchText,
-            selectedStatus: selectedStatus,
-            selectedTag: selectedTag,
-            onlyWithNotes: onlyWithNotes,
-            sortField: sortField,
-            sortAscending: sortAscending,
-            buildsAlphaSections: shouldBuildAlphaSections
-        )
+        activeDerivedTaskToken(using: activeBooksIndex)
+    }
+
+    func activeDerivedTaskToken(using index: LibraryBooksIndex) -> LibraryDerivedInputToken {
+        index.token(input: activeDerivedInput)
     }
 
     var currentDerivedStateForUI: LibraryDerivedState {
-        derivedCoordinator.displayState(for: activeDerivedTaskToken)
+        let index = activeBooksIndex
+        let token = activeDerivedTaskToken(using: index)
+        return currentDerivedStateForUI(using: token)
+    }
+
+    func currentDerivedStateForUI(using token: LibraryDerivedInputToken) -> LibraryDerivedState {
+        derivedCoordinator.displayState(for: token)
     }
 
     var displayedBooksForCurrentDerivedState: [Book] {
-        let booksByID = Dictionary(uniqueKeysWithValues: books.map { ($0.id, $0) })
-        return currentDerivedStateForUI.displayedBookIDs.compactMap { booksByID[$0] }
+        let index = activeBooksIndex
+        let token = activeDerivedTaskToken(using: index)
+        let state = currentDerivedStateForUI(using: token)
+        return displayedBooksForCurrentDerivedState(using: index, state: state)
     }
 
-    private var countsForUI: LibraryStatusCounts {
-        currentDerivedStateForUI.counts
+    func displayedBooksForCurrentDerivedState(
+        using index: LibraryBooksIndex,
+        state: LibraryDerivedState
+    ) -> [Book] {
+        index.books(matching: state.displayedBookIDs)
     }
 
-    private var alphaSectionsForUI: [AlphaSection] {
-        let booksByID = Dictionary(uniqueKeysWithValues: books.map { ($0.id, $0) })
-        return makeAlphaSectionsForUI(
-            descriptors: currentDerivedStateForUI.alphaSections,
-            booksByID: booksByID
-        )
+    private func countsForUI(using state: LibraryDerivedState) -> LibraryStatusCounts {
+        state.counts
     }
 
-    private var alphaLettersForUI: [String] {
-        currentDerivedStateForUI.alphaLetters
+    private func alphaSectionsForUI(
+        using index: LibraryBooksIndex,
+        state: LibraryDerivedState
+    ) -> [AlphaSection] {
+        index.alphaSections(for: state.alphaSections)
+    }
+
+    private func alphaLettersForUI(using state: LibraryDerivedState) -> [String] {
+        state.alphaLetters
     }
 
     private func shouldShowAlphaIndexHint(displayedCount: Int) -> Bool {
@@ -154,10 +167,13 @@ struct LibraryView: View {
 
     @ViewBuilder
     private var libraryContent: some View {
-        let displayed: [Book] = displayedBooksForCurrentDerivedState
-        let counts: LibraryStatusCounts = countsForUI
-        let alphaSections: [AlphaSection] = alphaSectionsForUI
-        let alphaLetters: [String] = alphaLettersForUI
+        let booksIndex: LibraryBooksIndex = activeBooksIndex
+        let activeToken: LibraryDerivedInputToken = activeDerivedTaskToken(using: booksIndex)
+        let derivedState: LibraryDerivedState = currentDerivedStateForUI(using: activeToken)
+        let displayed: [Book] = displayedBooksForCurrentDerivedState(using: booksIndex, state: derivedState)
+        let counts: LibraryStatusCounts = countsForUI(using: derivedState)
+        let alphaSections: [AlphaSection] = alphaSectionsForUI(using: booksIndex, state: derivedState)
+        let alphaLetters: [String] = alphaLettersForUI(using: derivedState)
         let showAlphaIndexHint: Bool = shouldShowAlphaIndexHint(displayedCount: displayed.count)
 
         VStack(spacing: 0) {
@@ -202,8 +218,8 @@ struct LibraryView: View {
             syncDerivedSearchTextNow()
             seedDerivedStateIfNeeded()
         }
-        .task(id: activeDerivedTaskToken) {
-            rebuildDerivedState(for: activeDerivedTaskToken)
+        .task(id: activeToken) {
+            rebuildDerivedState(for: activeToken)
         }
         .onChange(of: searchText) { _, _ in
             scheduleDerivedCacheRecomputeDebounced()
@@ -287,7 +303,7 @@ struct LibraryView: View {
 
     @MainActor
     private func rebuildDerivedState(for token: LibraryDerivedInputToken) {
-        let source = LibrarySourceSnapshot(books: books)
+        let source = LibraryBooksIndex(books: books).source
         let input = activeDerivedInput
         derivedCoordinator.resolveIfNeeded(for: token, source: source, input: input)
     }

@@ -32,10 +32,9 @@ extension LibraryView {
     }
 
     func alphaIndexedList(displayedBooks: [Book]) -> some View {
-        let source = LibrarySourceSnapshot(books: displayedBooks)
-        let descriptors = LibraryDerivedStateBuilder.buildAlphaSections(from: source.books)
-        let booksByID = Dictionary(uniqueKeysWithValues: displayedBooks.map { ($0.id, $0) })
-        let sections = makeAlphaSectionsForUI(descriptors: descriptors, booksByID: booksByID)
+        let index = LibraryBooksIndex(books: displayedBooks)
+        let descriptors = LibraryDerivedStateBuilder.buildAlphaSections(from: index.source.books)
+        let sections = index.alphaSections(for: descriptors)
         let letters = descriptors.map(\.key)
         return alphaIndexedList(sections: sections, letters: letters)
     }
