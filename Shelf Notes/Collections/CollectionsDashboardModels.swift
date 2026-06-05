@@ -5,6 +5,24 @@ struct CollectionsDashboardBookSnapshot: Hashable, Identifiable {
     let title: String
     let author: String
     let statusRawValue: String
+    let tags: [String]
+    let userRatingAverage: Double?
+
+    init(
+        id: UUID,
+        title: String,
+        author: String,
+        statusRawValue: String,
+        tags: [String] = [],
+        userRatingAverage: Double? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.author = author
+        self.statusRawValue = statusRawValue
+        self.tags = tags
+        self.userRatingAverage = userRatingAverage
+    }
 }
 
 struct CollectionsDashboardCollectionSnapshot: Hashable, Identifiable {

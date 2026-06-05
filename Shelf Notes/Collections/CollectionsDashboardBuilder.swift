@@ -8,7 +8,9 @@ enum CollectionsDashboardBuilder {
                 id: book.id,
                 title: book.title,
                 author: book.author,
-                statusRawValue: book.statusRawValue
+                statusRawValue: book.statusRawValue,
+                tags: book.tags,
+                userRatingAverage: book.userRatingAverage
             )
         }
     }
