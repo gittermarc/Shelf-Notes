@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct ChallengeDashboardState: Equatable {
+nonisolated struct ChallengeDashboardState: Equatable {
     var hero: ChallengeDashboardHero?
     var activeItems: [ChallengeDashboardItem]
     var historyItems: [ChallengeDashboardItem]
@@ -27,7 +27,7 @@ struct ChallengeDashboardState: Equatable {
     )
 }
 
-struct ChallengeDashboardHero: Equatable {
+nonisolated struct ChallengeDashboardHero: Equatable {
     let itemID: UUID
     let title: String
     let subtitle: String
@@ -38,7 +38,7 @@ struct ChallengeDashboardHero: Equatable {
     let isRewardReady: Bool
 }
 
-struct ChallengeDashboardItem: Identifiable, Equatable {
+nonisolated struct ChallengeDashboardItem: Identifiable, Equatable {
     enum Status: Equatable {
         case active
         case readyToClaim

@@ -173,7 +173,7 @@ struct AppContainerHostView: View {
                     }
 
                     // Challenges: ensure current weekly/monthly challenges exist.
-                    await ChallengeEngine.ensureCurrentChallengesAndRefreshCompletion(modelContext: container.mainContext)
+                    await ChallengeRefreshCoordinator.prepareCurrentChallenges(modelContext: container.mainContext)
                 }
                 .overlay(alignment: .top) {
                     if mode == .localOnly {

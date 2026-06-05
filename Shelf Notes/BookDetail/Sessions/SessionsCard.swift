@@ -18,8 +18,14 @@ struct SessionsCard: View {
 
     @State private var showingQuickLogSheet: Bool = false
     @State private var lastError: String? = nil
+    @State private var challengeProgressByID: [UUID: ChallengeEngine.ChallengeProgress] = [:]
+    @State private var challengeRefreshSeed: Int = 0
+    @State private var latestChallengeImpact: ChallengeSessionImpact?
 
     @Query private var sessions: [ReadingSession]
+
+    @Query(sort: [SortDescriptor(\ChallengeRecord.periodStart, order: .reverse)])
+    private var challenges: [ChallengeRecord]
 
     private let previewLimit: Int = 8
 
@@ -41,11 +47,34 @@ struct SessionsCard: View {
     }
 
     var body: some View {
+        let challengeSignature = ChallengeSummarySignature(challenges: challenges)
+        let dashboard = ChallengeDashboardBuilder.make(
+            challenges: challenges,
+            progressByID: challengeProgressByID
+        )
+        let actionHints = ChallengeActionHintBuilder.makeSessionHints(
+            from: dashboard.activeItems,
+            bookTitle: safeTitle(book),
+            remainingPages: remainingPagesForBook
+        )
+        let refreshID = ChallengeActionHintRefreshID(
+            challengeSignature: challengeSignature,
+            refreshSeed: challengeRefreshSeed
+        )
+
         BookDetailCard(title: "Lesesessions") {
             VStack(alignment: .leading, spacing: 12) {
                 header
 
                 ReadingProgressView(book: book, sessions: sessions)
+
+                if let latestChallengeImpact {
+                    ChallengeSessionImpactBanner(impact: latestChallengeImpact)
+                }
+
+                if !actionHints.isEmpty {
+                    ChallengeActionHintPanel(hints: actionHints)
+                }
 
                 if let err = lastError {
                     Text(err)
@@ -100,6 +129,18 @@ struct SessionsCard: View {
                     addSession(minutes: minutes, pages: pages, note: note)
                 }
             )
+        }
+        .task(id: refreshID) {
+            await refreshChallengeHints()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .readingSessionsDidChange)) { _ in
+            challengeRefreshSeed &+= 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .challengeSessionImpactDidChange)) { notification in
+            guard let impact = notification.object as? ChallengeSessionImpact else { return }
+            guard impact.bookID == book.id else { return }
+            latestChallengeImpact = impact
+            challengeRefreshSeed &+= 1
         }
     }
 
@@ -248,6 +289,17 @@ struct SessionsCard: View {
         return "\(sessions.count) Sessions · \(totalMinutes) Min. gesamt"
     }
 
+    @MainActor
+    private func refreshChallengeHints() async {
+        let now = Date()
+        let active = challenges.filter { $0.periodStart <= now && $0.periodEnd > now }
+        challengeProgressByID = await ChallengeRefreshCoordinator.computeProgressMap(
+            for: active,
+            modelContext: modelContext
+        )
+    }
+
+    @MainActor
     private func addSession(minutes: Int, pages: Int?, note: String?) {
         lastError = nil
 
@@ -272,6 +324,7 @@ struct SessionsCard: View {
         )
 
         var session: ReadingSession? = nil
+        var didMarkBookFinished = false
 
         switch planResult {
         case .failure(let err):
@@ -280,6 +333,7 @@ struct SessionsCard: View {
         case .success(let plan):
             plan.apply(to: book)
             session = plan.makeSession(book: book)
+            didMarkBookFinished = plan.didMarkFinished
         }
 
         guard let session else {
@@ -293,17 +347,28 @@ struct SessionsCard: View {
             lastError = "Konnte Session nicht speichern: " + error.localizedDescription
         } else {
             lastError = nil
-            ReadingSessionChangeNotifier.post()
+            Task { @MainActor in
+                await ChallengeRefreshCoordinator.refreshAfterReadingSessionSave(
+                    modelContext: modelContext,
+                    bookID: book.id,
+                    session: session,
+                    didMarkBookFinished: didMarkBookFinished
+                )
+            }
         }
     }
 
+    @MainActor
     private func delete(_ session: ReadingSession) {
         modelContext.delete(session)
         if let error = modelContext.saveWithDiagnostics() {
             lastError = "Konnte Session nicht löschen: " + error.localizedDescription
         } else {
             lastError = nil
-            ReadingSessionChangeNotifier.post()
+            latestChallengeImpact = nil
+            Task { @MainActor in
+                await ChallengeRefreshCoordinator.refreshAfterReadingSessionMutation(modelContext: modelContext)
+            }
         }
     }
 
@@ -311,4 +376,10 @@ struct SessionsCard: View {
         let t = book.title.trimmingCharacters(in: .whitespacesAndNewlines)
         return t.isEmpty ? "Buch" : t
     }
+}
+
+
+private struct ChallengeActionHintRefreshID: Hashable {
+    let challengeSignature: ChallengeSummarySignature
+    let refreshSeed: Int
 }

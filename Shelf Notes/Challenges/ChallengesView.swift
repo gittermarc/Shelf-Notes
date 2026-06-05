@@ -53,6 +53,9 @@ struct ChallengesView: View {
         .task(id: signature) {
             await refresh()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .readingSessionsDidChange)) { _ in
+            Task { await refresh(ensuringCurrent: false) }
+        }
         .refreshable {
             await refresh()
         }
@@ -124,11 +127,13 @@ struct ChallengesView: View {
     }
 
     @MainActor
-    private func refresh() async {
-        await ChallengeEngine.ensureCurrentChallengesAndRefreshCompletion(modelContext: modelContext)
+    private func refresh(ensuringCurrent: Bool = true) async {
+        if ensuringCurrent {
+            await ChallengeRefreshCoordinator.prepareCurrentChallenges(modelContext: modelContext)
+        }
 
         let interesting = interestingChallenges()
-        let newMap = await ChallengeEngine.computeProgressMap(for: interesting, modelContext: modelContext)
+        let newMap = await ChallengeRefreshCoordinator.computeProgressMap(for: interesting, modelContext: modelContext)
         progressByID = newMap
     }
 

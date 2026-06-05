@@ -52,6 +52,9 @@ struct ChallengesSummaryCard: View {
         .task(id: summarySignature) {
             await refreshProgress()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .readingSessionsDidChange)) { _ in
+            Task { await refreshProgress(ensuringCurrent: false) }
+        }
         .accessibilityElement(children: .combine)
     }
 
@@ -114,12 +117,14 @@ struct ChallengesSummaryCard: View {
     }
 
     @MainActor
-    private func refreshProgress() async {
-        await ChallengeEngine.ensureCurrentChallengesAndRefreshCompletion(modelContext: modelContext)
+    private func refreshProgress(ensuringCurrent: Bool = true) async {
+        if ensuringCurrent {
+            await ChallengeRefreshCoordinator.prepareCurrentChallenges(modelContext: modelContext)
+        }
 
         let now = Date()
         let active = challenges.filter { $0.periodStart <= now && $0.periodEnd > now }
-        let map = await ChallengeEngine.computeProgressMap(for: active, modelContext: modelContext)
+        let map = await ChallengeRefreshCoordinator.computeProgressMap(for: active, modelContext: modelContext)
         progressByID = map
     }
 }
