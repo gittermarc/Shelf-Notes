@@ -24,11 +24,20 @@ enum TagsOverviewBuilder {
         searchText: String,
         sortMode: TagsDashboardSortMode
     ) -> TagsOverview {
-        let dashboard = TagsDashboardBuilder.build(snapshots: snapshots)
-        let hygieneReport = TagHygieneBuilder.build(
-            snapshots: snapshots,
-            untaggedBookIDs: dashboard.untaggedBookIDs
+        build(
+            index: TagsDomainIndex(snapshots: snapshots),
+            searchText: searchText,
+            sortMode: sortMode
         )
+    }
+
+    static func build(
+        index: TagsDomainIndex,
+        searchText: String,
+        sortMode: TagsDashboardSortMode
+    ) -> TagsOverview {
+        let dashboard = TagsDashboardBuilder.build(index: index)
+        let hygieneReport = TagHygieneBuilder.build(index: index)
         let visibleEntries = TagsDashboardBuilder.filteredEntries(
             dashboard.entries,
             searchText: searchText,

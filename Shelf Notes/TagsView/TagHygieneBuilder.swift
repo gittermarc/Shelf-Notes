@@ -2,20 +2,7 @@ import Foundation
 
 enum TagHygieneBuilder {
 
-    private struct TagOccurrence: Hashable {
-        let rawTag: String
-        let trimmedRawTag: String
-        let normalizedTag: String
-        let bookID: UUID
-
-        var normalizedKey: String {
-            hygieneKey(normalizedTag)
-        }
-
-        var hasStorageFormattingIssue: Bool {
-            rawTag != normalizedTag
-        }
-    }
+    private typealias TagOccurrence = TagsDomainIndex.TagOccurrence
 
     private struct TagGroup {
         let normalizedKey: String
@@ -48,13 +35,8 @@ enum TagHygieneBuilder {
         snapshots: [TagsDashboardBookSnapshot],
         maxInsights: Int = 6
     ) -> TagHygieneReport {
-        let untaggedBookIDs = snapshots
-            .filter { TagsDashboardBuilder.isUntagged($0) }
-            .map(\.id)
-
-        return build(
-            snapshots: snapshots,
-            untaggedBookIDs: untaggedBookIDs,
+        build(
+            index: TagsDomainIndex(snapshots: snapshots),
             maxInsights: maxInsights
         )
     }
@@ -64,7 +46,30 @@ enum TagHygieneBuilder {
         untaggedBookIDs: [UUID],
         maxInsights: Int = 6
     ) -> TagHygieneReport {
-        let occurrences = makeOccurrences(from: snapshots)
+        build(
+            index: TagsDomainIndex(snapshots: snapshots),
+            untaggedBookIDs: untaggedBookIDs,
+            maxInsights: maxInsights
+        )
+    }
+
+    static func build(
+        index: TagsDomainIndex,
+        maxInsights: Int = 6
+    ) -> TagHygieneReport {
+        build(
+            index: index,
+            untaggedBookIDs: index.usageIndex.untaggedBookIDs,
+            maxInsights: maxInsights
+        )
+    }
+
+    private static func build(
+        index: TagsDomainIndex,
+        untaggedBookIDs: [UUID],
+        maxInsights: Int
+    ) -> TagHygieneReport {
+        let occurrences = index.occurrences
 
         var insights: [TagHygieneInsight] = []
         insights.append(contentsOf: formattingInsights(from: occurrences))
@@ -87,29 +92,6 @@ enum TagHygieneBuilder {
             insights: sortedInsights,
             untaggedBookIDs: untaggedBookIDs
         )
-    }
-
-    private static func makeOccurrences(from snapshots: [TagsDashboardBookSnapshot]) -> [TagOccurrence] {
-        var occurrences: [TagOccurrence] = []
-
-        for snapshot in snapshots {
-            for rawTag in snapshot.tags {
-                let normalizedTag = normalizeTagString(rawTag)
-                guard !normalizedTag.isEmpty else { continue }
-
-                let trimmedRawTag = rawTag.trimmingCharacters(in: .whitespacesAndNewlines)
-                occurrences.append(
-                    TagOccurrence(
-                        rawTag: rawTag,
-                        trimmedRawTag: trimmedRawTag,
-                        normalizedTag: normalizedTag,
-                        bookID: snapshot.id
-                    )
-                )
-            }
-        }
-
-        return occurrences
     }
 
     private static func formattingInsights(from occurrences: [TagOccurrence]) -> [TagHygieneInsight] {

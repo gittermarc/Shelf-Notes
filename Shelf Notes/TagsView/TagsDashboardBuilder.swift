@@ -2,12 +2,6 @@ import Foundation
 
 enum TagsDashboardBuilder {
 
-    private struct TagAggregate {
-        var tag: String
-        var bookCount: Int
-        var statusCounts: TagsDashboardStatusCounts
-    }
-
     static func makeSnapshots(books: [Book]) -> [TagsDashboardBookSnapshot] {
         books.map { book in
             TagsDashboardBookSnapshot(
@@ -21,62 +15,34 @@ enum TagsDashboardBuilder {
     }
 
     static func build(snapshots: [TagsDashboardBookSnapshot]) -> TagsDashboard {
-        var aggregates: [String: TagAggregate] = [:]
-        var taggedBookIDs: Set<UUID> = []
-        var untaggedBookIDs: [UUID] = []
+        build(index: TagsDomainIndex(snapshots: snapshots))
+    }
 
-        for book in snapshots {
-            let tags = normalizedTags(for: book)
-
-            if tags.isEmpty {
-                untaggedBookIDs.append(book.id)
-                continue
-            }
-
-            taggedBookIDs.insert(book.id)
-
-            for tag in tags {
-                let key = tag.lowercased()
-                var aggregate = aggregates[key] ?? TagAggregate(
-                    tag: tag,
-                    bookCount: 0,
-                    statusCounts: TagsDashboardStatusCounts()
-                )
-
-                aggregate.bookCount += 1
-                aggregate.statusCounts.increment(statusRawValue: book.statusRawValue)
-                aggregates[key] = aggregate
-            }
+    static func build(index: TagsDomainIndex) -> TagsDashboard {
+        let entries = index.usageIndex.entries.map { usage in
+            TagsDashboardEntry(
+                tag: usage.tag,
+                bookCount: usage.count,
+                statusCounts: usage.statusCounts
+            )
         }
-
-        let entries = aggregates.values
-            .map { aggregate in
-                TagsDashboardEntry(
-                    tag: aggregate.tag,
-                    bookCount: aggregate.bookCount,
-                    statusCounts: aggregate.statusCounts
-                )
-            }
-            .sorted { lhs, rhs in
-                sortMostUsed(lhs, rhs)
-            }
 
         let topTag = entries.first.map { entry in
             TagsDashboardTopTag(tag: entry.tag, count: entry.bookCount)
         }
 
         let summary = TagsDashboardSummary(
-            totalBooks: snapshots.count,
+            totalBooks: index.totalBooks,
             totalTags: entries.count,
-            taggedBooksCount: taggedBookIDs.count,
-            untaggedBooksCount: untaggedBookIDs.count,
+            taggedBooksCount: index.usageIndex.taggedBookIDsCount,
+            untaggedBooksCount: index.usageIndex.untaggedBookIDs.count,
             topTag: topTag
         )
 
         return TagsDashboard(
             summary: summary,
             entries: entries,
-            untaggedBookIDs: untaggedBookIDs
+            untaggedBookIDs: index.usageIndex.untaggedBookIDs
         )
     }
 
@@ -113,17 +79,14 @@ enum TagsDashboardBuilder {
     }
 
     static func bookIDs(matching tag: String, snapshots: [TagsDashboardBookSnapshot]) -> [UUID] {
+        bookIDs(matching: tag, index: TagsDomainIndex(snapshots: snapshots))
+    }
+
+    static func bookIDs(matching tag: String, index: TagsDomainIndex) -> [UUID] {
         let normalizedTag = normalizeTagString(tag)
         guard !normalizedTag.isEmpty else { return [] }
 
-        return snapshots.compactMap { book in
-            let tags = normalizedTags(for: book)
-            guard tags.contains(where: { $0.caseInsensitiveCompare(normalizedTag) == .orderedSame }) else {
-                return nil
-            }
-
-            return book.id
-        }
+        return index.usageIndex.bookIDs(matching: normalizedTag)
     }
 
     static func relatedTags(
