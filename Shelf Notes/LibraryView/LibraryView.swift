@@ -45,9 +45,8 @@ struct LibraryView: View {
     @State var showingBulkAddToCollectionSheet: Bool = false
     @State var showingBulkDeleteConfirm: Bool = false
 
-    // Derived state cache. The pure builder owns filtering, sorting, counts and sections.
-    @State private var derivedCoordinator = LibraryDerivedStateCoordinator()
-    @State private var derivedSearchText: String = ""
+    // Display state cache. The pure builder owns filtering, sorting, counts and sections.
+    @State private var displayStore = LibraryDisplayStore()
     @State private var pendingRecomputeTask: Task<Void, Never>? = nil
 
     // Grid delete (LazyVGrid has no swipe-to-delete)
@@ -99,8 +98,7 @@ struct LibraryView: View {
     }
 
     var activeDerivedInput: LibraryDerivedInput {
-        LibraryDerivedStateBuilder.makeInput(
-            searchText: derivedSearchText,
+        displayStore.makeInput(
             selectedStatus: selectedStatus,
             selectedTag: selectedTag,
             onlyWithNotes: onlyWithNotes,
@@ -122,43 +120,20 @@ struct LibraryView: View {
         index.token(input: activeDerivedInput)
     }
 
-    var currentDerivedStateForUI: LibraryDerivedState {
+    var currentDisplayStateForUI: LibraryDisplayState {
         let index = activeBooksIndex
         let token = activeDerivedTaskToken(using: index)
-        return currentDerivedStateForUI(using: token)
+        return currentDisplayStateForUI(using: token)
     }
 
-    func currentDerivedStateForUI(using token: LibraryDerivedInputToken) -> LibraryDerivedState {
-        derivedCoordinator.displayState(for: token)
+    func currentDisplayStateForUI(using token: LibraryDerivedInputToken) -> LibraryDisplayState {
+        displayStore.displayState(for: token)
     }
 
     var displayedBooksForCurrentDerivedState: [Book] {
         let index = activeBooksIndex
         let token = activeDerivedTaskToken(using: index)
-        let state = currentDerivedStateForUI(using: token)
-        return displayedBooksForCurrentDerivedState(using: index, state: state)
-    }
-
-    func displayedBooksForCurrentDerivedState(
-        using index: LibraryBooksIndex,
-        state: LibraryDerivedState
-    ) -> [Book] {
-        index.books(matching: state.displayedBookIDs)
-    }
-
-    private func countsForUI(using state: LibraryDerivedState) -> LibraryStatusCounts {
-        state.counts
-    }
-
-    private func alphaSectionsForUI(
-        using index: LibraryBooksIndex,
-        state: LibraryDerivedState
-    ) -> [AlphaSection] {
-        index.alphaSections(for: state.alphaSections)
-    }
-
-    private func alphaLettersForUI(using state: LibraryDerivedState) -> [String] {
-        state.alphaLetters
+        return currentDisplayStateForUI(using: token).displayedBooks
     }
 
     private func shouldShowAlphaIndexHint(displayedCount: Int) -> Bool {
@@ -169,11 +144,11 @@ struct LibraryView: View {
     private var libraryContent: some View {
         let booksIndex: LibraryBooksIndex = activeBooksIndex
         let activeToken: LibraryDerivedInputToken = activeDerivedTaskToken(using: booksIndex)
-        let derivedState: LibraryDerivedState = currentDerivedStateForUI(using: activeToken)
-        let displayed: [Book] = displayedBooksForCurrentDerivedState(using: booksIndex, state: derivedState)
-        let counts: LibraryStatusCounts = countsForUI(using: derivedState)
-        let alphaSections: [AlphaSection] = alphaSectionsForUI(using: booksIndex, state: derivedState)
-        let alphaLetters: [String] = alphaLettersForUI(using: derivedState)
+        let displayState: LibraryDisplayState = currentDisplayStateForUI(using: activeToken)
+        let displayed: [Book] = displayState.displayedBooks
+        let counts: LibraryStatusCounts = displayState.counts
+        let alphaSections: [AlphaSection] = displayState.alphaSections
+        let alphaLetters: [String] = displayState.alphaLetters
         let showAlphaIndexHint: Bool = shouldShowAlphaIndexHint(displayedCount: displayed.count)
 
         VStack(spacing: 0) {
@@ -216,10 +191,13 @@ struct LibraryView: View {
 
             enforceRatingRuleIfNeeded()
             syncDerivedSearchTextNow()
-            seedDerivedStateIfNeeded()
+            seedDerivedStateIfNeeded(
+                using: booksIndex,
+                token: activeDerivedTaskToken(using: booksIndex)
+            )
         }
         .task(id: activeToken) {
-            rebuildDerivedState(for: activeToken)
+            rebuildDerivedState(for: activeToken, using: booksIndex)
         }
         .onChange(of: searchText) { _, _ in
             scheduleDerivedCacheRecomputeDebounced()
@@ -302,26 +280,30 @@ struct LibraryView: View {
     // MARK: - Derived cache updates
 
     @MainActor
-    private func rebuildDerivedState(for token: LibraryDerivedInputToken) {
-        let source = LibraryBooksIndex(books: books).source
-        let input = activeDerivedInput
-        derivedCoordinator.resolveIfNeeded(for: token, source: source, input: input)
+    private func rebuildDerivedState(
+        for token: LibraryDerivedInputToken,
+        using index: LibraryBooksIndex
+    ) {
+        let input = token.input
+        displayStore.resolveIfNeeded(for: token, index: index, input: input)
     }
 
     @MainActor
-    private func seedDerivedStateIfNeeded() {
-        guard derivedCoordinator.hasStableState == false else { return }
-        let token = activeDerivedTaskToken
-        derivedCoordinator.invalidate(for: token)
-        rebuildDerivedState(for: token)
+    private func seedDerivedStateIfNeeded(
+        using index: LibraryBooksIndex,
+        token: LibraryDerivedInputToken
+    ) {
+        guard displayStore.hasStableState == false else { return }
+        displayStore.invalidate(for: token)
+        rebuildDerivedState(for: token, using: index)
     }
 
     @MainActor
     private func syncDerivedSearchTextNow() {
         pendingRecomputeTask?.cancel()
         pendingRecomputeTask = nil
-        derivedSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        derivedCoordinator.invalidate(for: activeDerivedTaskToken)
+        displayStore.setResolvedSearchText(searchText)
+        displayStore.invalidate(for: activeDerivedTaskToken)
     }
 
     @MainActor
@@ -332,8 +314,8 @@ struct LibraryView: View {
             if Task.isCancelled {
                 return
             }
-            derivedSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-            derivedCoordinator.invalidate(for: activeDerivedTaskToken)
+            displayStore.setResolvedSearchText(searchText)
+            displayStore.invalidate(for: activeDerivedTaskToken)
         }
     }
 
