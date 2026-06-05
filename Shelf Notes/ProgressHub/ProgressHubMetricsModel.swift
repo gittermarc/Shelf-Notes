@@ -8,6 +8,7 @@
 
 import Foundation
 import Combine
+import SwiftData
 
 @MainActor
 final class ProgressHubMetricsModel: ObservableObject {
@@ -59,13 +60,13 @@ final class ProgressHubMetricsModel: ObservableObject {
         year: Int,
         books: [Book],
         goals: [ReadingGoal],
-        sessions: [ReadingSession]
+        sessionRefreshSeed: Int
     ) -> InputToken {
         InputToken(
             year: year,
             booksSignature: computeBooksSignature(books: books),
             goalsSignature: computeGoalsSignature(goals: goals),
-            sessionsSignature: computeSessionsSignature(sessions: sessions)
+            sessionsSignature: UInt64(bitPattern: Int64(sessionRefreshSeed))
         )
     }
 
@@ -73,9 +74,17 @@ final class ProgressHubMetricsModel: ObservableObject {
         year: Int,
         books: [Book],
         goals: [ReadingGoal],
-        sessions: [ReadingSession]
+        modelContext: ModelContext
     ) {
-        let token = Self.makeInputToken(year: year, books: books, goals: goals, sessions: sessions)
+        let sessionSnapshot = ProgressHubSessionMetricsProvider.makeSnapshot(
+            modelContext: modelContext
+        )
+        let token = InputToken(
+            year: year,
+            booksSignature: Self.computeBooksSignature(books: books),
+            goalsSignature: Self.computeGoalsSignature(goals: goals),
+            sessionsSignature: sessionSnapshot.signature
+        )
         guard token != lastToken else { return }
         lastToken = token
 
@@ -83,7 +92,7 @@ final class ProgressHubMetricsModel: ObservableObject {
             year: year,
             books: books,
             goals: goals,
-            sessions: sessions
+            recentActivity: sessionSnapshot.recentActivity
         )
 
         if newMetrics != metrics {
@@ -95,19 +104,18 @@ final class ProgressHubMetricsModel: ObservableObject {
         year: Int,
         books: [Book],
         goals: [ReadingGoal],
-        sessions: [ReadingSession],
+        recentActivity: ReadingAnalyticsRecentActivity,
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> Metrics {
         let analyticsIndex = ReadingAnalyticsIndexBuilder.make(
             books: ReadingAnalyticsInputMapper.bookRecords(from: books),
-            sessions: ReadingAnalyticsInputMapper.sessionRecords(from: sessions),
+            sessions: [],
             now: now,
             calendar: calendar
         )
         let yearSummary = analyticsIndex.summary(forYear: year)
         let goalTarget = goals.first(where: { $0.year == year })?.targetCount
-        let recentActivity = analyticsIndex.recentActivity
 
         return Metrics(
             year: year,
@@ -152,28 +160,4 @@ final class ProgressHubMetricsModel: ObservableObject {
         return aggregate
     }
 
-    private static func computeSessionsSignature(sessions: [ReadingSession]) -> UInt64 {
-        var aggregate: UInt64 = 0x1D3D_0A2C_89E3_2B7F
-        aggregate &+= UInt64(sessions.count) &* 0xBF58_476D_1CE4_E5B9
-
-        let maxSample = 256
-        let sampleCount = min(maxSample, sessions.count)
-
-        if sampleCount == 0 {
-            return aggregate
-        }
-
-        for index in 0..<sampleCount {
-            let session = sessions[index]
-            var hasher = Hasher()
-            hasher.combine(session.id)
-            hasher.combine(session.startedAt.timeIntervalSinceReferenceDate)
-            hasher.combine(session.durationSeconds)
-            hasher.combine(session.createdAt.timeIntervalSinceReferenceDate)
-            let hash = UInt64(bitPattern: Int64(hasher.finalize()))
-            aggregate ^= hash &+ 0x9E37_79B9_7F4A_7C15 &+ (aggregate << 6) &+ (aggregate >> 2)
-        }
-
-        return aggregate
-    }
 }

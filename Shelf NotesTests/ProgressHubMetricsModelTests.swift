@@ -73,11 +73,17 @@ struct ProgressHubMetricsModelTests {
             makeSession(startedAt: date(2026, 4, 13, 8), durationSeconds: 600)
         ]
 
+        let recentActivity = ReadingAnalyticsRecentActivityBuilder.make(
+            sessions: ReadingAnalyticsInputMapper.sessionRecords(from: sessions),
+            now: date(2026, 4, 15, 9),
+            calendar: calendar
+        )
+
         let metrics = ProgressHubMetricsModel.makeMetrics(
             year: year,
             books: books,
             goals: goals,
-            sessions: sessions,
+            recentActivity: recentActivity,
             now: date(2026, 4, 15, 9),
             calendar: calendar
         )
@@ -105,7 +111,7 @@ struct ProgressHubMetricsModelTests {
             year: 2026,
             books: books,
             goals: [],
-            sessions: [],
+            recentActivity: .empty,
             now: date(2026, 4, 15, 9),
             calendar: calendar
         )
@@ -124,11 +130,17 @@ struct ProgressHubMetricsModelTests {
             makeSession(startedAt: date(2026, 4, 10, 8), durationSeconds: 900)
         ]
 
+        let recentActivity = ReadingAnalyticsRecentActivityBuilder.make(
+            sessions: ReadingAnalyticsInputMapper.sessionRecords(from: sessions),
+            now: date(2026, 4, 15, 9),
+            calendar: calendar
+        )
+
         let metrics = ProgressHubMetricsModel.makeMetrics(
             year: 2026,
             books: [],
             goals: [],
-            sessions: sessions,
+            recentActivity: recentActivity,
             now: date(2026, 4, 15, 9),
             calendar: calendar
         )

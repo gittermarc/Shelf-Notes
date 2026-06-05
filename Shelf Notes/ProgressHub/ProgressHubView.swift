@@ -18,6 +18,9 @@ import UIKit
 /// - Zeitleiste
 /// - Challenges
 struct ProgressHubView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
+
     @Query private var books: [Book]
 
     @Query(sort: [SortDescriptor(\ChallengeRecord.periodStart, order: .reverse)])
@@ -26,12 +29,10 @@ struct ProgressHubView: View {
     @Query(sort: \ReadingGoal.year, order: .reverse)
     private var goals: [ReadingGoal]
 
-    @Query(sort: \ReadingSession.startedAt, order: .reverse)
-    private var sessions: [ReadingSession]
-
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     @StateObject private var metricsModel = ProgressHubMetricsModel()
+    @State private var sessionRefreshSeed = 0
 
     var body: some View {
         let currentYear = Calendar.current.component(.year, from: Date())
@@ -39,7 +40,7 @@ struct ProgressHubView: View {
             year: currentYear,
             books: books,
             goals: goals,
-            sessions: sessions
+            sessionRefreshSeed: sessionRefreshSeed
         )
 
         NavigationStack {
@@ -71,9 +72,21 @@ struct ProgressHubView: View {
                 year: currentYear,
                 books: books,
                 goals: goals,
-                sessions: sessions
+                modelContext: modelContext
             )
         }
+        .onReceive(NotificationCenter.default.publisher(for: .readingSessionsDidChange)) { _ in
+            requestSessionMetricsRefresh()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                requestSessionMetricsRefresh()
+            }
+        }
+    }
+
+    private func requestSessionMetricsRefresh() {
+        sessionRefreshSeed &+= 1
     }
 
     private var emptyHintCard: some View {

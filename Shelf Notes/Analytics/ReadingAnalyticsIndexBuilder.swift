@@ -5,11 +5,17 @@ nonisolated enum ReadingAnalyticsIndexBuilder {
         books: [ReadingAnalyticsBookRecord],
         sessions: [ReadingAnalyticsSessionRecord],
         now: Date = Date(),
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        sessionsAreSortedDescending: Bool = false
     ) -> ReadingAnalyticsIndex {
         let yearSummaries = makeYearSummaries(from: books, calendar: calendar)
         let finishedBookYears = yearSummaries.keys.sorted(by: >)
-        let recentActivity = makeRecentActivity(from: sessions, now: now, calendar: calendar)
+        let recentActivity = ReadingAnalyticsRecentActivityBuilder.make(
+            sessions: sessions,
+            sessionsAreSortedDescending: sessionsAreSortedDescending,
+            now: now,
+            calendar: calendar
+        )
 
         return ReadingAnalyticsIndex(
             finishedBookYears: finishedBookYears,
@@ -71,75 +77,6 @@ nonisolated enum ReadingAnalyticsIndexBuilder {
         })
     }
 
-    private static func makeRecentActivity(
-        from sessions: [ReadingAnalyticsSessionRecord],
-        now: Date,
-        calendar: Calendar
-    ) -> ReadingAnalyticsRecentActivity {
-        var activityCalendar = Calendar(identifier: .iso8601)
-        activityCalendar.timeZone = calendar.timeZone
-
-        let today = activityCalendar.startOfDay(for: now)
-        let windowStart = activityCalendar.date(byAdding: .day, value: -6, to: today) ?? today
-        let orderedSessions = sessions.sorted(by: compareSessionsDescending)
-
-        var secondsTotal = 0
-        var daysWithActivityWindow = Set<Date>()
-
-        var streak = 0
-        var expectedStreakDay = today
-        var lastCountedStreakDay: Date? = nil
-        var streakDone = false
-
-        for session in orderedSessions {
-            let duration = session.normalizedDurationSeconds
-            if duration <= 0 { continue }
-
-            let day = activityCalendar.startOfDay(for: session.startedAt)
-
-            if day >= windowStart {
-                secondsTotal += duration
-                daysWithActivityWindow.insert(day)
-            }
-
-            if streakDone == false {
-                if day == expectedStreakDay {
-                    if lastCountedStreakDay != day {
-                        streak += 1
-                        lastCountedStreakDay = day
-                        expectedStreakDay = activityCalendar.date(byAdding: .day, value: -1, to: expectedStreakDay) ?? expectedStreakDay
-                    }
-                } else if day < expectedStreakDay {
-                    streakDone = true
-                }
-            }
-
-            if day < windowStart && streakDone {
-                break
-            }
-        }
-
-        return ReadingAnalyticsRecentActivity(
-            minutesLast7: Int((Double(secondsTotal) / 60.0).rounded()),
-            activeDaysLast7: daysWithActivityWindow.count,
-            currentStreak: streak
-        )
-    }
-
-    private static func compareSessionsDescending(
-        _ lhs: ReadingAnalyticsSessionRecord,
-        _ rhs: ReadingAnalyticsSessionRecord
-    ) -> Bool {
-        if lhs.startedAt != rhs.startedAt {
-            return lhs.startedAt > rhs.startedAt
-        }
-
-        if lhs.createdAt != rhs.createdAt {
-            return lhs.createdAt > rhs.createdAt
-        }
-
-        return lhs.id.uuidString > rhs.id.uuidString
-    }
 }
 
 private nonisolated struct YearAccumulator {

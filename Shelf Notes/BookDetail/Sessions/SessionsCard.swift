@@ -293,6 +293,7 @@ struct SessionsCard: View {
             lastError = "Konnte Session nicht speichern: " + error.localizedDescription
         } else {
             lastError = nil
+            ReadingSessionChangeNotifier.post()
         }
     }
 
@@ -302,6 +303,7 @@ struct SessionsCard: View {
             lastError = "Konnte Session nicht löschen: " + error.localizedDescription
         } else {
             lastError = nil
+            ReadingSessionChangeNotifier.post()
         }
     }
 

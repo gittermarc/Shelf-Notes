@@ -182,6 +182,7 @@ struct TimerSessionCompletionSheet: View {
             lastError = "Konnte Session nicht speichern: " + error.localizedDescription
         } else {
             lastError = nil
+            ReadingSessionChangeNotifier.post()
 
             // Update Challenges (weekly/monthly) after a successful session save.
             ChallengeEngine.ensureCurrentChallenges(modelContext: modelContext)

@@ -170,4 +170,40 @@ struct ReadingAnalyticsIndexBuilderTests {
         #expect(index.recentActivity.activeDaysLast7 == 1)
         #expect(index.recentActivity.currentStreak == 0)
     }
+
+    @Test func recentActivityCanUsePreSortedSessionsWithoutResorting() {
+        let now = date(2026, 4, 15, 9)
+        let sessions = [
+            ReadingAnalyticsSessionRecord(
+                id: UUID(),
+                startedAt: date(2026, 4, 15, 8),
+                durationSeconds: 1200,
+                createdAt: date(2026, 4, 15, 8)
+            ),
+            ReadingAnalyticsSessionRecord(
+                id: UUID(),
+                startedAt: date(2026, 4, 14, 8),
+                durationSeconds: 900,
+                createdAt: date(2026, 4, 14, 8)
+            ),
+            ReadingAnalyticsSessionRecord(
+                id: UUID(),
+                startedAt: date(2026, 4, 10, 8),
+                durationSeconds: 600,
+                createdAt: date(2026, 4, 10, 8)
+            )
+        ]
+
+        let index = ReadingAnalyticsIndexBuilder.make(
+            books: [],
+            sessions: sessions,
+            now: now,
+            calendar: calendar,
+            sessionsAreSortedDescending: true
+        )
+
+        #expect(index.recentActivity.minutesLast7 == 45)
+        #expect(index.recentActivity.activeDaysLast7 == 3)
+        #expect(index.recentActivity.currentStreak == 2)
+    }
 }
