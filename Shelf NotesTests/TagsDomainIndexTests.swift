@@ -83,6 +83,55 @@ struct TagsDomainIndexTests {
         #expect(hygiene.insights.map(\.kind).contains(.untaggedBooks))
     }
 
+    @Test func suggestionSnapshotsBuildReusableSuggestionMetadata() {
+        let snapshots = [
+            makeSuggestionSnapshot(
+                1,
+                author: "Megan Example",
+                tags: [" #Crime ", "Noir", "crime"],
+                categories: ["Fiction / Mystery & Detective"],
+                mainCategory: "Science Fiction"
+            ),
+            makeSuggestionSnapshot(
+                2,
+                author: "Megan Example",
+                tags: ["Crime", "NYC"],
+                categories: ["Fiction / Mystery & Detective"]
+            ),
+            makeSuggestionSnapshot(
+                3,
+                tags: ["History"],
+                categories: ["Biography und Autobiografie"]
+            )
+        ]
+
+        let index = TagsDomainIndex(suggestionSnapshots: snapshots)
+
+        #expect(index.suggestionSnapshots.map(\.id) == [fixedID(1), fixedID(2), fixedID(3)])
+        #expect(index.normalizedTags(for: fixedID(1)) == ["Crime", "Noir"])
+        #expect(index.categoryCandidates(for: fixedID(1)) == ["Sci-Fi", "Mystery", "Detective"])
+        #expect(index.categoryCandidateKeys(for: fixedID(1)) == Set(["sci-fi", "mystery", "detective"]))
+        #expect(index.comparableMainCategoryKey(for: fixedID(1)) == "sci-fi")
+        #expect(index.tagCounts.map(\.tag) == ["Crime", "History", "Noir", "NYC"])
+        #expect(index.tagCounts.map(\.count) == [2, 1, 1, 1])
+    }
+
+    @Test func autocompleteSuggestionsCanUseDomainIndexCounts() {
+        let snapshots = [
+            makeSuggestionSnapshot(1, tags: [" #Sci-Fi ", "Space Opera"]),
+            makeSuggestionSnapshot(2, tags: ["Science"]),
+            makeSuggestionSnapshot(3, tags: ["Crime"])
+        ]
+        let index = TagsDomainIndex(suggestionSnapshots: snapshots)
+
+        let suggestions = index.autocompleteSuggestions(
+            query: "sci",
+            selectedTags: ["Science"]
+        )
+
+        #expect(suggestions == ["Sci-Fi"])
+    }
+
     private func makeSnapshot(
         _ value: Int,
         title: String = "Test Book",
@@ -96,6 +145,26 @@ struct TagsDomainIndexTests {
             author: author,
             statusRawValue: status.rawValue,
             tags: tags
+        )
+    }
+
+    private func makeSuggestionSnapshot(
+        _ value: Int,
+        title: String = "Test Book",
+        author: String = "Test Author",
+        tags: [String] = [],
+        categories: [String] = [],
+        mainCategory: String? = nil,
+        status: ReadingStatus = .toRead
+    ) -> TagSuggestionBookSnapshot {
+        TagSuggestionBookSnapshot(
+            id: fixedID(value),
+            title: title,
+            author: author,
+            tags: tags,
+            categories: categories,
+            mainCategory: mainCategory,
+            statusRawValue: status.rawValue
         )
     }
 

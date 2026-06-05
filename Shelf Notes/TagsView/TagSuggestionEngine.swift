@@ -45,10 +45,22 @@ enum TagSuggestionEngine {
         in library: [TagSuggestionBookSnapshot],
         limit: Int = 10
     ) -> [TagSuggestion] {
+        suggestions(
+            for: targetBook,
+            in: TagsDomainIndex(suggestionSnapshots: library),
+            limit: limit
+        )
+    }
+
+    static func suggestions(
+        for targetBook: TagSuggestionBookSnapshot,
+        in index: TagsDomainIndex,
+        limit: Int = 10
+    ) -> [TagSuggestion] {
         guard limit > 0 else { return [] }
 
         let selectedTagKeys = Set(uniqueNormalizedTags(targetBook.tags).map { suggestionKey($0) })
-        let existingTagAggregates = existingTagCounts(in: library)
+        let existingTagAggregates = existingTagCounts(in: index)
         var aggregates: [String: SuggestionAggregate] = [:]
 
         for candidate in categoryCandidates(for: targetBook) {
@@ -79,7 +91,7 @@ enum TagSuggestionEngine {
 
         addCoTagSuggestions(
             for: targetBook,
-            in: library,
+            in: index,
             selectedTagKeys: selectedTagKeys,
             existingTagAggregates: existingTagAggregates,
             aggregates: &aggregates
@@ -87,7 +99,7 @@ enum TagSuggestionEngine {
 
         addSimilarBookSuggestions(
             for: targetBook,
-            in: library,
+            in: index,
             selectedTagKeys: selectedTagKeys,
             existingTagAggregates: existingTagAggregates,
             aggregates: &aggregates
@@ -155,15 +167,15 @@ enum TagSuggestionEngine {
 
     private static func addCoTagSuggestions(
         for targetBook: TagSuggestionBookSnapshot,
-        in library: [TagSuggestionBookSnapshot],
+        in index: TagsDomainIndex,
         selectedTagKeys: Set<String>,
         existingTagAggregates: [String: ExistingTagAggregate],
         aggregates: inout [String: SuggestionAggregate]
     ) {
         guard !selectedTagKeys.isEmpty else { return }
 
-        for book in library where book.id != targetBook.id {
-            let bookTags = uniqueNormalizedTags(book.tags)
+        for book in index.suggestionSnapshots where book.id != targetBook.id {
+            let bookTags = index.normalizedTags(for: book.id)
             let bookTagKeys = Set(bookTags.map { suggestionKey($0) })
             let overlapCount = selectedTagKeys.intersection(bookTagKeys).count
             guard overlapCount > 0 else { continue }
@@ -184,16 +196,26 @@ enum TagSuggestionEngine {
 
     private static func addSimilarBookSuggestions(
         for targetBook: TagSuggestionBookSnapshot,
-        in library: [TagSuggestionBookSnapshot],
+        in index: TagsDomainIndex,
         selectedTagKeys: Set<String>,
         existingTagAggregates: [String: ExistingTagAggregate],
         aggregates: inout [String: SuggestionAggregate]
     ) {
-        for book in library where book.id != targetBook.id {
-            let similarityScore = similarity(between: targetBook, and: book)
+        let targetCategoryKeys = Set(categoryCandidates(for: targetBook).map { suggestionKey($0) })
+        let targetMainCategoryKey = comparableMainCategoryKey(targetBook.mainCategory)
+
+        for book in index.suggestionSnapshots where book.id != targetBook.id {
+            let similarityScore = similarity(
+                between: targetBook,
+                and: book,
+                targetCategoryKeys: targetCategoryKeys,
+                otherCategoryKeys: index.categoryCandidateKeys(for: book.id),
+                targetMainCategoryKey: targetMainCategoryKey,
+                otherMainCategoryKey: index.comparableMainCategoryKey(for: book.id)
+            )
             guard similarityScore >= 2 else { continue }
 
-            for tag in uniqueNormalizedTags(book.tags) {
+            for tag in index.normalizedTags(for: book.id) {
                 addCandidate(
                     tag,
                     reason: .similarBook,
@@ -246,27 +268,24 @@ enum TagSuggestionEngine {
         aggregates[key] = aggregate
     }
 
-    private static func existingTagCounts(in library: [TagSuggestionBookSnapshot]) -> [String: ExistingTagAggregate] {
-        var counts: [String: ExistingTagAggregate] = [:]
-
-        for book in library {
-            for tag in uniqueNormalizedTags(book.tags) {
-                let key = suggestionKey(tag)
-                if var aggregate = counts[key] {
-                    aggregate.count += 1
-                    counts[key] = aggregate
-                } else {
-                    counts[key] = ExistingTagAggregate(tag: tag, count: 1)
-                }
+    private static func existingTagCounts(in index: TagsDomainIndex) -> [String: ExistingTagAggregate] {
+        Dictionary(
+            uniqueKeysWithValues: index.usageIndex.entries.map { entry in
+                (
+                    suggestionKey(entry.tag),
+                    ExistingTagAggregate(tag: entry.tag, count: entry.count)
+                )
             }
-        }
-
-        return counts
+        )
     }
 
     private static func similarity(
         between targetBook: TagSuggestionBookSnapshot,
-        and otherBook: TagSuggestionBookSnapshot
+        and otherBook: TagSuggestionBookSnapshot,
+        targetCategoryKeys: Set<String>,
+        otherCategoryKeys: Set<String>,
+        targetMainCategoryKey: String?,
+        otherMainCategoryKey: String?
     ) -> Int {
         var score = 0
 
@@ -276,23 +295,19 @@ enum TagSuggestionEngine {
             score += 3
         }
 
-        let targetMainCategory = comparableMainCategory(targetBook.mainCategory)
-        let otherMainCategory = comparableMainCategory(otherBook.mainCategory)
-        if let targetMainCategory,
-           let otherMainCategory,
-           targetMainCategory == otherMainCategory {
+        if let targetMainCategoryKey,
+           let otherMainCategoryKey,
+           targetMainCategoryKey == otherMainCategoryKey {
             score += 3
         }
 
-        let targetCategoryKeys = Set(categoryCandidates(for: targetBook).map { suggestionKey($0) })
-        let otherCategoryKeys = Set(categoryCandidates(for: otherBook).map { suggestionKey($0) })
         let sharedCategoryCount = targetCategoryKeys.intersection(otherCategoryKeys).count
         score += min(3, sharedCategoryCount)
 
         return score
     }
 
-    private static func comparableMainCategory(_ rawValue: String?) -> String? {
+    private static func comparableMainCategoryKey(_ rawValue: String?) -> String? {
         guard let rawValue else { return nil }
         let candidates = categoryCandidates(categories: [], mainCategory: rawValue)
         guard let first = candidates.first else { return nil }

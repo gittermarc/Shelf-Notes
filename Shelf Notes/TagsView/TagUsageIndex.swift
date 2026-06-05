@@ -25,6 +25,10 @@ struct TagUsageIndex {
         entries.map(\.tag)
     }
 
+    var tagCounts: [TagsIndexBuilder.TagCount] {
+        entries.map { TagsIndexBuilder.TagCount(tag: $0.tag, count: $0.count) }
+    }
+
     var originalSpellingsByKey: [String: [String]] {
         Dictionary(uniqueKeysWithValues: entries.map { ($0.key, $0.originalSpellings) })
     }

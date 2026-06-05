@@ -151,6 +151,61 @@ struct TagSuggestionEngineTests {
         #expect(suggestions.count == 2)
     }
 
+    @Test func explicitDomainIndexSuggestionsMatchLibraryEntryPoint() {
+        let target = makeSnapshot(
+            1,
+            author: "Megan Example",
+            tags: ["Crime"],
+            categories: ["Fiction / Mystery & Detective"]
+        )
+        let library = [
+            target,
+            makeSnapshot(
+                2,
+                author: "Megan Example",
+                tags: ["Crime", "Noir"],
+                categories: ["Fiction / Mystery & Detective"]
+            ),
+            makeSnapshot(3, tags: ["History"]),
+            makeSnapshot(4, tags: ["Sci-Fi"], categories: ["Science Fiction"])
+        ]
+        let index = TagsDomainIndex(suggestionSnapshots: library)
+
+        let viaLibrary = TagSuggestionEngine.suggestions(for: target, in: library, limit: 10)
+        let viaIndex = TagSuggestionEngine.suggestions(for: target, in: index, limit: 10)
+
+        #expect(viaIndex.map(\.tag) == viaLibrary.map(\.tag))
+        #expect(viaIndex.map(\.score) == viaLibrary.map(\.score))
+        #expect(viaIndex.map(\.reasonLabel) == viaLibrary.map(\.reasonLabel))
+        #expect(viaIndex.map(\.existingTagCount) == viaLibrary.map(\.existingTagCount))
+        #expect(viaIndex.map(\.relatedBookCount) == viaLibrary.map(\.relatedBookCount))
+    }
+
+    @Test func domainIndexSuggestionsKeepCategoryContextAndExcludeSelectedTags() {
+        let target = makeSnapshot(
+            1,
+            tags: ["Crime"],
+            categories: ["Fiction / Mystery & Detective"]
+        )
+        let library = [
+            target,
+            makeSnapshot(2, tags: ["Crime", "Noir"]),
+            makeSnapshot(3, tags: ["NYC"])
+        ]
+        let suggestions = TagSuggestionEngine.suggestions(
+            for: target,
+            in: TagsDomainIndex(suggestionSnapshots: library),
+            limit: 10
+        )
+        let tags = suggestions.map(\.tag)
+        let mystery = suggestions.first { $0.tag == "Mystery" }
+        let noir = suggestions.first { $0.tag == "Noir" }
+
+        #expect(!tags.contains("Crime"))
+        #expect(mystery?.reasons == [.category])
+        #expect(noir?.reasons.contains(.coTag) == true)
+    }
+
     private func makeSnapshot(
         _ value: Int,
         title: String = "Test Book",

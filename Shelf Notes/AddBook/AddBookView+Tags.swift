@@ -2,8 +2,13 @@ import SwiftUI
 
 extension AddBookView {
     var taggingCard: some View {
-        let autocompleteSuggestions = addBookAutocompleteSuggestions
-        let suggestionState = addBookTagSuggestionViewState
+        let target = vm.tagSuggestionSnapshot()
+        let domainIndex = addBookTagsDomainIndex
+        let autocompleteSuggestions = addBookAutocompleteSuggestions(domainIndex: domainIndex)
+        let suggestionState = addBookTagSuggestionViewState(
+            target: target,
+            domainIndex: domainIndex
+        )
 
         return AddBookCard(title: "Tags") {
             VStack(alignment: .leading, spacing: 12) {
@@ -103,7 +108,7 @@ extension AddBookView {
                         }
                         .padding(.vertical, 2)
                     }
-                } else if tagsIndexStore.tagCounts.isEmpty {
+                } else if domainIndex.tagCounts.isEmpty {
                     Text("Noch keine bestehenden Tags vorhanden. Dieses Buch kann der Anfang deiner Tag-Struktur werden.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -112,26 +117,41 @@ extension AddBookView {
         }
     }
 
-    var addBookAutocompleteSuggestions: [String] {
-        TagsIndexBuilder.autocompleteSuggestions(
-            query: vm.tagDraftQuery,
-            selectedTags: vm.tags,
-            tagCounts: tagsIndexStore.tagCounts
+    var addBookTagsDomainIndex: TagsDomainIndex {
+        TagsDomainIndex(
+            suggestionSnapshots: TagSuggestionEngine.makeSnapshots(books: allBooks)
         )
     }
 
-    var addBookTagSuggestionViewState: TagSuggestionViewState {
-        let target = vm.tagSuggestionSnapshot()
-        let library = TagSuggestionEngine.makeSnapshots(books: allBooks)
+    func addBookAutocompleteSuggestions(domainIndex: TagsDomainIndex) -> [String] {
+        domainIndex.autocompleteSuggestions(
+            query: vm.tagDraftQuery,
+            selectedTags: vm.tags
+        )
+    }
 
-        return TagSuggestionViewStateBuilder.make(
+    func addBookTagSuggestionViewState(
+        target: TagSuggestionBookSnapshot,
+        domainIndex: TagsDomainIndex
+    ) -> TagSuggestionViewState {
+        TagSuggestionViewStateBuilder.make(
             target: target,
-            library: library,
-            tagCounts: tagsIndexStore.tagCounts,
+            domainIndex: domainIndex,
             selectedTags: vm.tags,
             suggestionLimit: 8,
             smartLimit: 6,
             frequentLimit: 18
+        )
+    }
+
+    var addBookAutocompleteSuggestions: [String] {
+        addBookAutocompleteSuggestions(domainIndex: addBookTagsDomainIndex)
+    }
+
+    var addBookTagSuggestionViewState: TagSuggestionViewState {
+        addBookTagSuggestionViewState(
+            target: vm.tagSuggestionSnapshot(),
+            domainIndex: addBookTagsDomainIndex
         )
     }
 

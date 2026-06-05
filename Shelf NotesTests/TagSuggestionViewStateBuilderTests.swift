@@ -90,6 +90,43 @@ struct TagSuggestionViewStateBuilderTests {
         #expect(frequentTags.contains("Crime") || frequentTags.contains("History"))
     }
 
+    @Test func domainIndexStateMatchesLegacyInputsWhenCountsMatch() {
+        let target = makeSnapshot(
+            1,
+            tags: ["Crime"],
+            categories: ["Fiction / Mystery & Detective"]
+        )
+        let library = [
+            target,
+            makeSnapshot(2, tags: ["Crime", "Noir"], categories: ["Fiction / Mystery & Detective"]),
+            makeSnapshot(3, tags: ["History"]),
+            makeSnapshot(4, tags: ["Sci-Fi"])
+        ]
+        let domainIndex = TagsDomainIndex(suggestionSnapshots: library)
+        let legacyState = TagSuggestionViewStateBuilder.make(
+            target: target,
+            library: library,
+            tagCounts: domainIndex.tagCounts,
+            selectedTags: target.tags,
+            suggestionLimit: 8,
+            smartLimit: 6,
+            frequentLimit: 18
+        )
+        let indexedState = TagSuggestionViewStateBuilder.make(
+            target: target,
+            domainIndex: domainIndex,
+            selectedTags: target.tags,
+            suggestionLimit: 8,
+            smartLimit: 6,
+            frequentLimit: 18
+        )
+
+        #expect(indexedState.smartItems.map(\.tag) == legacyState.smartItems.map(\.tag))
+        #expect(indexedState.smartItems.map(\.reasonLabel) == legacyState.smartItems.map(\.reasonLabel))
+        #expect(indexedState.frequentItems.map(\.tag) == legacyState.frequentItems.map(\.tag))
+        #expect(indexedState.frequentItems.map(\.count) == legacyState.frequentItems.map(\.count))
+    }
+
     private func makeSnapshot(
         _ value: Int,
         title: String = "Test Book",

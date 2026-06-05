@@ -210,8 +210,13 @@ extension BookDetailView {
     }
 
     var tagsCard: some View {
-        let autocompleteSuggestions = tagAutocompleteSuggestions
-        let suggestionState = tagSuggestionViewState
+        let target = TagSuggestionEngine.makeSnapshot(book: book)
+        let domainIndex = tagSuggestionsDomainIndex
+        let autocompleteSuggestions = tagAutocompleteSuggestions(domainIndex: domainIndex)
+        let suggestionState = tagSuggestionViewState(
+            target: target,
+            domainIndex: domainIndex
+        )
 
         return BookDetailCard(title: "Tags") {
             VStack(alignment: .leading, spacing: 12) {
@@ -322,7 +327,7 @@ extension BookDetailView {
                         }
                         .padding(.vertical, 2)
                     }
-                } else if tagsIndexStore.tagCounts.isEmpty {
+                } else if domainIndex.tagCounts.isEmpty {
                     Text("Noch keine häufigen Tags vorhanden. Sobald du mehr Bücher taggst, tauchen hier Schnellzugriffe auf.")
                         .font(.caption)
                         .foregroundStyle(.secondary)

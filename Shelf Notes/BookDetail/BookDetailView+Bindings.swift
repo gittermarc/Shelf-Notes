@@ -288,14 +288,23 @@ extension BookDetailView {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    var tagSuggestionsDomainIndex: TagsDomainIndex {
+        TagsDomainIndex(
+            suggestionSnapshots: TagSuggestionEngine.makeSnapshots(books: allBooks)
+        )
+    }
+
     /// Vorschläge passend zur aktuellen Eingabe.
     /// - Priorität: Prefix-Matches vor Contains-Matches.
     /// - Excludes: Tags, die am Buch bereits gesetzt sind.
     var tagAutocompleteSuggestions: [String] {
-        TagsIndexBuilder.autocompleteSuggestions(
+        tagAutocompleteSuggestions(domainIndex: tagSuggestionsDomainIndex)
+    }
+
+    func tagAutocompleteSuggestions(domainIndex: TagsDomainIndex) -> [String] {
+        domainIndex.autocompleteSuggestions(
             query: tagDraftQuery,
-            selectedTags: book.tags,
-            tagCounts: cachedTagCountsSorted
+            selectedTags: book.tags
         )
     }
 
@@ -306,13 +315,19 @@ extension BookDetailView {
     }
 
     var tagSuggestionViewState: TagSuggestionViewState {
-        let target = TagSuggestionEngine.makeSnapshot(book: book)
-        let library = TagSuggestionEngine.makeSnapshots(books: allBooks)
+        tagSuggestionViewState(
+            target: TagSuggestionEngine.makeSnapshot(book: book),
+            domainIndex: tagSuggestionsDomainIndex
+        )
+    }
 
-        return TagSuggestionViewStateBuilder.make(
+    func tagSuggestionViewState(
+        target: TagSuggestionBookSnapshot,
+        domainIndex: TagsDomainIndex
+    ) -> TagSuggestionViewState {
+        TagSuggestionViewStateBuilder.make(
             target: target,
-            library: library,
-            tagCounts: cachedTagCountsSorted,
+            domainIndex: domainIndex,
             selectedTags: book.tags,
             suggestionLimit: 8,
             smartLimit: 6,

@@ -16,14 +16,97 @@ struct TagsDomainIndex {
         }
     }
 
+    private struct SourceBookSnapshot {
+        let id: UUID
+        let title: String
+        let author: String
+        let statusRawValue: String
+        let tags: [String]
+        let categories: [String]
+        let mainCategory: String?
+    }
+
     let totalBooks: Int
     let usageIndex: TagUsageIndex
     let occurrences: [TagOccurrence]
     let normalizedTagsByBookID: [UUID: [String]]
+    let suggestionSnapshots: [TagSuggestionBookSnapshot]
+    let categoryCandidatesByBookID: [UUID: [String]]
+    let comparableMainCategoryKeyByBookID: [UUID: String]
     let inputSignature: UInt64
 
+    var tagCounts: [TagsIndexBuilder.TagCount] {
+        usageIndex.tagCounts
+    }
+
     init(snapshots: [TagsDashboardBookSnapshot]) {
-        totalBooks = snapshots.count
+        self.init(
+            sourceSnapshots: snapshots.map { snapshot in
+                SourceBookSnapshot(
+                    id: snapshot.id,
+                    title: snapshot.title,
+                    author: snapshot.author,
+                    statusRawValue: snapshot.statusRawValue,
+                    tags: snapshot.tags,
+                    categories: [],
+                    mainCategory: nil
+                )
+            },
+            includeSuggestionSnapshots: false
+        )
+    }
+
+    init(suggestionSnapshots: [TagSuggestionBookSnapshot]) {
+        self.init(
+            sourceSnapshots: suggestionSnapshots.map { snapshot in
+                SourceBookSnapshot(
+                    id: snapshot.id,
+                    title: snapshot.title,
+                    author: snapshot.author,
+                    statusRawValue: snapshot.statusRawValue,
+                    tags: snapshot.tags,
+                    categories: snapshot.categories,
+                    mainCategory: snapshot.mainCategory
+                )
+            },
+            includeSuggestionSnapshots: true
+        )
+    }
+
+    func normalizedTags(for bookID: UUID) -> [String] {
+        normalizedTagsByBookID[bookID] ?? []
+    }
+
+    func categoryCandidates(for bookID: UUID) -> [String] {
+        categoryCandidatesByBookID[bookID] ?? []
+    }
+
+    func categoryCandidateKeys(for bookID: UUID) -> Set<String> {
+        Set(categoryCandidates(for: bookID).map { Self.suggestionKey($0) })
+    }
+
+    func comparableMainCategoryKey(for bookID: UUID) -> String? {
+        comparableMainCategoryKeyByBookID[bookID]
+    }
+
+    func autocompleteSuggestions(
+        query: String,
+        selectedTags: [String],
+        limit: Int = 8
+    ) -> [String] {
+        TagsIndexBuilder.autocompleteSuggestions(
+            query: query,
+            selectedTags: selectedTags,
+            tagCounts: tagCounts,
+            limit: limit
+        )
+    }
+
+    private init(
+        sourceSnapshots: [SourceBookSnapshot],
+        includeSuggestionSnapshots: Bool
+    ) {
+        totalBooks = sourceSnapshots.count
 
         var occurrences: [TagOccurrence] = []
         var normalizedTagsByBookID: [UUID: [String]] = [:]
@@ -32,10 +115,17 @@ struct TagsDomainIndex {
         var taggedBookIDs: Set<UUID> = []
         var untaggedBookIDs: [UUID] = []
         var totalTagUsages = 0
+        var suggestionSnapshots: [TagSuggestionBookSnapshot] = []
+        var categoryCandidatesByBookID: [UUID: [String]] = [:]
+        var comparableMainCategoryKeyByBookID: [UUID: String] = [:]
         var aggregateSignature: UInt64 = 0xC2B2_AE3D_27D4_EB4F
-        aggregateSignature &+= UInt64(snapshots.count) &* 0x1656_67B1_9E37_79F9
+        aggregateSignature &+= UInt64(sourceSnapshots.count) &* 0x1656_67B1_9E37_79F9
 
-        for snapshot in snapshots {
+        if includeSuggestionSnapshots {
+            suggestionSnapshots.reserveCapacity(sourceSnapshots.count)
+        }
+
+        for snapshot in sourceSnapshots {
             var uniqueTags: [String] = []
             uniqueTags.reserveCapacity(snapshot.tags.count)
 
@@ -97,6 +187,38 @@ struct TagsDomainIndex {
                 totalTagUsages += 1
             }
 
+            if includeSuggestionSnapshots {
+                suggestionSnapshots.append(
+                    TagSuggestionBookSnapshot(
+                        id: snapshot.id,
+                        title: snapshot.title,
+                        author: snapshot.author,
+                        tags: snapshot.tags,
+                        categories: snapshot.categories,
+                        mainCategory: snapshot.mainCategory,
+                        statusRawValue: snapshot.statusRawValue
+                    )
+                )
+
+                let categoryCandidates = TagSuggestionEngine.categoryCandidates(
+                    categories: snapshot.categories,
+                    mainCategory: snapshot.mainCategory
+                )
+                categoryCandidatesByBookID[snapshot.id] = categoryCandidates
+
+                if let comparableMainCategoryKey = Self.comparableMainCategoryKey(snapshot.mainCategory) {
+                    comparableMainCategoryKeyByBookID[snapshot.id] = comparableMainCategoryKey
+                }
+
+                bookHasher.combine(snapshot.title)
+                bookHasher.combine(snapshot.author)
+                bookHasher.combine(snapshot.categories.count)
+                for category in snapshot.categories {
+                    bookHasher.combine(category)
+                }
+                bookHasher.combine(snapshot.mainCategory)
+            }
+
             let bookHash = UInt64(bitPattern: Int64(bookHasher.finalize()))
             aggregateSignature ^= bookHash &+ 0x9E37_79B9_7F4A_7C15 &+ (aggregateSignature << 6) &+ (aggregateSignature >> 2)
         }
@@ -121,6 +243,9 @@ struct TagsDomainIndex {
 
         self.occurrences = occurrences
         self.normalizedTagsByBookID = normalizedTagsByBookID
+        self.suggestionSnapshots = suggestionSnapshots
+        self.categoryCandidatesByBookID = categoryCandidatesByBookID
+        self.comparableMainCategoryKeyByBookID = comparableMainCategoryKeyByBookID
         self.inputSignature = aggregateSignature
         self.usageIndex = TagUsageIndex(
             entries: entries,
@@ -142,5 +267,18 @@ struct TagsDomainIndex {
         normalizeTagString(tag)
             .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
             .lowercased()
+    }
+
+    private static func suggestionKey(_ tag: String) -> String {
+        normalizeTagString(tag)
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+    }
+
+    private static func comparableMainCategoryKey(_ rawValue: String?) -> String? {
+        guard let rawValue else { return nil }
+        let candidates = TagSuggestionEngine.categoryCandidates(categories: [], mainCategory: rawValue)
+        guard let first = candidates.first else { return nil }
+        return suggestionKey(first)
     }
 }
