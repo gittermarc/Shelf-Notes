@@ -30,6 +30,25 @@ nonisolated extension ChallengeEngine {
         let targetValue: Int
     }
 
+    struct EnsureCadenceInput: Sendable {
+        let kind: ChallengeKind
+        let period: PeriodBounds
+        let existing: ChallengeRecordSnapshot?
+        let recent: [ChallengeRecordSnapshot]
+
+        init(
+            kind: ChallengeKind,
+            period: PeriodBounds,
+            existing: ChallengeRecordSnapshot?,
+            recent: [ChallengeRecordSnapshot] = []
+        ) {
+            self.kind = kind
+            self.period = period
+            self.existing = existing
+            self.recent = recent
+        }
+    }
+
     struct CompletionPlan: Sendable {
         let challengeID: UUID
         let completedAt: Date
@@ -80,55 +99,39 @@ nonisolated extension ChallengeEngine {
     }
 
     static func planEnsures(
-        weekly: PeriodBounds,
-        monthly: PeriodBounds,
-        existingWeekly: ChallengeRecordSnapshot?,
-        existingMonthly: ChallengeRecordSnapshot?,
-        snapshot: Snapshot,
-        recentWeekly: [ChallengeRecordSnapshot] = [],
-        recentMonthly: [ChallengeRecordSnapshot] = []
+        cadences: [EnsureCadenceInput],
+        snapshot: Snapshot
     ) -> [EnsurePlan] {
+        guard !cadences.isEmpty else { return [] }
+
         var plans: [EnsurePlan] = []
+        plans.reserveCapacity(cadences.count)
 
-        if existingWeekly == nil {
-            let recentMetrics = recentWeekly.map(\.metric)
-            let metric = pickMetric(kind: .weekly, periodStart: weekly.start, snapshot: snapshot, recentMetrics: recentMetrics)
+        for cadence in cadences {
+            guard cadence.kind.isKnownCadence else { continue }
+            guard cadence.existing == nil else { continue }
+            guard !ChallengeTemplateRegistry.templates(for: cadence.kind).isEmpty else { continue }
+
+            let recentMetrics = cadence.recent.map(\.metric)
+            let metric = pickMetric(
+                kind: cadence.kind,
+                periodStart: cadence.period.start,
+                snapshot: snapshot,
+                recentMetrics: recentMetrics
+            )
             let generated = generateChallenge(
-                kind: .weekly,
+                kind: cadence.kind,
                 metric: metric,
-                periodStart: weekly.start,
-                periodEnd: weekly.end,
+                periodStart: cadence.period.start,
+                periodEnd: cadence.period.end,
                 snapshot: snapshot
             )
             plans.append(
                 EnsurePlan(
-                    kind: .weekly,
+                    kind: cadence.kind,
                     metric: generated.metric,
-                    periodStart: weekly.start,
-                    periodEnd: weekly.end,
-                    title: generated.title,
-                    detail: generated.detail,
-                    targetValue: generated.targetValue
-                )
-            )
-        }
-
-        if existingMonthly == nil {
-            let recentMetrics = recentMonthly.map(\.metric)
-            let metric = pickMetric(kind: .monthly, periodStart: monthly.start, snapshot: snapshot, recentMetrics: recentMetrics)
-            let generated = generateChallenge(
-                kind: .monthly,
-                metric: metric,
-                periodStart: monthly.start,
-                periodEnd: monthly.end,
-                snapshot: snapshot
-            )
-            plans.append(
-                EnsurePlan(
-                    kind: .monthly,
-                    metric: generated.metric,
-                    periodStart: monthly.start,
-                    periodEnd: monthly.end,
+                    periodStart: cadence.period.start,
+                    periodEnd: cadence.period.end,
                     title: generated.title,
                     detail: generated.detail,
                     targetValue: generated.targetValue
@@ -313,9 +316,11 @@ private nonisolated extension ChallengeEngine {
     }
 
     static func baselineStats(kind: ChallengeKind, baselineEnd: Date, snapshot: Snapshot) -> BaselineStats {
-        let daysBack = (kind == .weekly) ? 28 : 90
-        let start = engineCalendar().date(byAdding: .day, value: -daysBack, to: baselineEnd)
-            ?? baselineEnd.addingTimeInterval(TimeInterval(-daysBack * 24 * 60 * 60))
+        let start = ChallengeCadence.baselineStart(
+            for: kind,
+            baselineEnd: baselineEnd,
+            calendar: engineCalendar()
+        )
         let range = start..<baselineEnd
 
         let seconds = totalReadingSeconds(in: range, snapshot: snapshot)

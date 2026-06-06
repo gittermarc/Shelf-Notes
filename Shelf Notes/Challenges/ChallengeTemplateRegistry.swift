@@ -260,10 +260,16 @@ nonisolated enum ChallengeTemplateRegistry {
 
     static func templates(for kind: ChallengeKind) -> [ChallengeTemplate] {
         switch kind {
+        case .daily:
+            return []
         case .weekly:
             return weekly
         case .monthly:
             return monthly
+        case .yearly:
+            return []
+        case .unknown:
+            return []
         }
     }
 

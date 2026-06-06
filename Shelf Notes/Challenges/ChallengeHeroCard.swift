@@ -125,7 +125,7 @@ struct ChallengeHeroCard: View {
                 Text("Bereit für den nächsten Lauf")
                     .font(.headline)
 
-                Text("Sobald aktuelle Wochen- und Monats-Challenges vorbereitet sind, siehst du hier deinen nächsten erreichbaren Sieg.")
+                Text("Sobald aktuelle Challenges vorbereitet sind, siehst du hier deinen nächsten erreichbaren Sieg.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

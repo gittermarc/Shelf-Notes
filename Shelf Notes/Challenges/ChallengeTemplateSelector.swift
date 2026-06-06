@@ -134,10 +134,16 @@ nonisolated enum ChallengeTemplateSelector {
     private static func stableSeed(kind: ChallengeKind, periodStart: Date) -> Int {
         let daySeed = Int(periodStart.timeIntervalSince1970 / 86_400)
         switch kind {
+        case .daily:
+            return daySeed &* 31 &+ 3
         case .weekly:
             return daySeed &* 31 &+ 7
         case .monthly:
             return daySeed &* 31 &+ 19
+        case .yearly:
+            return daySeed &* 31 &+ 31
+        case .unknown:
+            return daySeed &* 31 &+ 43
         }
     }
 
@@ -151,7 +157,7 @@ nonisolated enum ChallengeTemplateSelector {
 
 nonisolated extension ChallengeEngine.BaselineStats {
     func value(for metric: ChallengeMetric, kind: ChallengeKind) -> Int {
-        let divisor = kind == .weekly ? 4 : 3
+        let divisor = ChallengeCadence.baselineDivisor(for: kind)
         switch metric {
         case .readingMinutes:
             return max(0, minutes / divisor)

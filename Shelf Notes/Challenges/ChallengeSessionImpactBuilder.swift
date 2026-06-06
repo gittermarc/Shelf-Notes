@@ -54,7 +54,7 @@ enum ChallengeSessionImpactBuilder {
         let active = challenges
             .filter { $0.periodStart <= now && $0.periodEnd > now }
             .sorted { lhs, rhs in
-                if lhs.kind != rhs.kind { return lhs.kind == .weekly }
+                if lhs.kind != rhs.kind { return lhs.kind.sortOrder < rhs.kind.sortOrder }
                 return lhs.periodEnd < rhs.periodEnd
             }
 

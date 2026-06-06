@@ -216,13 +216,3 @@ enum ChallengeDashboardBuilder {
     }
 }
 
-private extension ChallengeKind {
-    var sortOrder: Int {
-        switch self {
-        case .weekly:
-            return 0
-        case .monthly:
-            return 1
-        }
-    }
-}

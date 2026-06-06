@@ -2,7 +2,7 @@
 //  ChallengeEngine.swift
 //  Shelf Notes
 //
-//  Generates Weekly/Monthly challenges and computes progress from existing data.
+//  Generates current challenges and computes progress from existing data.
 //
 
 import Foundation
@@ -12,32 +12,21 @@ nonisolated enum ChallengeEngine {
 
     // MARK: - Public API
 
-    /// Ensures that there is an active weekly + monthly challenge for the current period.
+    /// Ensures that active default challenge cadences exist for the current period.
     @MainActor
     static func ensureCurrentChallenges(modelContext: ModelContext) {
         repairDuplicateChallenges(modelContext: modelContext)
 
         let now = Date()
-        let weekly = periodBounds(kind: .weekly, now: now)
-        let monthly = periodBounds(kind: .monthly, now: now)
-
-        let earliest = min(
-            weekly.start.addingTimeInterval(TimeInterval(-28 * 24 * 60 * 60)),
-            monthly.start.addingTimeInterval(TimeInterval(-90 * 24 * 60 * 60))
+        let cadences = ensureCadenceInputs(
+            kinds: ChallengeCadence.defaultGenerationKinds,
+            now: now,
+            modelContext: modelContext
         )
-        let latest = max(weekly.end, monthly.end)
+        guard let range = snapshotRange(for: cadences, now: now) else { return }
 
-        let snapshot = buildSnapshot(range: earliest..<latest, modelContext: modelContext)
-
-        let plans = ChallengeEngine.planEnsures(
-            weekly: weekly,
-            monthly: monthly,
-            existingWeekly: fetchChallengeSnapshot(kind: .weekly, periodStart: weekly.start, periodEnd: weekly.end, modelContext: modelContext),
-            existingMonthly: fetchChallengeSnapshot(kind: .monthly, periodStart: monthly.start, periodEnd: monthly.end, modelContext: modelContext),
-            snapshot: snapshot,
-            recentWeekly: fetchRecentChallengeSnapshots(kind: .weekly, before: weekly.start, limit: 3, modelContext: modelContext),
-            recentMonthly: fetchRecentChallengeSnapshots(kind: .monthly, before: monthly.start, limit: 3, modelContext: modelContext)
-        )
+        let snapshot = buildSnapshot(range: range, modelContext: modelContext)
+        let plans = ChallengeEngine.planEnsures(cadences: cadences, snapshot: snapshot)
 
         applyEnsurePlans(plans, modelContext: modelContext)
     }
@@ -69,32 +58,18 @@ nonisolated enum ChallengeEngine {
         repairDuplicateChallenges(modelContext: modelContext)
 
         let now = Date()
-        let weekly = periodBounds(kind: .weekly, now: now)
-        let monthly = periodBounds(kind: .monthly, now: now)
-
-        let earliest = min(
-            weekly.start.addingTimeInterval(TimeInterval(-28 * 24 * 60 * 60)),
-            monthly.start.addingTimeInterval(TimeInterval(-90 * 24 * 60 * 60))
+        let cadences = ensureCadenceInputs(
+            kinds: ChallengeCadence.defaultGenerationKinds,
+            now: now,
+            modelContext: modelContext
         )
-        let latest = max(weekly.end, monthly.end)
-
-        let snapshot = buildSnapshot(range: earliest..<latest, modelContext: modelContext)
-        let existingWeekly = fetchChallengeSnapshot(kind: .weekly, periodStart: weekly.start, periodEnd: weekly.end, modelContext: modelContext)
-        let existingMonthly = fetchChallengeSnapshot(kind: .monthly, periodStart: monthly.start, periodEnd: monthly.end, modelContext: modelContext)
         let activeSnapshots = fetchActiveChallenges(now: now, modelContext: modelContext).map { ChallengeRecordSnapshot(from: $0) }
-        let recentWeekly = fetchRecentChallengeSnapshots(kind: .weekly, before: weekly.start, limit: 3, modelContext: modelContext)
-        let recentMonthly = fetchRecentChallengeSnapshots(kind: .monthly, before: monthly.start, limit: 3, modelContext: modelContext)
+
+        let range = snapshotRange(for: cadences, active: activeSnapshots, now: now) ?? (now..<now)
+        let snapshot = buildSnapshot(range: range, modelContext: modelContext)
 
         let plans = await Task.detached(priority: .utility) {
-            let ensures = planEnsures(
-                weekly: weekly,
-                monthly: monthly,
-                existingWeekly: existingWeekly,
-                existingMonthly: existingMonthly,
-                snapshot: snapshot,
-                recentWeekly: recentWeekly,
-                recentMonthly: recentMonthly
-            )
+            let ensures = planEnsures(cadences: cadences, snapshot: snapshot)
             let completions = planCompletions(now: now, active: activeSnapshots, snapshot: snapshot)
             return (ensures, completions)
         }.value
@@ -137,9 +112,11 @@ nonisolated enum ChallengeEngine {
         let periodStart = challenge.periodStart
         let periodEnd = challenge.periodEnd
 
-        let daysBack = (kind == .weekly) ? 28 : 90
-        let baselineStart = calendar().date(byAdding: .day, value: -daysBack, to: periodStart)
-            ?? periodStart.addingTimeInterval(TimeInterval(-daysBack * 24 * 60 * 60))
+        let baselineStart = ChallengeCadence.baselineStart(
+            for: kind,
+            baselineEnd: periodStart,
+            calendar: calendar()
+        )
         let snapshot = buildSnapshot(range: baselineStart..<periodEnd, modelContext: modelContext)
         let recentMetrics = fetchRecentChallengeSnapshots(
             kind: kind,
@@ -354,23 +331,65 @@ nonisolated enum ChallengeEngine {
         return cal
     }
 
-    private static func periodBounds(kind: ChallengeKind, now: Date) -> PeriodBounds {
-        let cal = calendar()
+    static func periodBounds(kind: ChallengeKind, now: Date) -> PeriodBounds {
+        ChallengeCadence.periodBounds(for: kind, now: now, calendar: calendar())
+    }
 
-        switch kind {
-        case .weekly:
-            let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)) ?? cal.startOfDay(for: now)
-            let start = cal.startOfDay(for: weekStart)
-            let end = cal.date(byAdding: .day, value: 7, to: start) ?? start.addingTimeInterval(7 * 24 * 60 * 60)
-            return PeriodBounds(start: start, end: end)
-
-        case .monthly:
-            let comps = cal.dateComponents([.year, .month], from: now)
-            let monthStart = cal.date(from: DateComponents(year: comps.year, month: comps.month, day: 1)) ?? cal.startOfDay(for: now)
-            let start = cal.startOfDay(for: monthStart)
-            let end = cal.date(byAdding: .month, value: 1, to: start) ?? start.addingTimeInterval(30 * 24 * 60 * 60)
-            return PeriodBounds(start: start, end: end)
+    @MainActor
+    private static func ensureCadenceInputs(
+        kinds: [ChallengeKind],
+        now: Date,
+        modelContext: ModelContext
+    ) -> [EnsureCadenceInput] {
+        kinds.filter(\.isKnownCadence).map { kind in
+            let period = periodBounds(kind: kind, now: now)
+            return EnsureCadenceInput(
+                kind: kind,
+                period: period,
+                existing: fetchChallengeSnapshot(
+                    kind: kind,
+                    periodStart: period.start,
+                    periodEnd: period.end,
+                    modelContext: modelContext
+                ),
+                recent: fetchRecentChallengeSnapshots(
+                    kind: kind,
+                    before: period.start,
+                    limit: 3,
+                    modelContext: modelContext
+                )
+            )
         }
+    }
+
+    private static func snapshotRange(
+        for cadences: [EnsureCadenceInput],
+        now: Date
+    ) -> Range<Date>? {
+        snapshotRange(for: cadences, active: [], now: now)
+    }
+
+    private static func snapshotRange(
+        for cadences: [EnsureCadenceInput],
+        active: [ChallengeRecordSnapshot],
+        now: Date
+    ) -> Range<Date>? {
+        guard !cadences.isEmpty || !active.isEmpty else { return nil }
+
+        let cal = calendar()
+        let cadenceStarts = cadences.map { input in
+            ChallengeCadence.baselineStart(
+                for: input.kind,
+                baselineEnd: input.period.start,
+                calendar: cal
+            )
+        }
+        let activeStarts = active.map(\.periodStart)
+        let ends = cadences.map { $0.period.end } + active.map(\.periodEnd)
+
+        let earliest = (cadenceStarts + activeStarts).min() ?? now
+        let latest = ends.max() ?? now
+        return earliest..<latest
     }
 
     // MARK: - Notes

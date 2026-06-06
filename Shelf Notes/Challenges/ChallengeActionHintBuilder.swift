@@ -24,7 +24,7 @@ nonisolated enum ChallengeActionHintBuilder {
             .sorted { lhs, rhs in
                 if lhs.priority != rhs.priority { return lhs.priority < rhs.priority }
                 if lhs.progressFraction != rhs.progressFraction { return lhs.progressFraction > rhs.progressFraction }
-                if lhs.kind != rhs.kind { return lhs.kind == .weekly }
+                if lhs.kind != rhs.kind { return lhs.kind.sortOrder < rhs.kind.sortOrder }
                 return lhs.title < rhs.title
             }
             .prefix(max(0, limit))
@@ -71,9 +71,9 @@ nonisolated enum ChallengeActionHintBuilder {
 
     private static func makePriority(item: ChallengeDashboardItem) -> Int {
         if item.progressFraction >= 0.85 { return 0 }
-        if item.kind == .weekly && item.progressFraction >= 0.60 { return 1 }
+        if item.kind.sortOrder <= ChallengeKind.weekly.sortOrder && item.progressFraction >= 0.60 { return 1 }
         if item.metric == .readingMinutes || item.metric == .sessions || item.metric == .shortSessions { return 2 }
-        if item.kind == .weekly { return 3 }
+        if item.kind.sortOrder <= ChallengeKind.weekly.sortOrder { return 3 }
         return 4
     }
 
@@ -96,7 +96,7 @@ nonisolated enum ChallengeActionHintBuilder {
             return "Trag gelesene Seiten ein, damit diese Challenge Fortschritt bekommt."
         case .booksFinished:
             if let remainingPages {
-                return "Noch \(remainingPages) Seiten im Buch. Ein Abschluss kann die Monats-Challenge knacken."
+                return "Noch \(remainingPages) Seiten im Buch. Ein Abschluss kann diese Challenge knacken."
             }
             return "Wenn du dieses Buch abschließt, kann das direkt auf die Challenge einzahlen."
         case .shortSessions:

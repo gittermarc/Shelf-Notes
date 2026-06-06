@@ -2,7 +2,7 @@
 //  ChallengesView.swift
 //  Shelf Notes
 //
-//  Motivation board for weekly and monthly reading challenges.
+//  Motivation board for reading challenges.
 //
 
 import SwiftUI
@@ -72,7 +72,7 @@ struct ChallengesView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Aktive Missionen")
                         .font(.headline)
-                    Text("Woche und Monat auf einen Blick")
+                    Text("Deine aktuellen Lese-Missionen auf einen Blick")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -108,7 +108,7 @@ struct ChallengesView: View {
                     .font(.headline)
             }
 
-            Text("Shelf Notes erzeugt automatisch eine Wochen- und Monats-Challenge. Eine Template-Auswahl variiert die Missionen anhand deines bisherigen Leseverhaltens, ohne dafür neue CloudKit-Felder zu brauchen.")
+            Text("Shelf Notes erzeugt automatisch die aktuell aktivierten Challenge-Zeiträume. Eine Template-Auswahl variiert die Missionen anhand deines bisherigen Leseverhaltens, ohne dafür neue CloudKit-Felder zu brauchen.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -160,7 +160,7 @@ struct ChallengesView: View {
         let active = allChallenges
             .filter { $0.periodStart <= now && $0.periodEnd > now }
             .sorted { lhs, rhs in
-                if lhs.kind != rhs.kind { return lhs.kind == .weekly }
+                if lhs.kind != rhs.kind { return lhs.kind.sortOrder < rhs.kind.sortOrder }
                 return lhs.periodStart < rhs.periodStart
             }
 
@@ -168,7 +168,7 @@ struct ChallengesView: View {
             .filter { $0.periodEnd <= now }
             .sorted { lhs, rhs in
                 if lhs.periodEnd != rhs.periodEnd { return lhs.periodEnd > rhs.periodEnd }
-                return lhs.kind == .weekly
+                return lhs.kind.sortOrder < rhs.kind.sortOrder
             }
             .prefix(12)
 
@@ -187,7 +187,7 @@ private struct ChallengeBoardEmptyState: View {
             Text("Missionen werden vorbereitet")
                 .font(.headline)
 
-            Text("Sobald die aktuelle Woche und der aktuelle Monat angelegt sind, erscheinen hier deine aktiven Challenges mit Fortschritt und nächstem Ziel.")
+            Text("Sobald die aktuellen Challenge-Zeiträume angelegt sind, erscheinen hier deine aktiven Missionen mit Fortschritt und nächstem Ziel.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

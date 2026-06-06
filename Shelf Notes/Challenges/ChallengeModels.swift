@@ -2,7 +2,7 @@
 //  ChallengeModels.swift
 //  Shelf Notes
 //
-//  Challenges are stored as records per period (week/month).
+//  Challenges are stored as records per configured cadence period.
 //  Progress is computed from ReadingSession + finished books.
 //
 
@@ -10,27 +10,34 @@ import Foundation
 import SwiftData
 
 enum ChallengeKind: String, Codable, CaseIterable, Identifiable, Sendable {
+    case daily
     case weekly
     case monthly
+    case yearly
+    case unknown
+
+    nonisolated static let allCases: [ChallengeKind] = [.daily, .weekly, .monthly, .yearly]
 
     nonisolated var id: String { rawValue }
 
     nonisolated var displayName: String {
-        switch self {
-        case .weekly:
-            return "Woche"
-        case .monthly:
-            return "Monat"
-        }
+        ChallengeCadence.definition(for: self).displayName
     }
 
     nonisolated var badgeSystemImage: String {
-        switch self {
-        case .weekly:
-            return "calendar.badge.clock"
-        case .monthly:
-            return "calendar"
-        }
+        ChallengeCadence.definition(for: self).badgeSystemImage
+    }
+
+    nonisolated var sortOrder: Int {
+        ChallengeCadence.definition(for: self).sortOrder
+    }
+
+    nonisolated var isKnownCadence: Bool {
+        self != .unknown
+    }
+
+    nonisolated static func decoded(rawValue: String) -> ChallengeKind {
+        ChallengeKind(rawValue: rawValue) ?? .unknown
     }
 }
 
@@ -162,7 +169,7 @@ final class ChallengeRecord {
 
 extension ChallengeRecord {
     var kind: ChallengeKind {
-        get { ChallengeKind(rawValue: kindRawValue) ?? .weekly }
+        get { ChallengeKind.decoded(rawValue: kindRawValue) }
         set { kindRawValue = newValue.rawValue }
     }
 
@@ -185,7 +192,7 @@ extension ChallengeRecord {
     }
 
     var canReroll: Bool {
-        !isCompleted && rerollsUsed < 1
+        !isCompleted && rerollsUsed < 1 && !ChallengeTemplateRegistry.templates(for: kind).isEmpty
     }
 
     var periodLabel: String {
