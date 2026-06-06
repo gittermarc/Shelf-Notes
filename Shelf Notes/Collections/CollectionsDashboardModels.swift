@@ -66,7 +66,7 @@ struct CollectionsDashboardStatusCounts: Hashable {
     }
 }
 
-struct CollectionsDashboardHighlight: Hashable {
+nonisolated struct CollectionsDashboardHighlight: Hashable {
     let id: UUID
     let name: String
     let bookCount: Int

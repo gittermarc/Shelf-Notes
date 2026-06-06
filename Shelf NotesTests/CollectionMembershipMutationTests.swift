@@ -35,34 +35,38 @@ struct CollectionMembershipMutationTests {
         #expect(collection.updatedAt == unchangedDate)
     }
 
-    @Test @MainActor func addRestoresMissingBookSideWithoutFullRepair() {
+    @Test @MainActor func addAfterCollectionSideAssignmentIsNoopWhenSwiftDataAlreadyBalancesInverse() {
         let book = Book(title: "Dune")
         let collection = BookCollection(name: "Sci-Fi")
-        let now = Date(timeIntervalSince1970: 1_000)
+        let unchangedDate = Date(timeIntervalSince1970: 1_000)
+        let noOpDate = Date(timeIntervalSince1970: 2_000)
 
         collection.booksSafe = [book]
+        collection.updatedAt = unchangedDate
 
-        let didChange = CollectionMembershipMutation.add(book, to: collection, now: now)
+        let didChange = CollectionMembershipMutation.add(book, to: collection, now: noOpDate)
 
-        #expect(didChange)
+        #expect(!didChange)
         #expect(book.collectionsSafe.map(\.id) == [collection.id])
         #expect(collection.booksSafe.map(\.id) == [book.id])
-        #expect(collection.updatedAt == now)
+        #expect(collection.updatedAt == unchangedDate)
     }
 
-    @Test @MainActor func addRestoresMissingCollectionSideWithoutFullRepair() {
+    @Test @MainActor func addAfterBookSideAssignmentIsNoopWhenSwiftDataAlreadyBalancesInverse() {
         let book = Book(title: "Dune")
         let collection = BookCollection(name: "Sci-Fi")
-        let now = Date(timeIntervalSince1970: 1_000)
+        let unchangedDate = Date(timeIntervalSince1970: 1_000)
+        let noOpDate = Date(timeIntervalSince1970: 2_000)
 
         book.collectionsSafe = [collection]
+        collection.updatedAt = unchangedDate
 
-        let didChange = CollectionMembershipMutation.add(book, to: collection, now: now)
+        let didChange = CollectionMembershipMutation.add(book, to: collection, now: noOpDate)
 
-        #expect(didChange)
+        #expect(!didChange)
         #expect(book.collectionsSafe.map(\.id) == [collection.id])
         #expect(collection.booksSafe.map(\.id) == [book.id])
-        #expect(collection.updatedAt == now)
+        #expect(collection.updatedAt == unchangedDate)
     }
 
     @Test @MainActor func removeBookKeepsBothRelationshipSidesInSync() {

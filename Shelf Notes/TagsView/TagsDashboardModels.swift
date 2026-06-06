@@ -82,7 +82,7 @@ struct TagsDashboardEntry: Identifiable, Hashable {
     }
 }
 
-struct TagsDashboardTopTag: Hashable {
+nonisolated struct TagsDashboardTopTag: Hashable {
     let tag: String
     let count: Int
 }

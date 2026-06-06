@@ -5,7 +5,7 @@
 
 import Foundation
 
-enum CoverImageRequestKey {
+nonisolated enum CoverImageRequestKey {
     static func make(for url: URL) -> String {
         let trimmed = url.absoluteString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return url.absoluteString }
@@ -26,7 +26,7 @@ enum CoverImageRequestKey {
 /// This keeps duplicate scroll-triggered requests from starting parallel network loads.
 /// The shared task is intentionally unstructured so cancellation of one row does not
 /// cancel the same request for other rows that still need the image.
-final class CoverImageRequestDeduper: @unchecked Sendable {
+nonisolated final class CoverImageRequestDeduper: @unchecked Sendable {
     static let shared = CoverImageRequestDeduper()
 
     private let lock = NSLock()

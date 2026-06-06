@@ -5,7 +5,7 @@ struct ReadingGoalDraft {
     let needsPersistence: Bool
 }
 
-enum ReadingGoalPersistenceChange: Equatable {
+nonisolated enum ReadingGoalPersistenceChange: Equatable {
     case insert(year: Int, targetCount: Int)
     case update(year: Int, targetCount: Int)
 }

@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum StorageMode: Equatable {
+nonisolated enum StorageMode: Equatable {
     case cloudKit
     case localOnly
     case inMemory

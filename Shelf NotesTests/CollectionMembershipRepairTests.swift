@@ -25,34 +25,38 @@ struct CollectionMembershipRepairTests {
         #expect(collection.updatedAt == now)
     }
 
-    @Test @MainActor func repairRestoresMissingCollectionSide() {
+    @Test @MainActor func repairAfterBookSideAssignmentIsNoopWhenSwiftDataAlreadyBalancesInverse() {
         let book = Book(title: "Dune")
         let collection = BookCollection(name: "Sci-Fi")
-        let now = Date(timeIntervalSince1970: 1_000)
+        let unchangedDate = Date(timeIntervalSince1970: 1_000)
+        let noOpDate = Date(timeIntervalSince1970: 2_000)
 
         book.collectionsSafe = [collection]
+        collection.updatedAt = unchangedDate
 
-        let didChange = CollectionMembershipRepair.repair(book: book, collection: collection, now: now)
+        let didChange = CollectionMembershipRepair.repair(book: book, collection: collection, now: noOpDate)
 
-        #expect(didChange)
+        #expect(!didChange)
         #expect(book.collectionsSafe.map(\.id) == [collection.id])
         #expect(collection.booksSafe.map(\.id) == [book.id])
-        #expect(collection.updatedAt == now)
+        #expect(collection.updatedAt == unchangedDate)
     }
 
-    @Test @MainActor func repairRestoresMissingBookSide() {
+    @Test @MainActor func repairAfterCollectionSideAssignmentIsNoopWhenSwiftDataAlreadyBalancesInverse() {
         let book = Book(title: "Dune")
         let collection = BookCollection(name: "Sci-Fi")
-        let now = Date(timeIntervalSince1970: 1_000)
+        let unchangedDate = Date(timeIntervalSince1970: 1_000)
+        let noOpDate = Date(timeIntervalSince1970: 2_000)
 
         collection.booksSafe = [book]
+        collection.updatedAt = unchangedDate
 
-        let didChange = CollectionMembershipRepair.repair(book: book, collection: collection, now: now)
+        let didChange = CollectionMembershipRepair.repair(book: book, collection: collection, now: noOpDate)
 
-        #expect(didChange)
+        #expect(!didChange)
         #expect(book.collectionsSafe.map(\.id) == [collection.id])
         #expect(collection.booksSafe.map(\.id) == [book.id])
-        #expect(collection.updatedAt == now)
+        #expect(collection.updatedAt == unchangedDate)
     }
 
     @Test @MainActor func repairIsNoopForConsistentMembership() {
