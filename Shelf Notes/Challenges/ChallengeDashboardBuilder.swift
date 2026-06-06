@@ -10,6 +10,24 @@ import Foundation
 @MainActor
 enum ChallengeDashboardBuilder {
     static func make(
+        sourceSnapshot: ChallengeSourceSnapshot,
+        progressByID: [UUID: ChallengeEngine.ChallengeProgress],
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        historyLimit: Int = 12,
+        enabledKinds: [ChallengeKind] = ChallengeCadence.supportedKinds
+    ) -> ChallengeDashboardState {
+        make(
+            challenges: sourceSnapshot.dashboardRecords,
+            progressByID: progressByID,
+            now: now,
+            calendar: calendar,
+            historyLimit: historyLimit,
+            enabledKinds: enabledKinds
+        )
+    }
+
+    static func make(
         challenges: [ChallengeRecord],
         progressByID: [UUID: ChallengeEngine.ChallengeProgress],
         now: Date = Date(),
@@ -35,15 +53,17 @@ enum ChallengeDashboardBuilder {
 
         let activeItems = items
             .filter { item in
-                item.periodStart <= now && item.periodEnd > now && isActiveItemVisible(item, enabledKindSet: enabledKindSet)
+                item.isRewardReady || (item.periodStart <= now && item.periodEnd > now && isActiveItemVisible(item, enabledKindSet: enabledKindSet))
             }
             .sorted { lhs, rhs in
+                if lhs.isRewardReady != rhs.isRewardReady { return lhs.isRewardReady }
                 if lhs.kind != rhs.kind { return lhs.kind.sortOrder < rhs.kind.sortOrder }
                 return lhs.periodStart < rhs.periodStart
             }
+        let activeIDs = Set(activeItems.map(\.id))
 
         let historyItems = items
-            .filter { $0.periodEnd <= now }
+            .filter { $0.periodEnd <= now && !activeIDs.contains($0.id) }
             .sorted { lhs, rhs in
                 if lhs.periodEnd != rhs.periodEnd { return lhs.periodEnd > rhs.periodEnd }
                 return lhs.kind.sortOrder < rhs.kind.sortOrder

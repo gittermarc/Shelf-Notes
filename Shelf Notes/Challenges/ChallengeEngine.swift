@@ -24,8 +24,6 @@ nonisolated enum ChallengeEngine {
     /// Ensures that active challenge cadences exist for the current period.
     @MainActor
     static func ensureCurrentChallenges(modelContext: ModelContext, kinds: [ChallengeKind]) {
-        repairDuplicateChallenges(modelContext: modelContext)
-
         let now = Date()
         let cadences = ensureCadenceInputs(
             kinds: kinds,
@@ -43,10 +41,8 @@ nonisolated enum ChallengeEngine {
     /// Refreshes completion timestamps for currently active challenges (if the user has reached the target).
     @MainActor
     static func refreshCompletionForActiveChallenges(modelContext: ModelContext) {
-        repairDuplicateChallenges(modelContext: modelContext)
-
         let now = Date()
-        let active = fetchActiveChallenges(now: now, modelContext: modelContext)
+        let active = fetchDeduplicatedActiveChallenges(now: now, modelContext: modelContext)
         guard !active.isEmpty else { return }
 
         let minStart = active.map(\.periodStart).min() ?? now
@@ -73,15 +69,13 @@ nonisolated enum ChallengeEngine {
     /// Preferred entry point for UI tasks when a caller already knows which cadences are enabled.
     @MainActor
     static func ensureCurrentChallengesAndRefreshCompletion(modelContext: ModelContext, kinds: [ChallengeKind]) async {
-        repairDuplicateChallenges(modelContext: modelContext)
-
         let now = Date()
         let cadences = ensureCadenceInputs(
             kinds: kinds,
             now: now,
             modelContext: modelContext
         )
-        let activeSnapshots = fetchActiveChallenges(now: now, modelContext: modelContext).map { ChallengeRecordSnapshot(from: $0) }
+        let activeSnapshots = fetchDeduplicatedActiveChallenges(now: now, modelContext: modelContext).map { ChallengeRecordSnapshot(from: $0) }
 
         let range = snapshotRange(for: cadences, active: activeSnapshots, now: now) ?? (now..<now)
         let snapshot = buildSnapshot(range: range, modelContext: modelContext)
@@ -275,17 +269,6 @@ nonisolated enum ChallengeEngine {
     // MARK: - Internal: fetching
 
     @MainActor
-    @discardableResult
-    private static func repairDuplicateChallenges(modelContext: ModelContext) -> Bool {
-        let records = fetchAllChallenges(modelContext: modelContext)
-        let deletedCount = ChallengeDuplicateResolver.deleteDuplicates(in: records, modelContext: modelContext)
-        guard deletedCount > 0 else { return false }
-
-        _ = modelContext.saveWithDiagnostics()
-        return true
-    }
-
-    @MainActor
     private static func fetchChallenges(
         kind: ChallengeKind,
         periodStart: Date,
@@ -309,20 +292,6 @@ nonisolated enum ChallengeEngine {
     }
 
     @MainActor
-    private static func fetchAllChallenges(modelContext: ModelContext) -> [ChallengeRecord] {
-        let descriptor = FetchDescriptor<ChallengeRecord>(
-            sortBy: [
-                SortDescriptor(\ChallengeRecord.periodStart, order: .forward),
-                SortDescriptor(\ChallengeRecord.periodEnd, order: .forward),
-                SortDescriptor(\ChallengeRecord.kindRawValue, order: .forward),
-                SortDescriptor(\ChallengeRecord.createdAt, order: .forward)
-            ]
-        )
-
-        return (try? modelContext.fetch(descriptor)) ?? []
-    }
-
-    @MainActor
     private static func fetchChallengeByID(_ id: UUID, modelContext: ModelContext) -> ChallengeRecord? {
         let value = id
         let descriptor = FetchDescriptor<ChallengeRecord>(
@@ -339,6 +308,20 @@ nonisolated enum ChallengeEngine {
             sortBy: [SortDescriptor(\ChallengeRecord.periodStart, order: .reverse)]
         )
         return (try? modelContext.fetch(descriptor)) ?? []
+    }
+
+    @MainActor
+    private static func fetchDeduplicatedActiveChallenges(now: Date, modelContext: ModelContext) -> [ChallengeRecord] {
+        let active = fetchActiveChallenges(now: now, modelContext: modelContext)
+        guard !active.isEmpty else { return [] }
+
+        let deletedCount = ChallengeDuplicateResolver.deleteDuplicates(in: active, modelContext: modelContext)
+        if deletedCount > 0 {
+            _ = modelContext.saveWithDiagnostics()
+            return fetchActiveChallenges(now: now, modelContext: modelContext)
+        }
+
+        return ChallengeDuplicateResolver.deduplicatedRecords(active)
     }
 
     // MARK: - Period helpers

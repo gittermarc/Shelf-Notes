@@ -38,7 +38,10 @@ enum ChallengeRefreshCoordinator {
     }
 
     static func refreshActiveProgress(modelContext: ModelContext) async -> [UUID: ChallengeEngine.ChallengeProgress] {
-        let active = fetchActiveChallenges(modelContext: modelContext)
+        let active = ChallengeSourceStore.fetchVisibleActiveRecords(
+            modelContext: modelContext,
+            enabledKinds: ChallengePreferencesStore.load().enabledKinds
+        )
         return await computeProgressMap(for: active, modelContext: modelContext)
     }
 
@@ -52,7 +55,10 @@ enum ChallengeRefreshCoordinator {
         let enabledKinds = ChallengePreferencesStore.load().enabledKinds
         await prepareCurrentChallenges(modelContext: modelContext, enabledKinds: enabledKinds)
 
-        let active = fetchActiveChallenges(modelContext: modelContext, enabledKinds: enabledKinds)
+        let active = ChallengeSourceStore.fetchVisibleActiveRecords(
+            modelContext: modelContext,
+            enabledKinds: enabledKinds
+        )
         let progress = await computeProgressMap(for: active, modelContext: modelContext)
         let contribution = ChallengeSessionContribution(
             bookID: bookID,
@@ -80,26 +86,5 @@ enum ChallengeRefreshCoordinator {
     static func refreshAfterReadingSessionMutation(modelContext: ModelContext) async {
         await prepareCurrentChallenges(modelContext: modelContext)
         ReadingSessionChangeNotifier.post()
-    }
-
-    private static func fetchActiveChallenges(
-        modelContext: ModelContext,
-        now: Date = Date(),
-        enabledKinds: [ChallengeKind] = ChallengePreferencesStore.load().enabledKinds
-    ) -> [ChallengeRecord] {
-        let nowValue = now
-        let descriptor = FetchDescriptor<ChallengeRecord>(
-            predicate: #Predicate<ChallengeRecord> { $0.periodStart <= nowValue && $0.periodEnd > nowValue },
-            sortBy: [
-                SortDescriptor(\ChallengeRecord.periodStart, order: .reverse),
-                SortDescriptor(\ChallengeRecord.kindRawValue, order: .forward)
-            ]
-        )
-        let records = (try? modelContext.fetch(descriptor)) ?? []
-        let enabledKindSet = Set(ChallengePreferences.normalizedKinds(enabledKinds))
-        let visible = records.filter { record in
-            enabledKindSet.contains(record.kind) || (record.isCompleted && !record.isClaimed)
-        }
-        return ChallengeDuplicateResolver.deduplicatedRecords(visible)
     }
 }

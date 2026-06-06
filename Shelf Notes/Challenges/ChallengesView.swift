@@ -11,12 +11,10 @@ import SwiftData
 struct ChallengesView: View {
     @Environment(\.modelContext) private var modelContext
 
-    @Query(sort: [SortDescriptor(\ChallengeRecord.periodStart, order: .reverse)])
-    private var allChallenges: [ChallengeRecord]
-
     @AppStorage(ChallengePreferencesStorageKey.enabledKinds) private var enabledKindsRaw: String = ChallengePreferencesStore.defaultEnabledKindsRaw
     @AppStorage(ChallengePreferencesStorageKey.preset) private var presetRaw: String = ChallengePreferencesStore.defaultPresetRaw
 
+    @State private var sourceSnapshot: ChallengeSourceSnapshot = .empty
     @State private var progressByID: [UUID: ChallengeEngine.ChallengeProgress] = [:]
     @State private var rewardItem: ChallengeDashboardItem?
 
@@ -27,11 +25,10 @@ struct ChallengesView: View {
     var body: some View {
         let preferences = challengePreferences
         let dashboard = ChallengeDashboardBuilder.make(
-            challenges: allChallenges,
+            challenges: sourceSnapshot.dashboardRecords,
             progressByID: progressByID,
             enabledKinds: preferences.enabledKinds
         )
-        let signature = ChallengeSummarySignature(challenges: allChallenges)
 
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -61,11 +58,11 @@ struct ChallengesView: View {
         }
         .navigationTitle("Challenges")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: signature) {
-            await refresh()
-        }
         .task(id: challengePreferences.storageSignature) {
             await refresh()
+        }
+        .onAppear {
+            Task { await refresh(ensuringCurrent: false) }
         }
         .onReceive(NotificationCenter.default.publisher(for: .readingSessionsDidChange)) { _ in
             Task { await refresh(ensuringCurrent: false) }
@@ -150,14 +147,21 @@ struct ChallengesView: View {
             )
         }
 
-        let interesting = interestingChallenges(enabledKinds: preferences.enabledKinds)
-        let newMap = await ChallengeRefreshCoordinator.computeProgressMap(for: interesting, modelContext: modelContext)
+        let nextSnapshot = ChallengeSourceStore.makeSnapshot(
+            modelContext: modelContext,
+            enabledKinds: preferences.enabledKinds
+        )
+        let newMap = await ChallengeRefreshCoordinator.computeProgressMap(
+            for: nextSnapshot.progressRecords,
+            modelContext: modelContext
+        )
+        sourceSnapshot = nextSnapshot
         progressByID = newMap
     }
 
     @MainActor
     private func claim(_ item: ChallengeDashboardItem) {
-        guard let challenge = allChallenges.first(where: { $0.id == item.id }) else { return }
+        guard let challenge = sourceSnapshot.record(withID: item.id) ?? ChallengeSourceStore.fetchRecord(id: item.id, modelContext: modelContext) else { return }
         ChallengeEngine.claim(challenge, modelContext: modelContext)
         rewardItem = item
         Task { await refresh() }
@@ -165,34 +169,9 @@ struct ChallengesView: View {
 
     @MainActor
     private func reroll(_ item: ChallengeDashboardItem) {
-        guard let challenge = allChallenges.first(where: { $0.id == item.id }) else { return }
+        guard let challenge = sourceSnapshot.record(withID: item.id) ?? ChallengeSourceStore.fetchRecord(id: item.id, modelContext: modelContext) else { return }
         ChallengeEngine.reroll(challenge, modelContext: modelContext)
         Task { await refresh() }
-    }
-
-    @MainActor
-    private func interestingChallenges(enabledKinds: [ChallengeKind]) -> [ChallengeRecord] {
-        let now = Date()
-        let enabledKindSet = Set(ChallengePreferences.normalizedKinds(enabledKinds))
-        let active = allChallenges
-            .filter { record in
-                record.periodStart <= now && record.periodEnd > now &&
-                (enabledKindSet.contains(record.kind) || (record.isCompleted && !record.isClaimed))
-            }
-            .sorted { lhs, rhs in
-                if lhs.kind != rhs.kind { return lhs.kind.sortOrder < rhs.kind.sortOrder }
-                return lhs.periodStart < rhs.periodStart
-            }
-
-        let history = allChallenges
-            .filter { $0.periodEnd <= now }
-            .sorted { lhs, rhs in
-                if lhs.periodEnd != rhs.periodEnd { return lhs.periodEnd > rhs.periodEnd }
-                return lhs.kind.sortOrder < rhs.kind.sortOrder
-            }
-            .prefix(12)
-
-        return ChallengeDuplicateResolver.deduplicatedRecords(active + history)
     }
 }
 

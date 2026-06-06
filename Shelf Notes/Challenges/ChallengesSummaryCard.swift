@@ -9,11 +9,10 @@ import SwiftData
 struct ChallengesSummaryCard: View {
     @Environment(\.modelContext) private var modelContext
 
-    let challenges: [ChallengeRecord]
-
     @AppStorage(ChallengePreferencesStorageKey.enabledKinds) private var enabledKindsRaw: String = ChallengePreferencesStore.defaultEnabledKindsRaw
     @AppStorage(ChallengePreferencesStorageKey.preset) private var presetRaw: String = ChallengePreferencesStore.defaultPresetRaw
 
+    @State private var sourceSnapshot: ChallengeSourceSnapshot = .empty
     @State private var progressByID: [UUID: ChallengeEngine.ChallengeProgress] = [:]
 
     private var challengePreferences: ChallengePreferences {
@@ -22,9 +21,8 @@ struct ChallengesSummaryCard: View {
 
     var body: some View {
         let preferences = challengePreferences
-        let summarySignature = ChallengeSummarySignature(challenges: challenges)
         let dashboard = ChallengeDashboardBuilder.make(
-            challenges: challenges,
+            challenges: sourceSnapshot.dashboardRecords,
             progressByID: progressByID,
             enabledKinds: preferences.enabledKinds
         )
@@ -58,11 +56,11 @@ struct ChallengesSummaryCard: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.secondary.opacity(0.22), lineWidth: 1)
         }
-        .task(id: summarySignature) {
-            await refreshProgress()
-        }
         .task(id: challengePreferences.storageSignature) {
             await refreshProgress()
+        }
+        .onAppear {
+            Task { await refreshProgress(ensuringCurrent: false) }
         }
         .onReceive(NotificationCenter.default.publisher(for: .readingSessionsDidChange)) { _ in
             Task { await refreshProgress(ensuringCurrent: false) }
@@ -138,14 +136,16 @@ struct ChallengesSummaryCard: View {
             )
         }
 
-        let now = Date()
-        let enabledKindSet = Set(ChallengePreferences.normalizedKinds(preferences.enabledKinds))
-        let active = ChallengeDuplicateResolver.deduplicatedRecords(challenges)
-            .filter { record in
-                record.periodStart <= now && record.periodEnd > now &&
-                (enabledKindSet.contains(record.kind) || (record.isCompleted && !record.isClaimed))
-            }
-        let map = await ChallengeRefreshCoordinator.computeProgressMap(for: active, modelContext: modelContext)
+        let nextSnapshot = ChallengeSourceStore.makeSnapshot(
+            modelContext: modelContext,
+            enabledKinds: preferences.enabledKinds,
+            includeHistory: false
+        )
+        let map = await ChallengeRefreshCoordinator.computeProgressMap(
+            for: nextSnapshot.progressRecords,
+            modelContext: modelContext
+        )
+        sourceSnapshot = nextSnapshot
         progressByID = map
     }
 }

@@ -20,6 +20,7 @@ struct SessionsCard: View {
     @State private var lastError: String? = nil
     @State private var challengeProgressByID: [UUID: ChallengeEngine.ChallengeProgress] = [:]
     @State private var challengeRefreshSeed: Int = 0
+    @State private var challengeSourceSnapshot: ChallengeSourceSnapshot = .empty
     @State private var latestChallengeImpact: ChallengeSessionImpact?
     @State private var showingRereadStartSheet: Bool = false
     @State private var pendingRereadAction: RereadStartAction?
@@ -28,9 +29,6 @@ struct SessionsCard: View {
     @AppStorage(ChallengePreferencesStorageKey.preset) private var presetRaw: String = ChallengePreferencesStore.defaultPresetRaw
 
     @Query private var sessions: [ReadingSession]
-
-    @Query(sort: [SortDescriptor(\ChallengeRecord.periodStart, order: .reverse)])
-    private var challenges: [ChallengeRecord]
 
     private let previewLimit: Int = 8
 
@@ -77,9 +75,8 @@ struct SessionsCard: View {
 
     var body: some View {
         let preferences = challengePreferences
-        let challengeSignature = ChallengeSummarySignature(challenges: challenges)
         let dashboard = ChallengeDashboardBuilder.make(
-            challenges: challenges,
+            challenges: challengeSourceSnapshot.dashboardRecords,
             progressByID: challengeProgressByID,
             enabledKinds: preferences.enabledKinds
         )
@@ -89,7 +86,7 @@ struct SessionsCard: View {
             remainingPages: remainingPagesForBook
         )
         let refreshID = ChallengeActionHintRefreshID(
-            challengeSignature: challengeSignature,
+            challengeSignature: challengeSourceSnapshot.signature,
             refreshSeed: challengeRefreshSeed,
             preferencesSignature: preferences.storageSignature
         )
@@ -180,6 +177,9 @@ struct SessionsCard: View {
         }
         .task(id: refreshID) {
             await refreshChallengeHints()
+        }
+        .onAppear {
+            challengeRefreshSeed &+= 1
         }
         .onReceive(NotificationCenter.default.publisher(for: .readingSessionsDidChange)) { _ in
             challengeRefreshSeed &+= 1
@@ -418,16 +418,16 @@ struct SessionsCard: View {
 
     @MainActor
     private func refreshChallengeHints() async {
-        let now = Date()
-        let enabledKindSet = Set(ChallengePreferences.normalizedKinds(challengePreferences.enabledKinds))
-        let active = challenges.filter { record in
-            record.periodStart <= now && record.periodEnd > now &&
-            (enabledKindSet.contains(record.kind) || (record.isCompleted && !record.isClaimed))
-        }
+        let snapshot = ChallengeSourceStore.makeSnapshot(
+            modelContext: modelContext,
+            enabledKinds: challengePreferences.enabledKinds,
+            includeHistory: false
+        )
         challengeProgressByID = await ChallengeRefreshCoordinator.computeProgressMap(
-            for: active,
+            for: snapshot.progressRecords,
             modelContext: modelContext
         )
+        challengeSourceSnapshot = snapshot
     }
 
     @MainActor

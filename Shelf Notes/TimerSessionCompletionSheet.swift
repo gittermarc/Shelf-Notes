@@ -20,19 +20,17 @@ struct TimerSessionCompletionSheet: View {
     @State private var noteText: String = ""
     @State private var lastError: String? = nil
     @State private var challengeProgressByID: [UUID: ChallengeEngine.ChallengeProgress] = [:]
+    @State private var challengeSourceSnapshot: ChallengeSourceSnapshot = .empty
 
     @AppStorage(ChallengePreferencesStorageKey.enabledKinds) private var enabledKindsRaw: String = ChallengePreferencesStore.defaultEnabledKindsRaw
     @AppStorage(ChallengePreferencesStorageKey.preset) private var presetRaw: String = ChallengePreferencesStore.defaultPresetRaw
-
-    @Query(sort: [SortDescriptor(\ChallengeRecord.periodStart, order: .reverse)])
-    private var challenges: [ChallengeRecord]
 
     private var challengePreferences: ChallengePreferences {
         ChallengePreferencesStore.preferences(enabledKindsRaw: enabledKindsRaw, presetRaw: presetRaw)
     }
 
     var body: some View {
-        let challengeSignature = ChallengeSummarySignature(challenges: challenges)
+        let challengeSignature = challengeSourceSnapshot.signature
         let preferencesSignature = challengePreferences.storageSignature
         let pendingImpact = pendingChallengeImpact
 
@@ -214,7 +212,7 @@ struct TimerSessionCompletionSheet: View {
         )
 
         return ChallengeSessionImpactBuilder.makePendingSessionImpact(
-            challenges: visibleActiveChallenges(),
+            challenges: challengeSourceSnapshot.activeRecords,
             progressBeforeByID: challengeProgressByID,
             contribution: contribution
         )
@@ -222,20 +220,16 @@ struct TimerSessionCompletionSheet: View {
 
     @MainActor
     private func refreshChallengeProgress() async {
+        let snapshot = ChallengeSourceStore.makeSnapshot(
+            modelContext: modelContext,
+            enabledKinds: challengePreferences.enabledKinds,
+            includeHistory: false
+        )
         challengeProgressByID = await ChallengeRefreshCoordinator.computeProgressMap(
-            for: visibleActiveChallenges(),
+            for: snapshot.progressRecords,
             modelContext: modelContext
         )
-    }
-
-    @MainActor
-    private func visibleActiveChallenges(now: Date = Date()) -> [ChallengeRecord] {
-        let enabledKindSet = Set(ChallengePreferences.normalizedKinds(challengePreferences.enabledKinds))
-        let active = challenges.filter { record in
-            record.periodStart <= now && record.periodEnd > now &&
-            (enabledKindSet.contains(record.kind) || (record.isCompleted && !record.isClaimed))
-        }
-        return ChallengeDuplicateResolver.deduplicatedRecords(active)
+        challengeSourceSnapshot = snapshot
     }
 
     @MainActor

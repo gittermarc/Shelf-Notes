@@ -23,9 +23,6 @@ struct ProgressHubView: View {
 
     @Query private var books: [Book]
 
-    @Query(sort: [SortDescriptor(\ChallengeRecord.periodStart, order: .reverse)])
-    private var challenges: [ChallengeRecord]
-
     @Query(sort: \ReadingGoal.year, order: .reverse)
     private var goals: [ReadingGoal]
 
@@ -56,7 +53,7 @@ struct ProgressHubView: View {
                     NavigationLink {
                         ChallengesView()
                     } label: {
-                        ChallengesSummaryCard(challenges: challenges)
+                        ChallengesSummaryCard()
                     }
                     .buttonStyle(.plain)
                 }
