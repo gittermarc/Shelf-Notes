@@ -14,13 +14,22 @@ struct ChallengesView: View {
     @Query(sort: [SortDescriptor(\ChallengeRecord.periodStart, order: .reverse)])
     private var allChallenges: [ChallengeRecord]
 
+    @AppStorage(ChallengePreferencesStorageKey.enabledKinds) private var enabledKindsRaw: String = ChallengePreferencesStore.defaultEnabledKindsRaw
+    @AppStorage(ChallengePreferencesStorageKey.preset) private var presetRaw: String = ChallengePreferencesStore.defaultPresetRaw
+
     @State private var progressByID: [UUID: ChallengeEngine.ChallengeProgress] = [:]
     @State private var rewardItem: ChallengeDashboardItem?
 
+    private var challengePreferences: ChallengePreferences {
+        ChallengePreferencesStore.preferences(enabledKindsRaw: enabledKindsRaw, presetRaw: presetRaw)
+    }
+
     var body: some View {
+        let preferences = challengePreferences
         let dashboard = ChallengeDashboardBuilder.make(
             challenges: allChallenges,
-            progressByID: progressByID
+            progressByID: progressByID,
+            enabledKinds: preferences.enabledKinds
         )
         let signature = ChallengeSummarySignature(challenges: allChallenges)
 
@@ -35,7 +44,7 @@ struct ChallengesView: View {
                 ChallengeAchievementsCard(summary: dashboard.rewardSummary)
 
                 if dashboard.activeItems.isEmpty {
-                    ChallengeBoardEmptyState()
+                    ChallengeBoardEmptyState(isPaused: preferences.enabledKinds.isEmpty)
                 } else {
                     activeChallengesSection(items: dashboard.activeItems)
                 }
@@ -53,6 +62,9 @@ struct ChallengesView: View {
         .navigationTitle("Challenges")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: signature) {
+            await refresh()
+        }
+        .task(id: challengePreferences.storageSignature) {
             await refresh()
         }
         .onReceive(NotificationCenter.default.publisher(for: .readingSessionsDidChange)) { _ in
@@ -130,11 +142,15 @@ struct ChallengesView: View {
 
     @MainActor
     private func refresh(ensuringCurrent: Bool = true) async {
+        let preferences = challengePreferences
         if ensuringCurrent {
-            await ChallengeRefreshCoordinator.prepareCurrentChallenges(modelContext: modelContext)
+            await ChallengeRefreshCoordinator.prepareCurrentChallenges(
+                modelContext: modelContext,
+                enabledKinds: preferences.enabledKinds
+            )
         }
 
-        let interesting = interestingChallenges()
+        let interesting = interestingChallenges(enabledKinds: preferences.enabledKinds)
         let newMap = await ChallengeRefreshCoordinator.computeProgressMap(for: interesting, modelContext: modelContext)
         progressByID = newMap
     }
@@ -155,10 +171,14 @@ struct ChallengesView: View {
     }
 
     @MainActor
-    private func interestingChallenges() -> [ChallengeRecord] {
+    private func interestingChallenges(enabledKinds: [ChallengeKind]) -> [ChallengeRecord] {
         let now = Date()
+        let enabledKindSet = Set(ChallengePreferences.normalizedKinds(enabledKinds))
         let active = allChallenges
-            .filter { $0.periodStart <= now && $0.periodEnd > now }
+            .filter { record in
+                record.periodStart <= now && record.periodEnd > now &&
+                (enabledKindSet.contains(record.kind) || (record.isCompleted && !record.isClaimed))
+            }
             .sorted { lhs, rhs in
                 if lhs.kind != rhs.kind { return lhs.kind.sortOrder < rhs.kind.sortOrder }
                 return lhs.periodStart < rhs.periodStart
@@ -177,6 +197,8 @@ struct ChallengesView: View {
 }
 
 private struct ChallengeBoardEmptyState: View {
+    let isPaused: Bool
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Image(systemName: "flag.checkered")
@@ -184,10 +206,10 @@ private struct ChallengeBoardEmptyState: View {
                 .foregroundStyle(Color.accentColor)
                 .accessibilityHidden(true)
 
-            Text("Missionen werden vorbereitet")
+            Text(isPaused ? "Challenges sind pausiert" : "Missionen werden vorbereitet")
                 .font(.headline)
 
-            Text("Sobald die aktuellen Challenge-Zeiträume angelegt sind, erscheinen hier deine aktiven Missionen mit Fortschritt und nächstem Ziel.")
+            Text(isPaused ? "Du kannst Tages-, Wochen-, Monats- oder Jahresmissionen jederzeit in den Einstellungen wieder aktivieren." : "Sobald die aktuellen Challenge-Zeiträume angelegt sind, erscheinen hier deine aktiven Missionen mit Fortschritt und nächstem Ziel.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

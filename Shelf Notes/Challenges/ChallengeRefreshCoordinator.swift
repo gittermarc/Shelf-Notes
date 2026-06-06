@@ -20,8 +20,14 @@ enum ChallengeSessionImpactNotifier {
 
 @MainActor
 enum ChallengeRefreshCoordinator {
-    static func prepareCurrentChallenges(modelContext: ModelContext) async {
-        await ChallengeEngine.ensureCurrentChallengesAndRefreshCompletion(modelContext: modelContext)
+    static func prepareCurrentChallenges(
+        modelContext: ModelContext,
+        enabledKinds: [ChallengeKind] = ChallengePreferencesStore.load().enabledKinds
+    ) async {
+        await ChallengeEngine.ensureCurrentChallengesAndRefreshCompletion(
+            modelContext: modelContext,
+            kinds: enabledKinds
+        )
     }
 
     static func computeProgressMap(
@@ -43,9 +49,10 @@ enum ChallengeRefreshCoordinator {
         session: ReadingSession,
         didMarkBookFinished: Bool
     ) async -> ChallengeSessionImpact? {
-        await prepareCurrentChallenges(modelContext: modelContext)
+        let enabledKinds = ChallengePreferencesStore.load().enabledKinds
+        await prepareCurrentChallenges(modelContext: modelContext, enabledKinds: enabledKinds)
 
-        let active = fetchActiveChallenges(modelContext: modelContext)
+        let active = fetchActiveChallenges(modelContext: modelContext, enabledKinds: enabledKinds)
         let progress = await computeProgressMap(for: active, modelContext: modelContext)
         let contribution = ChallengeSessionContribution(
             bookID: bookID,
@@ -77,7 +84,8 @@ enum ChallengeRefreshCoordinator {
 
     private static func fetchActiveChallenges(
         modelContext: ModelContext,
-        now: Date = Date()
+        now: Date = Date(),
+        enabledKinds: [ChallengeKind] = ChallengePreferencesStore.load().enabledKinds
     ) -> [ChallengeRecord] {
         let nowValue = now
         let descriptor = FetchDescriptor<ChallengeRecord>(
@@ -88,6 +96,10 @@ enum ChallengeRefreshCoordinator {
             ]
         )
         let records = (try? modelContext.fetch(descriptor)) ?? []
-        return ChallengeDuplicateResolver.deduplicatedRecords(records)
+        let enabledKindSet = Set(ChallengePreferences.normalizedKinds(enabledKinds))
+        let visible = records.filter { record in
+            enabledKindSet.contains(record.kind) || (record.isCompleted && !record.isClaimed)
+        }
+        return ChallengeDuplicateResolver.deduplicatedRecords(visible)
     }
 }

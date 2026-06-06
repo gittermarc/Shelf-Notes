@@ -14,12 +14,15 @@ enum ChallengeDashboardBuilder {
         progressByID: [UUID: ChallengeEngine.ChallengeProgress],
         now: Date = Date(),
         calendar: Calendar = .current,
-        historyLimit: Int = 12
+        historyLimit: Int = 12,
+        enabledKinds: [ChallengeKind] = ChallengeCadence.supportedKinds
     ) -> ChallengeDashboardState {
         guard !challenges.isEmpty else { return .empty }
 
         let visibleChallenges = ChallengeDuplicateResolver.deduplicatedRecords(challenges)
         guard !visibleChallenges.isEmpty else { return .empty }
+
+        let enabledKindSet = Set(ChallengePreferences.normalizedKinds(enabledKinds))
 
         let items = visibleChallenges.map { record in
             makeItem(
@@ -31,7 +34,9 @@ enum ChallengeDashboardBuilder {
         }
 
         let activeItems = items
-            .filter { $0.periodStart <= now && $0.periodEnd > now }
+            .filter { item in
+                item.periodStart <= now && item.periodEnd > now && isActiveItemVisible(item, enabledKindSet: enabledKindSet)
+            }
             .sorted { lhs, rhs in
                 if lhs.kind != rhs.kind { return lhs.kind.sortOrder < rhs.kind.sortOrder }
                 return lhs.periodStart < rhs.periodStart
@@ -59,6 +64,11 @@ enum ChallengeDashboardBuilder {
             unclaimedCount: unclaimedCount,
             rewardSummary: rewardSummary
         )
+    }
+
+
+    private static func isActiveItemVisible(_ item: ChallengeDashboardItem, enabledKindSet: Set<ChallengeKind>) -> Bool {
+        enabledKindSet.contains(item.kind) || item.isRewardReady
     }
 
     private static func makeItem(

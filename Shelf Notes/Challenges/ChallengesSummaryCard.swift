@@ -11,13 +11,22 @@ struct ChallengesSummaryCard: View {
 
     let challenges: [ChallengeRecord]
 
+    @AppStorage(ChallengePreferencesStorageKey.enabledKinds) private var enabledKindsRaw: String = ChallengePreferencesStore.defaultEnabledKindsRaw
+    @AppStorage(ChallengePreferencesStorageKey.preset) private var presetRaw: String = ChallengePreferencesStore.defaultPresetRaw
+
     @State private var progressByID: [UUID: ChallengeEngine.ChallengeProgress] = [:]
 
+    private var challengePreferences: ChallengePreferences {
+        ChallengePreferencesStore.preferences(enabledKindsRaw: enabledKindsRaw, presetRaw: presetRaw)
+    }
+
     var body: some View {
+        let preferences = challengePreferences
         let summarySignature = ChallengeSummarySignature(challenges: challenges)
         let dashboard = ChallengeDashboardBuilder.make(
             challenges: challenges,
-            progressByID: progressByID
+            progressByID: progressByID,
+            enabledKinds: preferences.enabledKinds
         )
 
         VStack(alignment: .leading, spacing: 13) {
@@ -26,7 +35,7 @@ struct ChallengesSummaryCard: View {
             if let hero = dashboard.hero {
                 summaryHero(hero)
             } else {
-                Text("Aktuelle Challenges werden vorbereitet.")
+                Text(preferences.enabledKinds.isEmpty ? "Challenges sind pausiert." : "Aktuelle Challenges werden vorbereitet.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -36,7 +45,7 @@ struct ChallengesSummaryCard: View {
             }
 
             if dashboard.activeItems.isEmpty && dashboard.hero == nil {
-                Text("Logge eine Lesesession, dann wird dein Fortschritt hier sichtbar.")
+                Text(preferences.enabledKinds.isEmpty ? "Aktiviere Missionen in den Einstellungen, wenn du wieder Challenge-Druck willst." : "Logge eine Lesesession, dann wird dein Fortschritt hier sichtbar.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -50,6 +59,9 @@ struct ChallengesSummaryCard: View {
                 .stroke(Color.secondary.opacity(0.22), lineWidth: 1)
         }
         .task(id: summarySignature) {
+            await refreshProgress()
+        }
+        .task(id: challengePreferences.storageSignature) {
             await refreshProgress()
         }
         .onReceive(NotificationCenter.default.publisher(for: .readingSessionsDidChange)) { _ in
@@ -118,13 +130,21 @@ struct ChallengesSummaryCard: View {
 
     @MainActor
     private func refreshProgress(ensuringCurrent: Bool = true) async {
+        let preferences = challengePreferences
         if ensuringCurrent {
-            await ChallengeRefreshCoordinator.prepareCurrentChallenges(modelContext: modelContext)
+            await ChallengeRefreshCoordinator.prepareCurrentChallenges(
+                modelContext: modelContext,
+                enabledKinds: preferences.enabledKinds
+            )
         }
 
         let now = Date()
+        let enabledKindSet = Set(ChallengePreferences.normalizedKinds(preferences.enabledKinds))
         let active = ChallengeDuplicateResolver.deduplicatedRecords(challenges)
-            .filter { $0.periodStart <= now && $0.periodEnd > now }
+            .filter { record in
+                record.periodStart <= now && record.periodEnd > now &&
+                (enabledKindSet.contains(record.kind) || (record.isCompleted && !record.isClaimed))
+            }
         let map = await ChallengeRefreshCoordinator.computeProgressMap(for: active, modelContext: modelContext)
         progressByID = map
     }

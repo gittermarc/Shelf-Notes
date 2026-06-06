@@ -23,6 +23,7 @@ import UIKit
 struct SettingsView: View {
     private enum SettingsRoute: String, Hashable, Codable {
         case appearance
+        case challenges
     }
 
     @EnvironmentObject private var pro: ProManager
@@ -70,6 +71,16 @@ struct SettingsView: View {
                     }
 
                     Text("Passe Schrift, Textdichte sowie Text- und Akzentfarben an – inkl. Presets. Tipp: Im Dark Mode können sehr dunkle Farben schwer lesbar sein.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("Challenges") {
+                    NavigationLink(value: SettingsRoute.challenges) {
+                        Label("Challenge-Missionen", systemImage: "trophy")
+                    }
+
+                    Text("Lege fest, ob Shelf Notes Tages-, Wochen-, Monats- oder Jahreschallenges automatisch vorbereitet.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -220,6 +231,8 @@ struct SettingsView: View {
                 switch route {
                 case .appearance:
                     AppearanceSettingsView()
+                case .challenges:
+                    ChallengeSettingsView()
                 }
             }
             .onAppear {

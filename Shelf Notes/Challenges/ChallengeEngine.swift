@@ -12,12 +12,12 @@ nonisolated enum ChallengeEngine {
 
     // MARK: - Public API
 
-    /// Ensures that active default challenge cadences exist for the current period.
+    /// Ensures that active user-configured challenge cadences exist for the current period.
     @MainActor
     static func ensureCurrentChallenges(modelContext: ModelContext) {
         ensureCurrentChallenges(
             modelContext: modelContext,
-            kinds: ChallengeCadence.defaultGenerationKinds
+            kinds: ChallengePreferencesStore.load().enabledKinds
         )
     }
 
@@ -66,7 +66,7 @@ nonisolated enum ChallengeEngine {
     static func ensureCurrentChallengesAndRefreshCompletion(modelContext: ModelContext) async {
         await ensureCurrentChallengesAndRefreshCompletion(
             modelContext: modelContext,
-            kinds: ChallengeCadence.defaultGenerationKinds
+            kinds: ChallengePreferencesStore.load().enabledKinds
         )
     }
 

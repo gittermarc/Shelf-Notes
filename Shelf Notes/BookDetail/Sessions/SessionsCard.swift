@@ -24,12 +24,19 @@ struct SessionsCard: View {
     @State private var showingRereadStartSheet: Bool = false
     @State private var pendingRereadAction: RereadStartAction?
 
+    @AppStorage(ChallengePreferencesStorageKey.enabledKinds) private var enabledKindsRaw: String = ChallengePreferencesStore.defaultEnabledKindsRaw
+    @AppStorage(ChallengePreferencesStorageKey.preset) private var presetRaw: String = ChallengePreferencesStore.defaultPresetRaw
+
     @Query private var sessions: [ReadingSession]
 
     @Query(sort: [SortDescriptor(\ChallengeRecord.periodStart, order: .reverse)])
     private var challenges: [ChallengeRecord]
 
     private let previewLimit: Int = 8
+
+    private var challengePreferences: ChallengePreferences {
+        ChallengePreferencesStore.preferences(enabledKindsRaw: enabledKindsRaw, presetRaw: presetRaw)
+    }
 
     /// Remaining pages for the currently active reading attempt.
     /// Returns nil for legacy supplements and books without a valid page count.
@@ -69,10 +76,12 @@ struct SessionsCard: View {
     }
 
     var body: some View {
+        let preferences = challengePreferences
         let challengeSignature = ChallengeSummarySignature(challenges: challenges)
         let dashboard = ChallengeDashboardBuilder.make(
             challenges: challenges,
-            progressByID: challengeProgressByID
+            progressByID: challengeProgressByID,
+            enabledKinds: preferences.enabledKinds
         )
         let actionHints = ChallengeActionHintBuilder.makeSessionHints(
             from: dashboard.activeItems,
@@ -81,7 +90,8 @@ struct SessionsCard: View {
         )
         let refreshID = ChallengeActionHintRefreshID(
             challengeSignature: challengeSignature,
-            refreshSeed: challengeRefreshSeed
+            refreshSeed: challengeRefreshSeed,
+            preferencesSignature: preferences.storageSignature
         )
 
         BookDetailCard(title: "Lesesessions") {
@@ -409,7 +419,11 @@ struct SessionsCard: View {
     @MainActor
     private func refreshChallengeHints() async {
         let now = Date()
-        let active = challenges.filter { $0.periodStart <= now && $0.periodEnd > now }
+        let enabledKindSet = Set(ChallengePreferences.normalizedKinds(challengePreferences.enabledKinds))
+        let active = challenges.filter { record in
+            record.periodStart <= now && record.periodEnd > now &&
+            (enabledKindSet.contains(record.kind) || (record.isCompleted && !record.isClaimed))
+        }
         challengeProgressByID = await ChallengeRefreshCoordinator.computeProgressMap(
             for: active,
             modelContext: modelContext
@@ -528,4 +542,5 @@ private enum RereadStartAction: Sendable {
 private struct ChallengeActionHintRefreshID: Hashable {
     let challengeSignature: ChallengeSummarySignature
     let refreshSeed: Int
+    let preferencesSignature: String
 }

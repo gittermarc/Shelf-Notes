@@ -239,4 +239,59 @@ struct ChallengeDashboardBuilderTests {
         #expect(state.completedCount == 1)
         #expect(state.unclaimedCount == 0)
     }
+
+    @Test @MainActor func disabledActiveKindsAreNotShownAsActiveMissions() {
+        let now = date(2026, 6, 3)
+        let dailyID = UUID(uuidString: "00000000-0000-0000-0000-000000000801") ?? UUID()
+        let weeklyID = UUID(uuidString: "00000000-0000-0000-0000-000000000802") ?? UUID()
+        let daily = makeChallenge(
+            id: dailyID,
+            kind: .daily,
+            periodStart: date(2026, 6, 3, 0),
+            periodEnd: date(2026, 6, 4, 0)
+        )
+        let weekly = makeChallenge(
+            id: weeklyID,
+            kind: .weekly,
+            periodStart: date(2026, 6, 1, 0),
+            periodEnd: date(2026, 6, 8, 0)
+        )
+
+        let state = ChallengeDashboardBuilder.make(
+            challenges: [daily, weekly],
+            progressByID: [:],
+            now: now,
+            calendar: calendar,
+            enabledKinds: [.weekly]
+        )
+
+        #expect(state.activeItems.map(\.id) == [weeklyID])
+        #expect(!state.activeItems.contains { $0.id == dailyID })
+    }
+
+    @Test @MainActor func disabledUnclaimedRewardsRemainVisible() {
+        let now = date(2026, 6, 3)
+        let dailyID = UUID(uuidString: "00000000-0000-0000-0000-000000000901") ?? UUID()
+        let daily = makeChallenge(
+            id: dailyID,
+            kind: .daily,
+            periodStart: date(2026, 6, 3, 0),
+            periodEnd: date(2026, 6, 4, 0),
+            completed: true,
+            claimed: false
+        )
+
+        let state = ChallengeDashboardBuilder.make(
+            challenges: [daily],
+            progressByID: [dailyID: ChallengeEngine.ChallengeProgress(value: 100, unitSuffix: "min")],
+            now: now,
+            calendar: calendar,
+            enabledKinds: [.weekly, .monthly]
+        )
+
+        #expect(state.activeItems.map(\.id) == [dailyID])
+        #expect(state.activeItems.first?.status == .readyToClaim)
+        #expect(state.unclaimedCount == 1)
+    }
+
 }
