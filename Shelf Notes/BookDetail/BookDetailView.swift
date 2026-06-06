@@ -52,6 +52,7 @@ struct BookDetailView: View {
 
     @State var showingNewCollectionSheet = false
     @State var showingPaywall = false
+    @State var collectionMembershipDraft = CollectionMembershipDraft.empty
 
     // Apple-Books-ish UX sheets
     @State var showingNotesSheet = false
@@ -150,7 +151,8 @@ struct BookDetailView: View {
         .sheet(isPresented: $showingCollectionsSheet) {
             CollectionsPickerSheet(
                 allCollections: allCollections,
-                membershipBinding: membershipBinding(for:),
+                draft: $collectionMembershipDraft,
+                onApply: { applyCollectionMembershipDraft($0) },
                 onCreateNew: { requestNewCollection() }
             )
         }

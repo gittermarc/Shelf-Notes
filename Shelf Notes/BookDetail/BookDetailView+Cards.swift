@@ -366,7 +366,7 @@ extension BookDetailView {
     var collectionsPreviewCard: some View {
         BookDetailCard(title: "Listen") {
             Button {
-                showingCollectionsSheet = true
+                presentCollectionsSheet()
             } label: {
                 VStack(alignment: .leading, spacing: 10) {
                     let names = book.collectionsSafe
@@ -429,7 +429,7 @@ extension BookDetailView {
         BottomActionBar(
             status: statusBinding,
             onNote: { presentNotesEditor() },
-            onCollections: { showingCollectionsSheet = true }
+            onCollections: { presentCollectionsSheet() }
         )
     }
 }

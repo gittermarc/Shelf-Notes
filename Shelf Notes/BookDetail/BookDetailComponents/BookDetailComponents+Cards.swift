@@ -29,7 +29,8 @@ struct CollectionsPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let allCollections: [BookCollection]
-    let membershipBinding: (BookCollection) -> Binding<Bool>
+    @Binding var draft: CollectionMembershipDraft
+    let onApply: (CollectionMembershipDraft) -> Void
     let onCreateNew: () -> Void
 
     var body: some View {
@@ -40,7 +41,7 @@ struct CollectionsPickerSheet: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(allCollections) { col in
-                        Toggle(isOn: membershipBinding(col)) {
+                        Toggle(isOn: draftBinding(for: col)) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(col.name.isEmpty ? "Ohne Namen" : col.name)
                                 Text("\(col.booksSafe.count) Bücher")
@@ -54,6 +55,7 @@ struct CollectionsPickerSheet: View {
 
                 Section {
                     Button {
+                        applyDraft()
                         onCreateNew()
                     } label: {
                         Label("Neue Liste …", systemImage: "plus")
@@ -65,11 +67,28 @@ struct CollectionsPickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Fertig") {
+                        applyDraft()
                         dismiss()
                     }
                     .fontWeight(.semibold)
                 }
             }
+            .onDisappear {
+                applyDraft()
+            }
         }
+    }
+
+    private func draftBinding(for collection: BookCollection) -> Binding<Bool> {
+        Binding(
+            get: { draft.contains(collection.id) },
+            set: { isOn in
+                draft.setMembership(isOn, for: collection.id)
+            }
+        )
+    }
+
+    private func applyDraft() {
+        onApply(draft)
     }
 }

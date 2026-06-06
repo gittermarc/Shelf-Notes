@@ -30,15 +30,6 @@ extension BookDetailView {
         )
     }
 
-    func membershipBinding(for col: BookCollection) -> Binding<Bool> {
-        Binding(
-            get: { book.isInCollection(col) },
-            set: { isOn in
-                setMembership(isOn, for: col)
-            }
-        )
-    }
-
     // MARK: - Bibliophile computed properties
 
     var hasAnyLinks: Bool {

@@ -141,6 +141,11 @@ extension BookDetailView {
 
     // MARK: - Collections helpers
 
+    func presentCollectionsSheet() {
+        collectionMembershipDraft.reset(to: book.collectionsSafe.map(\.id))
+        showingCollectionsSheet = true
+    }
+
     func requestNewCollection() {
         let count = allCollections.count
         if pro.hasPro || count < ProManager.maxFreeCollections {
@@ -148,6 +153,43 @@ extension BookDetailView {
         } else {
             showingPaywall = true
         }
+    }
+
+    func applyCollectionMembershipDraft(_ draft: CollectionMembershipDraft) {
+        let change = draft.change
+        guard !change.isEmpty else { return }
+
+        var collectionsByID: [UUID: BookCollection] = [:]
+        for collection in allCollections where collectionsByID[collection.id] == nil {
+            collectionsByID[collection.id] = collection
+        }
+        for collection in book.collectionsSafe where collectionsByID[collection.id] == nil {
+            collectionsByID[collection.id] = collection
+        }
+
+        var didChange = false
+
+        for collectionID in change.removedCollectionIDs {
+            guard let collection = collectionsByID[collectionID] else { continue }
+            didChange = CollectionMembershipMutation.setMembership(
+                false,
+                book: book,
+                collection: collection
+            ) || didChange
+        }
+
+        for collectionID in change.addedCollectionIDs {
+            guard let collection = collectionsByID[collectionID] else { continue }
+            didChange = CollectionMembershipMutation.setMembership(
+                true,
+                book: book,
+                collection: collection
+            ) || didChange
+        }
+
+        guard didChange else { return }
+        _ = saveDetail()
+        collectionMembershipDraft.markApplied()
     }
 
     func setMembership(_ isMember: Bool, for collection: BookCollection) {
@@ -167,12 +209,20 @@ extension BookDetailView {
         guard !trimmed.isEmpty else { return }
 
         if let existing = allCollections.first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
-            setMembership(true, for: existing)
+            attachCollectionFromCreationFlow(existing)
             return
         }
 
         let newCol = BookCollection(name: trimmed)
         modelContext.insert(newCol)
-        setMembership(true, for: newCol)
+        attachCollectionFromCreationFlow(newCol)
+    }
+
+    private func attachCollectionFromCreationFlow(_ collection: BookCollection) {
+        setMembership(true, for: collection)
+
+        if showingCollectionsSheet {
+            collectionMembershipDraft.reset(to: book.collectionsSafe.map(\.id))
+        }
     }
 }
