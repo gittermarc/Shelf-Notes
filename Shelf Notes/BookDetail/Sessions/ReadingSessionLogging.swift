@@ -86,6 +86,7 @@ struct ReadingSessionLogging {
         var trimmedNote: String?
         var didImplyReading: Bool
         var didMarkFinished: Bool
+        var isLegacySupplement: Bool
 
         func makeSession(book: Book) -> ReadingSession {
             ReadingSession(
@@ -145,10 +146,25 @@ struct ReadingSessionLogging {
         existingSessions: [ReadingSession],
         timing: Timing,
         pages: Int?,
-        note: String?
+        note: String?,
+        allowsFinishedBookSupplement: Bool = false
     ) -> Result<Plan, ValidationError> {
         let normalizedPages = normalizePages(pages)
         let trimmedNote = trimNote(note)
+
+        if allowsFinishedBookSupplement, bookState.status == .finished {
+            return .success(
+                Plan(
+                    updatedBookState: bookState,
+                    timing: timing,
+                    normalizedPages: normalizedPages,
+                    trimmedNote: trimmedNote,
+                    didImplyReading: false,
+                    didMarkFinished: false,
+                    isLegacySupplement: true
+                )
+            )
+        }
 
         // Page validation: you can't log more pages than the book has remaining.
         if let total = normalizedTotalPages(bookState.pageCount), let p = normalizedPages {
@@ -203,7 +219,8 @@ struct ReadingSessionLogging {
                 normalizedPages: normalizedPages,
                 trimmedNote: trimmedNote,
                 didImplyReading: didImplyReading,
-                didMarkFinished: didMarkFinished
+                didMarkFinished: didMarkFinished,
+                isLegacySupplement: false
             )
         )
     }

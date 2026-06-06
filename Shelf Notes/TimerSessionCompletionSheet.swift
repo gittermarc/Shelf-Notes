@@ -156,7 +156,10 @@ struct TimerSessionCompletionSheet: View {
 
     private var remainingPagesForBook: Int? {
         guard let book else { return nil }
-        return ReadingSessionLogging.remainingPages(totalPages: book.pageCount, sessions: book.readingSessionsSafe)
+        return ReadingAttemptSessionCoordinator.currentRemainingPages(
+            for: book,
+            allSessions: book.readingSessionsSafe
+        )
     }
 
     @MainActor
@@ -166,14 +169,20 @@ struct TimerSessionCompletionSheet: View {
         let pages = parsePositiveInt(pagesText)
         let timing = ReadingSessionLogging.Timing(endedAt: pending.endedAt, durationSeconds: pending.durationSeconds)
         let state = ReadingSessionLogging.BookState(book: book)
+        let activeAttempt = book.activeReadingAttempt
+        let scopedSessions = activeAttempt.map { attempt in
+            ReadingAttemptSessionCoordinator.sessions(for: attempt, allSessions: book.readingSessionsSafe)
+        } ?? book.readingSessionsSafe
+        let isLegacySupplement = book.status == .finished && activeAttempt == nil
         let didMarkBookFinished: Bool
 
         let planResult = ReadingSessionLogging.plan(
             bookState: state,
-            existingSessions: book.readingSessionsSafe,
+            existingSessions: scopedSessions,
             timing: timing,
             pages: pages,
-            note: nil
+            note: nil,
+            allowsFinishedBookSupplement: isLegacySupplement
         )
 
         switch planResult {
@@ -224,17 +233,29 @@ struct TimerSessionCompletionSheet: View {
         let note: String? = trimmedNote.isEmpty ? nil : trimmedNote
 
         let timing = ReadingSessionLogging.Timing(endedAt: pending.endedAt, durationSeconds: pending.durationSeconds)
+        let activeAttempt = ReadingAttemptSessionCoordinator.ensureActiveAttemptForSessionIfNeeded(
+            book: book,
+            startedAt: timing.startedAt,
+            now: pending.endedAt,
+            insertAttempt: { modelContext.insert($0) }
+        )
         let state = ReadingSessionLogging.BookState(book: book)
+        let scopedSessions = activeAttempt.map { attempt in
+            ReadingAttemptSessionCoordinator.sessions(for: attempt, allSessions: book.readingSessionsSafe)
+        } ?? book.readingSessionsSafe
+        let isLegacySupplement = book.status == .finished && activeAttempt == nil
 
         let planResult = ReadingSessionLogging.plan(
             bookState: state,
-            existingSessions: book.readingSessionsSafe,
+            existingSessions: scopedSessions,
             timing: timing,
             pages: pages,
-            note: note
+            note: note,
+            allowsFinishedBookSupplement: isLegacySupplement
         )
 
         var session: ReadingSession? = nil
+        var sessionPlan: ReadingSessionLogging.Plan? = nil
         var didMarkBookFinished = false
 
         switch planResult {
@@ -244,6 +265,7 @@ struct TimerSessionCompletionSheet: View {
         case .success(let plan):
             plan.apply(to: book)
             session = plan.makeSession(book: book)
+            sessionPlan = plan
             didMarkBookFinished = plan.didMarkFinished
         }
 
@@ -253,6 +275,15 @@ struct TimerSessionCompletionSheet: View {
         }
 
         modelContext.insert(session)
+        if let sessionPlan {
+            ReadingAttemptSessionCoordinator.attach(
+                session: session,
+                to: activeAttempt,
+                plan: sessionPlan,
+                book: book,
+                now: pending.endedAt
+            )
+        }
 
         if let error = modelContext.saveWithDiagnostics() {
             lastError = "Konnte Session nicht speichern: " + error.localizedDescription

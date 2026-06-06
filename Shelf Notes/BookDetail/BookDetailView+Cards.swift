@@ -48,6 +48,16 @@ extension BookDetailView {
                 }
                 .pickerStyle(.segmented)
 
+                if let readingAttemptStatusLine {
+                    Label(readingAttemptStatusLine, systemImage: book.isRereading ? "arrow.triangle.2.circlepath" : "book.closed")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(book.isRereading ? Color.green : Color.secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(.thinMaterial)
+                        .clipShape(Capsule())
+                }
+
                 if let err = coverUploadError {
                     Text(err)
                         .font(.caption)
@@ -71,6 +81,23 @@ extension BookDetailView {
         SessionsCard(book: book) {
             showingAllSessionsSheet = true
         }
+    }
+
+    private var readingAttemptStatusLine: String? {
+        if book.isRereading, let activeAttempt = book.activeReadingAttempt {
+            return "Lese ich wieder · \(activeAttempt.displayName)"
+        }
+
+        let completedCount = book.completedReadingAttemptCount
+        if completedCount > 1 {
+            return "Gelesen · \(completedCount)×"
+        }
+
+        if completedCount == 1, book.status == .finished {
+            return "Gelesen · 1×"
+        }
+
+        return nil
     }
 
     var readRangeCard: some View {

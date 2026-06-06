@@ -19,6 +19,14 @@ struct AllSessionsListSheet: View {
 
     @State private var lastError: String? = nil
 
+    private var progressSessions: [ReadingSession] {
+        ReadingAttemptSessionCoordinator.progressSessions(for: book, allSessions: sessions)
+    }
+
+    private var sessionGroups: [ReadingSessionGroup] {
+        ReadingSessionGrouping.makeGroups(book: book, sessions: sessions)
+    }
+
     init(book: Book) {
         self.book = book
         let bookID = book.id
@@ -32,7 +40,7 @@ struct AllSessionsListSheet: View {
         NavigationStack {
             List {
                 Section {
-                    ReadingProgressView(book: book, sessions: sessions)
+                    ReadingProgressView(book: book, sessions: progressSessions)
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                         .listRowBackground(Color.clear)
                 }
@@ -51,26 +59,37 @@ struct AllSessionsListSheet: View {
                             .foregroundStyle(.secondary)
                     }
                 } else {
-                    Section {
-                        ForEach(sessions, id: \.id) { session in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(primaryLine(for: session))
-                                    .font(.subheadline.weight(.semibold))
+                    ForEach(sessionGroups) { group in
+                        Section {
+                            ForEach(group.sessions, id: \.id) { session in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(primaryLine(for: session))
+                                        .font(.subheadline.weight(.semibold))
 
-                                let secondary = secondaryLine(for: session)
-                                if !secondary.isEmpty {
-                                    Text(secondary)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(3)
+                                    let secondary = secondaryLine(for: session)
+                                    if !secondary.isEmpty {
+                                        Text(secondary)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(3)
+                                    }
                                 }
                             }
+                            .onDelete { offsets in
+                                delete(Array(group.sessions), at: offsets)
+                            }
+                        } header: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(group.title)
+                                if let subtitle = group.subtitle {
+                                    Text(subtitle)
+                                }
+                            }
+                        } footer: {
+                            if group.id == sessionGroups.last?.id {
+                                Text("Wische eine Session nach links, um sie zu löschen.")
+                            }
                         }
-                        .onDelete(perform: delete)
-                    } header: {
-                        Text("Neueste zuerst")
-                    } footer: {
-                        Text("Wische eine Session nach links, um sie zu löschen.")
                     }
                 }
             }
@@ -87,9 +106,11 @@ struct AllSessionsListSheet: View {
         }
     }
 
-    private func delete(at offsets: IndexSet) {
+    @MainActor
+    private func delete(_ source: [ReadingSession], at offsets: IndexSet) {
         for idx in offsets {
-            let s = sessions[idx]
+            let s = source[idx]
+            ReadingAttemptSessionCoordinator.detachBeforeDeleting(s)
             modelContext.delete(s)
         }
         if let error = modelContext.saveWithDiagnostics() {

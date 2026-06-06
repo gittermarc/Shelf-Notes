@@ -16,6 +16,15 @@ extension BookDetailView {
                     if book.readFrom == nil { book.readFrom = Date() }
                     if book.readTo == nil { book.readTo = book.readFrom }
                 }
+
+                if newStatus == .finished || newStatus == .reading {
+                    _ = ReadingAttemptRepair.repair(
+                        book: book,
+                        now: Date(),
+                        insertAttempt: { modelContext.insert($0) }
+                    )
+                }
+
                 _ = saveDetail()
             }
         )

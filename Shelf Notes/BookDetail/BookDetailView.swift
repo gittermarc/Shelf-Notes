@@ -93,6 +93,10 @@ struct BookDetailView: View {
                 statusCard
                 sessionsCard
 
+                if !book.orderedReadingAttempts.isEmpty {
+                    ReadingJourneyCard(book: book)
+                }
+
                 if book.status == .finished {
                     readRangeCard
                     ratingSummaryCard

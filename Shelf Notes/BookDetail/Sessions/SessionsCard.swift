@@ -21,6 +21,8 @@ struct SessionsCard: View {
     @State private var challengeProgressByID: [UUID: ChallengeEngine.ChallengeProgress] = [:]
     @State private var challengeRefreshSeed: Int = 0
     @State private var latestChallengeImpact: ChallengeSessionImpact?
+    @State private var showingRereadStartSheet: Bool = false
+    @State private var pendingRereadAction: RereadStartAction?
 
     @Query private var sessions: [ReadingSession]
 
@@ -29,10 +31,30 @@ struct SessionsCard: View {
 
     private let previewLimit: Int = 8
 
-    /// Remaining pages until the book is finished (based on logged sessions).
-    /// Returns nil when the book has no valid total page count.
+    /// Remaining pages for the currently active reading attempt.
+    /// Returns nil for legacy supplements and books without a valid page count.
     private var remainingPagesForBook: Int? {
-        ReadingSessionLogging.remainingPages(totalPages: book.pageCount, sessions: sessions)
+        ReadingAttemptSessionCoordinator.currentRemainingPages(for: book, allSessions: sessions)
+    }
+
+    private var currentProgressSessions: [ReadingSession] {
+        ReadingAttemptSessionCoordinator.progressSessions(for: book, allSessions: sessions)
+    }
+
+    private var sessionGroups: [ReadingSessionGroup] {
+        ReadingSessionGrouping.makeGroups(book: book, sessions: sessions)
+    }
+
+    private var previewSessionGroups: [ReadingSessionGroup] {
+        ReadingSessionGrouping.limitedGroups(sessionGroups, limit: previewLimit)
+    }
+
+    private var needsRereadChoice: Bool {
+        book.status == .finished && book.activeReadingAttempt == nil
+    }
+
+    private var nextAttemptName: String {
+        "\(book.nextReadingAttemptSequenceNumber). Durchgang"
     }
 
     init(book: Book, onShowAll: @escaping () -> Void) {
@@ -66,7 +88,19 @@ struct SessionsCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 header
 
-                ReadingProgressView(book: book, sessions: sessions)
+                ReadingProgressView(book: book, sessions: currentProgressSessions)
+
+                if book.isRereading, let activeAttempt = book.activeReadingAttempt {
+                    ActiveRereadStatusBanner(
+                        attemptName: activeAttempt.displayName,
+                        detailLine: activeRereadDetailLine
+                    )
+                } else if needsRereadChoice {
+                    RereadReadyBanner {
+                        pendingRereadAction = .timer
+                        showingRereadStartSheet = true
+                    }
+                }
 
                 if let latestChallengeImpact {
                     ChallengeSessionImpactBanner(impact: latestChallengeImpact)
@@ -85,16 +119,8 @@ struct SessionsCard: View {
                 if sessions.isEmpty {
                     emptyState
                 } else {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(Array(sessions.prefix(previewLimit)), id: \.id) { session in
-                            SessionRow(session: session) {
-                                delete(session)
-                            }
-
-                            if session.id != sessions.prefix(previewLimit).last?.id {
-                                Divider().opacity(0.5)
-                            }
-                        }
+                    GroupedSessionPreviewView(groups: previewSessionGroups) { session in
+                        delete(session)
                     }
 
                     if sessions.count > previewLimit {
@@ -127,6 +153,18 @@ struct SessionsCard: View {
                 totalPages: (book.pageCount ?? 0) > 0 ? book.pageCount : nil,
                 onCreate: { minutes, pages, note in
                     addSession(minutes: minutes, pages: pages, note: note)
+                }
+            )
+        }
+        .sheet(isPresented: $showingRereadStartSheet) {
+            ReReadStartSheet(
+                bookTitle: safeTitle(book),
+                nextAttemptName: nextAttemptName,
+                onStartNewAttempt: {
+                    continueAfterRereadChoice(shouldStartNewAttempt: true)
+                },
+                onSupplementExistingCompletion: {
+                    continueAfterRereadChoice(shouldStartNewAttempt: false)
                 }
             )
         }
@@ -185,12 +223,12 @@ struct SessionsCard: View {
                 // ✅ Manuelles Hinzufügen nur, wenn gerade KEINE aktive Timer-Session läuft.
                 if timer.active == nil {
                     Button {
-                        showingQuickLogSheet = true
+                        requestQuickLog()
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "plus.circle.fill")
                                 .font(.title3.weight(.semibold))
-                            Text("Session")
+                            Text(needsRereadChoice ? "Nachtragen" : "Session")
                                 .font(.subheadline.weight(.semibold))
                         }
                         .padding(.horizontal, 10)
@@ -230,13 +268,12 @@ struct SessionsCard: View {
                 timer.stop()
             }
         } else {
-            iconCircleButton(systemName: "play.fill", tint: .green, accessibilityLabel: "Session starten") {
-                let title = safeTitle(book)
-                lastError = timer.start(
-                    bookID: book.id,
-                    bookTitle: title,
-                    coverThumbnailData: book.userCoverData
-                )
+            iconCircleButton(
+                systemName: needsRereadChoice ? "arrow.triangle.2.circlepath" : "play.fill",
+                tint: .green,
+                accessibilityLabel: needsRereadChoice ? "Nochmal lesen" : "Session starten"
+            ) {
+                requestTimerStart()
             }
         }
     }
@@ -289,6 +326,86 @@ struct SessionsCard: View {
         return "\(sessions.count) Sessions · \(totalMinutes) Min. gesamt"
     }
 
+    private var activeRereadDetailLine: String {
+        if let totalPages = ReadingSessionLogging.normalizedTotalPages(book.pageCount) {
+            let pagesRead = ReadingSessionLogging.pagesReadTotal(in: currentProgressSessions)
+            let clampedRead = min(max(0, pagesRead), totalPages)
+            let remaining = max(0, totalPages - clampedRead)
+            let percent = Int((Double(clampedRead) / Double(totalPages) * 100.0).rounded())
+            return "\(percent) % · noch \(remaining) Seiten"
+        }
+
+        let pagesRead = ReadingSessionLogging.pagesReadTotal(in: currentProgressSessions)
+        if pagesRead > 0 {
+            return "\(pagesRead) Seiten im aktuellen Durchgang geloggt"
+        }
+        return "Der Fortschritt startet für diesen Durchgang neu."
+    }
+
+    private func requestQuickLog() {
+        guard needsRereadChoice else {
+            showingQuickLogSheet = true
+            return
+        }
+
+        pendingRereadAction = .quickLog
+        showingRereadStartSheet = true
+    }
+
+    private func requestTimerStart() {
+        guard needsRereadChoice else {
+            startTimer()
+            return
+        }
+
+        pendingRereadAction = .timer
+        showingRereadStartSheet = true
+    }
+
+    @MainActor
+    private func continueAfterRereadChoice(shouldStartNewAttempt: Bool) {
+        lastError = nil
+        let action = pendingRereadAction
+        pendingRereadAction = nil
+        showingRereadStartSheet = false
+
+        if shouldStartNewAttempt {
+            let now = Date()
+            ReadingAttemptSessionCoordinator.startNewRereadAttempt(
+                for: book,
+                startedAt: now,
+                now: now,
+                insertAttempt: { modelContext.insert($0) }
+            )
+            if let error = modelContext.saveWithDiagnostics() {
+                lastError = "Konnte neuen Lesedurchgang nicht starten: " + error.localizedDescription
+                return
+            }
+        }
+
+        Task { @MainActor in
+            await Task.yield()
+
+            switch action {
+            case .timer:
+                startTimer()
+            case .quickLog:
+                showingQuickLogSheet = true
+            case .none:
+                break
+            }
+        }
+    }
+
+    private func startTimer() {
+        let title = safeTitle(book)
+        lastError = timer.start(
+            bookID: book.id,
+            bookTitle: title,
+            coverThumbnailData: book.userCoverData
+        )
+    }
+
     @MainActor
     private func refreshChallengeHints() async {
         let now = Date()
@@ -313,17 +430,29 @@ struct SessionsCard: View {
         let end = Date()
 
         let timing = ReadingSessionLogging.Timing(endedAt: end, durationSeconds: seconds)
+        let activeAttempt = ReadingAttemptSessionCoordinator.ensureActiveAttemptForSessionIfNeeded(
+            book: book,
+            startedAt: timing.startedAt,
+            now: end,
+            insertAttempt: { modelContext.insert($0) }
+        )
         let state = ReadingSessionLogging.BookState(book: book)
+        let scopedSessions = activeAttempt.map { attempt in
+            ReadingAttemptSessionCoordinator.sessions(for: attempt, allSessions: sessions)
+        } ?? sessions
+        let isLegacySupplement = book.status == .finished && activeAttempt == nil
 
         let planResult = ReadingSessionLogging.plan(
             bookState: state,
-            existingSessions: sessions,
+            existingSessions: scopedSessions,
             timing: timing,
             pages: pages,
-            note: note
+            note: note,
+            allowsFinishedBookSupplement: isLegacySupplement
         )
 
         var session: ReadingSession? = nil
+        var sessionPlan: ReadingSessionLogging.Plan? = nil
         var didMarkBookFinished = false
 
         switch planResult {
@@ -333,6 +462,7 @@ struct SessionsCard: View {
         case .success(let plan):
             plan.apply(to: book)
             session = plan.makeSession(book: book)
+            sessionPlan = plan
             didMarkBookFinished = plan.didMarkFinished
         }
 
@@ -342,6 +472,15 @@ struct SessionsCard: View {
         }
 
         modelContext.insert(session)
+        if let sessionPlan {
+            ReadingAttemptSessionCoordinator.attach(
+                session: session,
+                to: activeAttempt,
+                plan: sessionPlan,
+                book: book,
+                now: end
+            )
+        }
 
         if let error = modelContext.saveWithDiagnostics() {
             lastError = "Konnte Session nicht speichern: " + error.localizedDescription
@@ -360,6 +499,7 @@ struct SessionsCard: View {
 
     @MainActor
     private func delete(_ session: ReadingSession) {
+        ReadingAttemptSessionCoordinator.detachBeforeDeleting(session)
         modelContext.delete(session)
         if let error = modelContext.saveWithDiagnostics() {
             lastError = "Konnte Session nicht löschen: " + error.localizedDescription
@@ -376,6 +516,12 @@ struct SessionsCard: View {
         let t = book.title.trimmingCharacters(in: .whitespacesAndNewlines)
         return t.isEmpty ? "Buch" : t
     }
+}
+
+
+private enum RereadStartAction: Sendable {
+    case timer
+    case quickLog
 }
 
 
