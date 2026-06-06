@@ -115,12 +115,23 @@ extension ChallengeEngine {
     }
 
     @MainActor
-    static func fetchChallengeSnapshot(kind: ChallengeKind, periodStart: Date, modelContext: ModelContext) -> ChallengeRecordSnapshot? {
+    static func fetchChallengeSnapshot(
+        kind: ChallengeKind,
+        periodStart: Date,
+        periodEnd: Date,
+        modelContext: ModelContext
+    ) -> ChallengeRecordSnapshot? {
         let kindRaw = kind.rawValue
         let start = periodStart
+        let end = periodEnd
 
         let descriptor = FetchDescriptor<ChallengeRecord>(
-            predicate: #Predicate<ChallengeRecord> { $0.kindRawValue == kindRaw && $0.periodStart == start }
+            predicate: #Predicate<ChallengeRecord> {
+                $0.kindRawValue == kindRaw &&
+                $0.periodStart == start &&
+                $0.periodEnd == end
+            },
+            sortBy: [SortDescriptor(\ChallengeRecord.createdAt, order: .forward)]
         )
 
         guard let record = (try? modelContext.fetch(descriptor))?.first else { return nil }

@@ -15,6 +15,8 @@ nonisolated enum ChallengeEngine {
     /// Ensures that there is an active weekly + monthly challenge for the current period.
     @MainActor
     static func ensureCurrentChallenges(modelContext: ModelContext) {
+        repairDuplicateChallenges(modelContext: modelContext)
+
         let now = Date()
         let weekly = periodBounds(kind: .weekly, now: now)
         let monthly = periodBounds(kind: .monthly, now: now)
@@ -30,8 +32,8 @@ nonisolated enum ChallengeEngine {
         let plans = ChallengeEngine.planEnsures(
             weekly: weekly,
             monthly: monthly,
-            existingWeekly: fetchChallengeSnapshot(kind: .weekly, periodStart: weekly.start, modelContext: modelContext),
-            existingMonthly: fetchChallengeSnapshot(kind: .monthly, periodStart: monthly.start, modelContext: modelContext),
+            existingWeekly: fetchChallengeSnapshot(kind: .weekly, periodStart: weekly.start, periodEnd: weekly.end, modelContext: modelContext),
+            existingMonthly: fetchChallengeSnapshot(kind: .monthly, periodStart: monthly.start, periodEnd: monthly.end, modelContext: modelContext),
             snapshot: snapshot,
             recentWeekly: fetchRecentChallengeSnapshots(kind: .weekly, before: weekly.start, limit: 3, modelContext: modelContext),
             recentMonthly: fetchRecentChallengeSnapshots(kind: .monthly, before: monthly.start, limit: 3, modelContext: modelContext)
@@ -43,6 +45,8 @@ nonisolated enum ChallengeEngine {
     /// Refreshes completion timestamps for currently active challenges (if the user has reached the target).
     @MainActor
     static func refreshCompletionForActiveChallenges(modelContext: ModelContext) {
+        repairDuplicateChallenges(modelContext: modelContext)
+
         let now = Date()
         let active = fetchActiveChallenges(now: now, modelContext: modelContext)
         guard !active.isEmpty else { return }
@@ -62,6 +66,8 @@ nonisolated enum ChallengeEngine {
     /// Heavy crunching is done off-main via value-only snapshots.
     @MainActor
     static func ensureCurrentChallengesAndRefreshCompletion(modelContext: ModelContext) async {
+        repairDuplicateChallenges(modelContext: modelContext)
+
         let now = Date()
         let weekly = periodBounds(kind: .weekly, now: now)
         let monthly = periodBounds(kind: .monthly, now: now)
@@ -73,8 +79,8 @@ nonisolated enum ChallengeEngine {
         let latest = max(weekly.end, monthly.end)
 
         let snapshot = buildSnapshot(range: earliest..<latest, modelContext: modelContext)
-        let existingWeekly = fetchChallengeSnapshot(kind: .weekly, periodStart: weekly.start, modelContext: modelContext)
-        let existingMonthly = fetchChallengeSnapshot(kind: .monthly, periodStart: monthly.start, modelContext: modelContext)
+        let existingWeekly = fetchChallengeSnapshot(kind: .weekly, periodStart: weekly.start, periodEnd: weekly.end, modelContext: modelContext)
+        let existingMonthly = fetchChallengeSnapshot(kind: .monthly, periodStart: monthly.start, periodEnd: monthly.end, modelContext: modelContext)
         let activeSnapshots = fetchActiveChallenges(now: now, modelContext: modelContext).map { ChallengeRecordSnapshot(from: $0) }
         let recentWeekly = fetchRecentChallengeSnapshots(kind: .weekly, before: weekly.start, limit: 3, modelContext: modelContext)
         let recentMonthly = fetchRecentChallengeSnapshots(kind: .monthly, before: monthly.start, limit: 3, modelContext: modelContext)
@@ -217,7 +223,22 @@ nonisolated enum ChallengeEngine {
     private static func applyEnsurePlans(_ plans: [EnsurePlan], modelContext: ModelContext) {
         guard !plans.isEmpty else { return }
 
+        var changed = false
+
         for p in plans {
+            let existing = fetchChallenges(
+                kind: p.kind,
+                periodStart: p.periodStart,
+                periodEnd: p.periodEnd,
+                modelContext: modelContext
+            )
+
+            if !existing.isEmpty {
+                let deletedCount = ChallengeDuplicateResolver.deleteDuplicates(in: existing, modelContext: modelContext)
+                changed = changed || deletedCount > 0
+                continue
+            }
+
             let record = ChallengeRecord(
                 kind: p.kind,
                 metric: p.metric,
@@ -229,9 +250,12 @@ nonisolated enum ChallengeEngine {
             )
 
             modelContext.insert(record)
+            changed = true
         }
 
-        _ = modelContext.saveWithDiagnostics()
+        if changed {
+            _ = modelContext.saveWithDiagnostics()
+        }
     }
 
     @MainActor
@@ -256,15 +280,51 @@ nonisolated enum ChallengeEngine {
     // MARK: - Internal: fetching
 
     @MainActor
-    private static func fetchChallenge(kind: ChallengeKind, periodStart: Date, modelContext: ModelContext) -> ChallengeRecord? {
+    @discardableResult
+    private static func repairDuplicateChallenges(modelContext: ModelContext) -> Bool {
+        let records = fetchAllChallenges(modelContext: modelContext)
+        let deletedCount = ChallengeDuplicateResolver.deleteDuplicates(in: records, modelContext: modelContext)
+        guard deletedCount > 0 else { return false }
+
+        _ = modelContext.saveWithDiagnostics()
+        return true
+    }
+
+    @MainActor
+    private static func fetchChallenges(
+        kind: ChallengeKind,
+        periodStart: Date,
+        periodEnd: Date,
+        modelContext: ModelContext
+    ) -> [ChallengeRecord] {
         let kindRaw = kind.rawValue
         let start = periodStart
+        let end = periodEnd
 
         let descriptor = FetchDescriptor<ChallengeRecord>(
-            predicate: #Predicate<ChallengeRecord> { $0.kindRawValue == kindRaw && $0.periodStart == start }
+            predicate: #Predicate<ChallengeRecord> {
+                $0.kindRawValue == kindRaw &&
+                $0.periodStart == start &&
+                $0.periodEnd == end
+            },
+            sortBy: [SortDescriptor(\ChallengeRecord.createdAt, order: .forward)]
         )
 
-        return (try? modelContext.fetch(descriptor))?.first
+        return (try? modelContext.fetch(descriptor)) ?? []
+    }
+
+    @MainActor
+    private static func fetchAllChallenges(modelContext: ModelContext) -> [ChallengeRecord] {
+        let descriptor = FetchDescriptor<ChallengeRecord>(
+            sortBy: [
+                SortDescriptor(\ChallengeRecord.periodStart, order: .forward),
+                SortDescriptor(\ChallengeRecord.periodEnd, order: .forward),
+                SortDescriptor(\ChallengeRecord.kindRawValue, order: .forward),
+                SortDescriptor(\ChallengeRecord.createdAt, order: .forward)
+            ]
+        )
+
+        return (try? modelContext.fetch(descriptor)) ?? []
     }
 
     @MainActor
