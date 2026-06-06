@@ -8,6 +8,80 @@
 import Foundation
 
 nonisolated enum ChallengeTemplateRegistry {
+    static let daily: [ChallengeTemplate] = [
+        ChallengeTemplate(
+            kind: .daily,
+            metric: .readingMinutes,
+            difficulty: .gentle,
+            minimumTarget: 10,
+            maximumTarget: 90,
+            targetStep: 5,
+            fallbackTarget: 15,
+            baselineMultiplier: 1.1,
+            baselineOffset: 0,
+            detail: "Heute: ein kleines, machbares Lese-Fenster sichern. Timer oder manuelle Session zählen beide.",
+            rewardText: "Tagesmission erledigt. Genau so wird Lesen wieder Teil des Tages, ohne großes Drama.",
+            emptyBaselinePriority: 95
+        ),
+        ChallengeTemplate(
+            kind: .daily,
+            metric: .sessions,
+            difficulty: .gentle,
+            minimumTarget: 1,
+            maximumTarget: 4,
+            targetStep: 1,
+            fallbackTarget: 1,
+            baselineMultiplier: 1.0,
+            baselineOffset: 0,
+            detail: "Heute zählt jede gespeicherte Lesesession ab einer Minute. Kurz lesen ist ausdrücklich erlaubt.",
+            rewardText: "Eine Session ist ein echter Kontakt mit dem Buch. Genau dieser kleine Einstieg zählt.",
+            emptyBaselinePriority: 92
+        ),
+        ChallengeTemplate(
+            kind: .daily,
+            metric: .readingDays,
+            difficulty: .gentle,
+            minimumTarget: 1,
+            maximumTarget: 1,
+            targetStep: 1,
+            fallbackTarget: 1,
+            baselineMultiplier: 1.0,
+            baselineOffset: 0,
+            detail: "Mach den heutigen Tag zu einem Lesetag. Eine Session mit mindestens einer Minute reicht.",
+            rewardText: "Heute gelesen. Nicht geplant, nicht nur vorgenommen, sondern sichtbar gemacht.",
+            emptyBaselinePriority: 88
+        ),
+        ChallengeTemplate(
+            kind: .daily,
+            metric: .pagesRead,
+            difficulty: .steady,
+            minimumTarget: 10,
+            maximumTarget: 150,
+            targetStep: 5,
+            fallbackTarget: 20,
+            baselineMultiplier: 1.1,
+            baselineOffset: 0,
+            detail: "Heute gelesene Seiten eintragen. Diese Mission zählt nur mit gepflegtem Seitenfortschritt.",
+            rewardText: "Seiten gelesen und festgehalten. Dein Fortschritt ist heute nicht nur Gefühl, sondern sichtbar.",
+            emptyBaselinePriority: 60,
+            requiresPageHistory: true
+        ),
+        ChallengeTemplate(
+            kind: .daily,
+            metric: .sessionNotes,
+            difficulty: .gentle,
+            minimumTarget: 1,
+            maximumTarget: 2,
+            targetStep: 1,
+            fallbackTarget: 1,
+            baselineMultiplier: 1.0,
+            baselineOffset: 0,
+            detail: "Schreib heute zu einer Lesesession eine kurze Notiz. Ein Satz reicht völlig.",
+            rewardText: "Heute nicht nur gelesen, sondern einen Gedanken gerettet. Das macht Shelf Notes lebendig.",
+            emptyBaselinePriority: 54
+        )
+    ]
+
     static let weekly: [ChallengeTemplate] = [
         ChallengeTemplate(
             kind: .weekly,
@@ -258,16 +332,134 @@ nonisolated enum ChallengeTemplateRegistry {
         )
     ]
 
+    static let yearly: [ChallengeTemplate] = [
+        ChallengeTemplate(
+            kind: .yearly,
+            metric: .readingDays,
+            difficulty: .steady,
+            minimumTarget: 60,
+            maximumTarget: 280,
+            targetStep: 5,
+            fallbackTarget: 100,
+            baselineMultiplier: 1.05,
+            baselineOffset: 5,
+            detail: "Dieses Jahr zählt jeder Tag mit mindestens einer Minute Lesesession. Es geht um Routine, nicht um Perfektion.",
+            rewardText: "Ein Jahr voller Lesetage. Das ist keine Laune mehr, das ist echte Lese-DNA.",
+            emptyBaselinePriority: 96
+        ),
+        ChallengeTemplate(
+            kind: .yearly,
+            metric: .booksFinished,
+            difficulty: .steady,
+            minimumTarget: 6,
+            maximumTarget: 80,
+            targetStep: 1,
+            fallbackTarget: 12,
+            baselineMultiplier: 1.0,
+            baselineOffset: 2,
+            detail: "Dieses Jahr zählt jeder abgeschlossene Lesedurchgang mit Abschlussdatum.",
+            rewardText: "Ein Jahresquest mit echten Abschlüssen. Dein Regal hat dieses Jahr geliefert.",
+            emptyBaselinePriority: 92
+        ),
+        ChallengeTemplate(
+            kind: .yearly,
+            metric: .readingMinutes,
+            difficulty: .steady,
+            minimumTarget: 3_000,
+            maximumTarget: 60_000,
+            targetStep: 300,
+            fallbackTarget: 5_000,
+            baselineMultiplier: 1.05,
+            baselineOffset: 0,
+            detail: "Dieses Jahr werden deine geloggten Leseminuten gesammelt. Kleine Sessions zahlen genauso ein.",
+            rewardText: "So viel echte Lesezeit in einem Jahr. Das sieht nicht nur gut aus, das fühlt sich auch verdient an.",
+            emptyBaselinePriority: 88
+        ),
+        ChallengeTemplate(
+            kind: .yearly,
+            metric: .sessions,
+            difficulty: .steady,
+            minimumTarget: 50,
+            maximumTarget: 600,
+            targetStep: 10,
+            fallbackTarget: 100,
+            baselineMultiplier: 1.05,
+            baselineOffset: 10,
+            detail: "Dieses Jahr zählt jede gespeicherte Lesesession ab einer Minute.",
+            rewardText: "Immer wieder zum Buch zurückgekommen. Genau daraus entsteht ein Lesejahr, auf das man schaut.",
+            emptyBaselinePriority: 84
+        ),
+        ChallengeTemplate(
+            kind: .yearly,
+            metric: .pagesRead,
+            difficulty: .stretch,
+            minimumTarget: 2_000,
+            maximumTarget: 60_000,
+            targetStep: 500,
+            fallbackTarget: 5_000,
+            baselineMultiplier: 1.05,
+            baselineOffset: 0,
+            detail: "Dieses Jahr zählen geloggte Seiten aus deinen Sessions. Perfekt, wenn du Seitenfortschritt konsequent pflegst.",
+            rewardText: "Seiten über ein ganzes Jahr sichtbar gemacht. Das ist Lesefortschritt mit Beleg.",
+            emptyBaselinePriority: 68,
+            requiresPageHistory: true
+        ),
+        ChallengeTemplate(
+            kind: .yearly,
+            metric: .sessionNotes,
+            difficulty: .gentle,
+            minimumTarget: 12,
+            maximumTarget: 200,
+            targetStep: 5,
+            fallbackTarget: 25,
+            baselineMultiplier: 1.05,
+            baselineOffset: 2,
+            detail: "Dieses Jahr zählen Lesesessions mit einer kurzen Session-Notiz.",
+            rewardText: "Ein Jahr mit Lese-Spuren. Deine Notizen machen aus Statistik Erinnerung.",
+            emptyBaselinePriority: 64
+        ),
+        ChallengeTemplate(
+            kind: .yearly,
+            metric: .finishedBooksRated,
+            difficulty: .gentle,
+            minimumTarget: 3,
+            maximumTarget: 40,
+            targetStep: 1,
+            fallbackTarget: 6,
+            baselineMultiplier: 1.0,
+            baselineOffset: 1,
+            detail: "Dieses Jahr zählen beendete Bücher, bei denen du eine Bewertung gepflegt hast.",
+            rewardText: "Abgeschlossen und bewertet. Dein Jahresrückblick wird dadurch deutlich hilfreicher.",
+            emptyBaselinePriority: 52,
+            requiresFinishedBookHistory: true
+        ),
+        ChallengeTemplate(
+            kind: .yearly,
+            metric: .finishedBooksNoted,
+            difficulty: .gentle,
+            minimumTarget: 3,
+            maximumTarget: 40,
+            targetStep: 1,
+            fallbackTarget: 6,
+            baselineMultiplier: 1.0,
+            baselineOffset: 1,
+            detail: "Dieses Jahr zählen beendete Bücher mit eigener Buchnotiz.",
+            rewardText: "Nicht nur beendet, sondern festgehalten. So bleibt dein Lesejahr greifbar.",
+            emptyBaselinePriority: 50,
+            requiresFinishedBookHistory: true
+        )
+    ]
+
     static func templates(for kind: ChallengeKind) -> [ChallengeTemplate] {
         switch kind {
         case .daily:
-            return []
+            return daily
         case .weekly:
             return weekly
         case .monthly:
             return monthly
         case .yearly:
-            return []
+            return yearly
         case .unknown:
             return []
         }

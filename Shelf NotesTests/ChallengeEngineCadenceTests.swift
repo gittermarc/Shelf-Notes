@@ -61,7 +61,7 @@ struct ChallengeEngineCadenceTests {
         #expect(plans.map(\.kind) == [.monthly])
     }
 
-    @Test func planEnsuresDoesNotActivatePreparedCadencesWithoutTemplates() {
+    @Test func planEnsuresCreatesDailyAndYearlyPlansWhenRequested() {
         let daily = period(date(2026, 6, 3, 0), date(2026, 6, 4, 0))
         let yearly = period(date(2026, 1, 1, 0), date(2027, 1, 1, 0))
 
@@ -73,7 +73,13 @@ struct ChallengeEngineCadenceTests {
             snapshot: emptySnapshot
         )
 
-        #expect(plans.isEmpty)
+        #expect(plans.map(\.kind) == [.daily, .yearly])
+        #expect(plans.allSatisfy { $0.targetValue > 0 })
+        #expect(plans.allSatisfy { $0.periodEnd > $0.periodStart })
+    }
+
+    @Test func defaultGenerationStillProtectsExistingWeeklyMonthlyBehavior() {
+        #expect(ChallengeCadence.defaultGenerationKinds == [.weekly, .monthly])
     }
 
     @Test @MainActor func unknownStoredKindDoesNotFallbackToWeekly() {

@@ -13,11 +13,15 @@ struct ChallengeTemplateSelectorTests {
         calendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12)) ?? .distantPast
     }
 
-    @Test func registryContainsWeeklyAndMonthlyTemplates() {
+    @Test func registryContainsTemplatesForKnownCadences() {
+        #expect(ChallengeTemplateRegistry.templates(for: .daily).count >= 5)
         #expect(ChallengeTemplateRegistry.templates(for: .weekly).count >= 5)
         #expect(ChallengeTemplateRegistry.templates(for: .monthly).count >= 7)
+        #expect(ChallengeTemplateRegistry.templates(for: .yearly).count >= 7)
+        #expect(ChallengeTemplateRegistry.template(kind: .daily, metric: .readingMinutes) != nil)
         #expect(ChallengeTemplateRegistry.template(kind: .weekly, metric: .shortSessions) != nil)
         #expect(ChallengeTemplateRegistry.template(kind: .monthly, metric: .finishedBooksRated) != nil)
+        #expect(ChallengeTemplateRegistry.template(kind: .yearly, metric: .booksFinished) != nil)
     }
 
     @Test func selectorAvoidsRecentMetricsWhenAlternativesExist() {

@@ -81,11 +81,17 @@ nonisolated struct ChallengeTemplate: Identifiable, Equatable, Sendable {
         case .readingMinutes:
             return "\(target) Minuten lesen"
         case .readingDays:
+            if kind == .daily {
+                return "Heute zum Lesetag machen"
+            }
             if kind == .weekly {
                 return "Lies an \(target) Tagen"
             }
             return "\(target) Lesetage sammeln"
         case .sessions:
+            if target == 1 {
+                return "1 Session loggen"
+            }
             return "\(target) Sessions loggen"
         case .pagesRead:
             return "\(target) Seiten lesen"
@@ -107,7 +113,10 @@ nonisolated struct ChallengeTemplate: Identifiable, Equatable, Sendable {
     func target(from baselineValue: Int) -> Int {
         let raw: Int
         if baselineValue > 0 {
-            raw = Int((Double(baselineValue) * baselineMultiplier).rounded(.up)) + baselineOffset
+            raw = ChallengeTemplateMath.scaledCeiling(
+                baselineValue: baselineValue,
+                multiplier: baselineMultiplier
+            ) + baselineOffset
         } else {
             raw = fallbackTarget
         }
@@ -118,6 +127,12 @@ nonisolated struct ChallengeTemplate: Identifiable, Equatable, Sendable {
 }
 
 nonisolated enum ChallengeTemplateMath {
+    static func scaledCeiling(baselineValue: Int, multiplier: Double) -> Int {
+        let product = Double(baselineValue) * multiplier
+        let tolerance = 0.000_000_001
+        return Int((product - tolerance).rounded(.up))
+    }
+
     static func roundUp(_ value: Int, toMultipleOf step: Int) -> Int {
         guard step > 1 else { return value }
         let safe = max(0, value)

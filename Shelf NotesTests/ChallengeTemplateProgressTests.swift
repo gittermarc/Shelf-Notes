@@ -45,6 +45,72 @@ struct ChallengeTemplateProgressTests {
         #expect(notes.value == 1)
     }
 
+    @Test func dailyMinutesChallengeCountsOnlySessionsInDay() {
+        let start = date(2026, 6, 3, 0)
+        let end = date(2026, 6, 4, 0)
+        let snapshot = ChallengeEngine.Snapshot(
+            sessions: [
+                ChallengeEngine.SessionSnapshot(
+                    startedAt: date(2026, 6, 3, 8),
+                    endedAt: date(2026, 6, 3, 8, 20),
+                    durationSeconds: 20 * 60,
+                    pagesRead: 12
+                ),
+                ChallengeEngine.SessionSnapshot(
+                    startedAt: date(2026, 6, 2, 22),
+                    endedAt: date(2026, 6, 2, 22, 30),
+                    durationSeconds: 30 * 60,
+                    pagesRead: 20
+                ),
+                ChallengeEngine.SessionSnapshot(
+                    startedAt: date(2026, 6, 4, 9),
+                    endedAt: date(2026, 6, 4, 9, 30),
+                    durationSeconds: 30 * 60,
+                    pagesRead: 20
+                )
+            ],
+            finishedBookReadTo: []
+        )
+
+        let progress = ChallengeEngine.computeProgress(metric: .readingMinutes, window: start..<end, snapshot: snapshot)
+
+        #expect(progress.value == 20)
+        #expect(progress.unitSuffix == "min")
+    }
+
+    @Test func dailySessionChallengeCountsReadableSessionsAndNotes() {
+        let start = date(2026, 6, 3, 0)
+        let end = date(2026, 6, 4, 0)
+        let tinySessionStart = date(2026, 6, 3, 7)
+        let snapshot = ChallengeEngine.Snapshot(
+            sessions: [
+                ChallengeEngine.SessionSnapshot(
+                    startedAt: tinySessionStart,
+                    endedAt: tinySessionStart.addingTimeInterval(45),
+                    durationSeconds: 45,
+                    pagesRead: 1,
+                    hasNote: true
+                ),
+                ChallengeEngine.SessionSnapshot(
+                    startedAt: date(2026, 6, 3, 20),
+                    endedAt: date(2026, 6, 3, 20, 15),
+                    durationSeconds: 15 * 60,
+                    pagesRead: 8,
+                    hasNote: true
+                )
+            ],
+            finishedBookReadTo: []
+        )
+
+        let sessions = ChallengeEngine.computeProgress(metric: .sessions, window: start..<end, snapshot: snapshot)
+        let notes = ChallengeEngine.computeProgress(metric: .sessionNotes, window: start..<end, snapshot: snapshot)
+        let days = ChallengeEngine.computeProgress(metric: .readingDays, window: start..<end, snapshot: snapshot)
+
+        #expect(sessions.value == 1)
+        #expect(notes.value == 2)
+        #expect(days.value == 1)
+    }
+
     @Test func computesDistinctBooksProgressed() {
         let bookID = UUID(uuidString: "00000000-0000-0000-0000-000000001301") ?? UUID()
         let otherBookID = UUID(uuidString: "00000000-0000-0000-0000-000000001302") ?? UUID()
@@ -111,6 +177,43 @@ struct ChallengeTemplateProgressTests {
 
         #expect(progress.value == 2)
         #expect(progress.unitSuffix == "Abschlüsse")
+    }
+
+    @Test func yearlyBooksFinishedChallengeCountsOnlyBooksInYear() {
+        let start = date(2026, 1, 1, 0)
+        let end = date(2027, 1, 1, 0)
+        let snapshot = ChallengeEngine.Snapshot(
+            sessions: [],
+            finishedBooks: [
+                ChallengeEngine.FinishedBookSnapshot(readTo: date(2025, 12, 31, 22)),
+                ChallengeEngine.FinishedBookSnapshot(readTo: date(2026, 1, 1, 10)),
+                ChallengeEngine.FinishedBookSnapshot(readTo: date(2026, 7, 15, 20)),
+                ChallengeEngine.FinishedBookSnapshot(readTo: date(2027, 1, 1, 0))
+            ]
+        )
+
+        let progress = ChallengeEngine.computeProgress(metric: .booksFinished, window: start..<end, snapshot: snapshot)
+
+        #expect(progress.value == 2)
+        #expect(progress.unitSuffix == "Abschlüsse")
+    }
+
+    @Test func yearlyPagesChallengeAggregatesSessionsAcrossYear() {
+        let start = date(2026, 1, 1, 0)
+        let end = date(2027, 1, 1, 0)
+        let snapshot = ChallengeEngine.Snapshot(
+            sessions: [
+                ChallengeEngine.SessionSnapshot(startedAt: date(2026, 1, 5), endedAt: date(2026, 1, 5, 12, 30), durationSeconds: 30 * 60, pagesRead: 25),
+                ChallengeEngine.SessionSnapshot(startedAt: date(2026, 6, 5), endedAt: date(2026, 6, 5, 12, 45), durationSeconds: 45 * 60, pagesRead: 40),
+                ChallengeEngine.SessionSnapshot(startedAt: date(2026, 12, 31, 23), endedAt: date(2027, 1, 1, 0, 30), durationSeconds: 90 * 60, pagesRead: 35)
+            ],
+            finishedBookReadTo: []
+        )
+
+        let pages = ChallengeEngine.computeProgress(metric: .pagesRead, window: start..<end, snapshot: snapshot)
+
+        #expect(pages.value == 100)
+        #expect(pages.unitSuffix == "Seiten")
     }
 
 }

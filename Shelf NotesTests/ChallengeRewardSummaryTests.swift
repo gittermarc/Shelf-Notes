@@ -57,6 +57,26 @@ struct ChallengeRewardSummaryTests {
         #expect(summary.completedCount == 3)
         #expect(summary.readyToClaimCount == 1)
         #expect(summary.weeklyStreak == 3)
+        #expect(summary.bestKindStreak == 3)
         #expect(summary.highlightTitle == "Belohnung wartet")
+    }
+
+    @Test func rewardSummaryIncludesDailyAndYearlyStreaks() {
+        let now = date(2026, 6, 20)
+        let items = [
+            item(kind: .daily, start: date(2026, 6, 19), end: date(2026, 6, 20), status: .claimed),
+            item(kind: .daily, start: date(2026, 6, 18), end: date(2026, 6, 19), status: .claimed),
+            item(kind: .daily, start: date(2026, 6, 17), end: date(2026, 6, 18), status: .claimed),
+            item(kind: .daily, start: date(2026, 6, 16), end: date(2026, 6, 17), status: .claimed),
+            item(kind: .daily, start: date(2026, 6, 15), end: date(2026, 6, 16), status: .claimed),
+            item(kind: .yearly, start: date(2025, 1, 1), end: date(2026, 1, 1), status: .claimed)
+        ]
+
+        let summary = ChallengeRewardSummaryBuilder.make(items: items, now: now)
+
+        #expect(summary.dailyStreak == 5)
+        #expect(summary.yearlyStreak == 1)
+        #expect(summary.bestKindStreak == 5)
+        #expect(summary.highlightTitle == "Tages-Serie läuft")
     }
 }

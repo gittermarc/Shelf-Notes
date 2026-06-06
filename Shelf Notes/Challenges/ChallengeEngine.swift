@@ -15,11 +15,20 @@ nonisolated enum ChallengeEngine {
     /// Ensures that active default challenge cadences exist for the current period.
     @MainActor
     static func ensureCurrentChallenges(modelContext: ModelContext) {
+        ensureCurrentChallenges(
+            modelContext: modelContext,
+            kinds: ChallengeCadence.defaultGenerationKinds
+        )
+    }
+
+    /// Ensures that active challenge cadences exist for the current period.
+    @MainActor
+    static func ensureCurrentChallenges(modelContext: ModelContext, kinds: [ChallengeKind]) {
         repairDuplicateChallenges(modelContext: modelContext)
 
         let now = Date()
         let cadences = ensureCadenceInputs(
-            kinds: ChallengeCadence.defaultGenerationKinds,
+            kinds: kinds,
             now: now,
             modelContext: modelContext
         )
@@ -55,11 +64,20 @@ nonisolated enum ChallengeEngine {
     /// Heavy crunching is done off-main via value-only snapshots.
     @MainActor
     static func ensureCurrentChallengesAndRefreshCompletion(modelContext: ModelContext) async {
+        await ensureCurrentChallengesAndRefreshCompletion(
+            modelContext: modelContext,
+            kinds: ChallengeCadence.defaultGenerationKinds
+        )
+    }
+
+    /// Preferred entry point for UI tasks when a caller already knows which cadences are enabled.
+    @MainActor
+    static func ensureCurrentChallengesAndRefreshCompletion(modelContext: ModelContext, kinds: [ChallengeKind]) async {
         repairDuplicateChallenges(modelContext: modelContext)
 
         let now = Date()
         let cadences = ensureCadenceInputs(
-            kinds: ChallengeCadence.defaultGenerationKinds,
+            kinds: kinds,
             now: now,
             modelContext: modelContext
         )
