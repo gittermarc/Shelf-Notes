@@ -29,6 +29,8 @@ struct AppContainerHostView: View {
                         await CollectionMembershipRepair.repairIfNeeded(modelContext: container.mainContext, scope: scope)
                     }
 
+                    await ReadingAttemptRepair.repairIfNeeded(modelContext: container.mainContext)
+
                     // Challenges: ensure current weekly/monthly challenges exist.
                     await ChallengeRefreshCoordinator.prepareCurrentChallenges(modelContext: container.mainContext)
                 }

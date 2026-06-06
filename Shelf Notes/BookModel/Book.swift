@@ -35,6 +35,11 @@ final class Book {
     @Relationship(deleteRule: .cascade, inverse: \ReadingSession.book)
     var readingSessions: [ReadingSession]?
 
+    // ✅ Reading attempts / Lesedurchgänge (one-to-many)
+    // CloudKit requires an inverse relationship.
+    @Relationship(deleteRule: .cascade, inverse: \ReadingAttempt.book)
+    var readingAttempts: [ReadingAttempt]?
+
     // Imported metadata (bisher)
     var googleVolumeID: String?
     var isbn13: String?
@@ -110,5 +115,6 @@ final class Book {
         self.tags = tags
         self.notes = notes
         self.collections = nil
+        self.readingAttempts = nil
     }
 }

@@ -47,12 +47,17 @@ extension Book {
     var status: ReadingStatus {
         get { ReadingStatus.fromPersisted(statusRawValue) ?? .toRead }
         set {
+            let oldValue = status
             statusRawValue = newValue.rawValue
 
             if newValue != .finished {
-                readFrom = nil
-                readTo = nil
-                clearUserRatings()
+                let keepsPreviousCompletion = oldValue == .finished && newValue == .reading
+
+                if !keepsPreviousCompletion {
+                    readFrom = nil
+                    readTo = nil
+                    clearUserRatings()
+                }
             }
         }
     }

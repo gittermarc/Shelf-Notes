@@ -12,6 +12,7 @@ enum ModelContainerFactory {
     static var schema: Schema {
         Schema([
             Book.self,
+            ReadingAttempt.self,
             ReadingSession.self,
             ReadingGoal.self,
             BookCollection.self,

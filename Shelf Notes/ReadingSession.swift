@@ -26,6 +26,13 @@ final class ReadingSession {
     /// The inverse is `Book.readingSessions`.
     var book: Book?
 
+    /// Optional reading attempt / Lesedurchgang this session belongs to.
+    ///
+    /// Kept optional so existing sessions and CloudKit-synced legacy data remain
+    /// valid. The direct `book` relationship stays in place as the compatibility
+    /// anchor for older flows and queries.
+    var readingAttempt: ReadingAttempt?
+
     /// When the session started.
     var startedAt: Date = Date()
 
