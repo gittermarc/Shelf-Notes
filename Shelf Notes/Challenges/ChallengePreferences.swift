@@ -10,6 +10,8 @@ import Foundation
 nonisolated enum ChallengePreferencesStorageKey {
     static let enabledKinds = "challenge_enabled_kinds_v1"
     static let preset = "challenge_preset_v1"
+    static let celebrationsEnabled = "challenge_celebrations_enabled_v1"
+    static let hapticsEnabled = "challenge_haptics_enabled_v1"
 }
 
 nonisolated enum ChallengePreferencesPreset: String, CaseIterable, Codable, Identifiable, Sendable {
@@ -101,14 +103,30 @@ nonisolated enum ChallengePreferencesPreset: String, CaseIterable, Codable, Iden
 
 nonisolated struct ChallengePreferences: Equatable, Sendable {
     static let defaultEnabledKinds: [ChallengeKind] = ChallengeCadence.defaultGenerationKinds
-    static let defaultValue = ChallengePreferences(enabledKinds: defaultEnabledKinds, preset: .custom)
+    static let defaultCelebrationsEnabled = true
+    static let defaultHapticsEnabled = true
+    static let defaultValue = ChallengePreferences(
+        enabledKinds: defaultEnabledKinds,
+        preset: .custom,
+        celebrationsEnabled: defaultCelebrationsEnabled,
+        hapticsEnabled: defaultHapticsEnabled
+    )
 
     let enabledKinds: [ChallengeKind]
     let preset: ChallengePreferencesPreset
+    let celebrationsEnabled: Bool
+    let hapticsEnabled: Bool
 
-    init(enabledKinds: [ChallengeKind], preset: ChallengePreferencesPreset = .custom) {
+    init(
+        enabledKinds: [ChallengeKind],
+        preset: ChallengePreferencesPreset = .custom,
+        celebrationsEnabled: Bool = ChallengePreferences.defaultCelebrationsEnabled,
+        hapticsEnabled: Bool = ChallengePreferences.defaultHapticsEnabled
+    ) {
         self.enabledKinds = Self.normalizedKinds(enabledKinds)
         self.preset = preset
+        self.celebrationsEnabled = celebrationsEnabled
+        self.hapticsEnabled = hapticsEnabled
     }
 
     var enabledKindSet: Set<ChallengeKind> {
@@ -132,16 +150,27 @@ nonisolated struct ChallengePreferences: Equatable, Sendable {
 nonisolated enum ChallengePreferencesStore {
     static let defaultEnabledKindsRaw = rawValue(for: ChallengePreferences.defaultEnabledKinds)
     static let defaultPresetRaw = ChallengePreferences.defaultValue.preset.rawValue
+    static let defaultCelebrationsEnabled = ChallengePreferences.defaultCelebrationsEnabled
+    static let defaultHapticsEnabled = ChallengePreferences.defaultHapticsEnabled
 
     static func load(userDefaults: UserDefaults = .standard) -> ChallengePreferences {
         let enabledRaw = userDefaults.object(forKey: ChallengePreferencesStorageKey.enabledKinds) as? String
         let presetRaw = userDefaults.string(forKey: ChallengePreferencesStorageKey.preset)
-        return preferences(enabledKindsRaw: enabledRaw, presetRaw: presetRaw)
+        let celebrationsEnabled = userDefaults.object(forKey: ChallengePreferencesStorageKey.celebrationsEnabled) as? Bool
+        let hapticsEnabled = userDefaults.object(forKey: ChallengePreferencesStorageKey.hapticsEnabled) as? Bool
+        return preferences(
+            enabledKindsRaw: enabledRaw,
+            presetRaw: presetRaw,
+            celebrationsEnabled: celebrationsEnabled,
+            hapticsEnabled: hapticsEnabled
+        )
     }
 
     static func save(_ preferences: ChallengePreferences, userDefaults: UserDefaults = .standard) {
         userDefaults.set(rawValue(for: preferences.enabledKinds), forKey: ChallengePreferencesStorageKey.enabledKinds)
         userDefaults.set(preferences.preset.rawValue, forKey: ChallengePreferencesStorageKey.preset)
+        userDefaults.set(preferences.celebrationsEnabled, forKey: ChallengePreferencesStorageKey.celebrationsEnabled)
+        userDefaults.set(preferences.hapticsEnabled, forKey: ChallengePreferencesStorageKey.hapticsEnabled)
     }
 
     static func saveEnabledKinds(
@@ -149,26 +178,70 @@ nonisolated enum ChallengePreferencesStore {
         preset: ChallengePreferencesPreset? = nil,
         userDefaults: UserDefaults = .standard
     ) {
+        let current = load(userDefaults: userDefaults)
         let normalized = ChallengePreferences.normalizedKinds(kinds)
         let resolvedPreset = preset ?? ChallengePreferencesPreset.match(for: normalized)
-        save(ChallengePreferences(enabledKinds: normalized, preset: resolvedPreset), userDefaults: userDefaults)
+        save(
+            ChallengePreferences(
+                enabledKinds: normalized,
+                preset: resolvedPreset,
+                celebrationsEnabled: current.celebrationsEnabled,
+                hapticsEnabled: current.hapticsEnabled
+            ),
+            userDefaults: userDefaults
+        )
     }
 
     static func savePreset(_ preset: ChallengePreferencesPreset, userDefaults: UserDefaults = .standard) {
+        let current = load(userDefaults: userDefaults)
         guard let kinds = preset.configuredKinds else {
-            let current = load(userDefaults: userDefaults)
-            save(ChallengePreferences(enabledKinds: current.enabledKinds, preset: .custom), userDefaults: userDefaults)
+            save(
+                ChallengePreferences(
+                    enabledKinds: current.enabledKinds,
+                    preset: .custom,
+                    celebrationsEnabled: current.celebrationsEnabled,
+                    hapticsEnabled: current.hapticsEnabled
+                ),
+                userDefaults: userDefaults
+            )
             return
         }
 
-        save(ChallengePreferences(enabledKinds: kinds, preset: preset), userDefaults: userDefaults)
+        save(
+            ChallengePreferences(
+                enabledKinds: kinds,
+                preset: preset,
+                celebrationsEnabled: current.celebrationsEnabled,
+                hapticsEnabled: current.hapticsEnabled
+            ),
+            userDefaults: userDefaults
+        )
     }
 
     static func preferences(enabledKindsRaw: String?, presetRaw: String?) -> ChallengePreferences {
+        preferences(
+            enabledKindsRaw: enabledKindsRaw,
+            presetRaw: presetRaw,
+            celebrationsEnabled: nil,
+            hapticsEnabled: nil
+        )
+    }
+
+    static func preferences(
+        enabledKindsRaw: String?,
+        presetRaw: String?,
+        celebrationsEnabled: Bool?,
+        hapticsEnabled: Bool?
+    ) -> ChallengePreferences {
         let enabledKinds = enabledKinds(fromRaw: enabledKindsRaw)
         let storedPreset = presetRaw.flatMap { ChallengePreferencesPreset(rawValue: $0) }
         let resolvedPreset = resolvedPreset(storedPreset: storedPreset, enabledKinds: enabledKinds)
-        return ChallengePreferences(enabledKinds: enabledKinds, preset: resolvedPreset)
+        return ChallengePreferences(
+            enabledKinds: enabledKinds,
+            preset: resolvedPreset,
+            celebrationsEnabled: celebrationsEnabled ?? ChallengePreferences.defaultCelebrationsEnabled,
+            hapticsEnabled: hapticsEnabled ?? ChallengePreferences.defaultHapticsEnabled
+        )
     }
 
     static func enabledKinds(fromRaw raw: String?) -> [ChallengeKind] {

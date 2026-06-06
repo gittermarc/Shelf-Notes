@@ -67,6 +67,31 @@ struct ChallengePreferencesTests {
         #expect(preferences.preset == .custom)
     }
 
+    @Test func celebrationSettingsDefaultToEnabled() {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = ChallengePreferencesStore.load(userDefaults: defaults)
+
+        #expect(preferences.celebrationsEnabled == true)
+        #expect(preferences.hapticsEnabled == true)
+    }
+
+    @Test func cadencePresetChangesPreserveCelebrationSettings() {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set(false, forKey: ChallengePreferencesStorageKey.celebrationsEnabled)
+        defaults.set(false, forKey: ChallengePreferencesStorageKey.hapticsEnabled)
+
+        ChallengePreferencesStore.savePreset(.allMissions, userDefaults: defaults)
+        let preferences = ChallengePreferencesStore.load(userDefaults: defaults)
+
+        #expect(preferences.enabledKinds == [.daily, .weekly, .monthly, .yearly])
+        #expect(preferences.celebrationsEnabled == false)
+        #expect(preferences.hapticsEnabled == false)
+    }
+
     @Test func storedPresetMismatchResolvesToActualSelection() {
         let (defaults, suiteName) = makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }

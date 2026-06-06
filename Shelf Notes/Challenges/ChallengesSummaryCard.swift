@@ -8,15 +8,25 @@ import SwiftData
 
 struct ChallengesSummaryCard: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @AppStorage(ChallengePreferencesStorageKey.enabledKinds) private var enabledKindsRaw: String = ChallengePreferencesStore.defaultEnabledKindsRaw
     @AppStorage(ChallengePreferencesStorageKey.preset) private var presetRaw: String = ChallengePreferencesStore.defaultPresetRaw
+    @AppStorage(ChallengePreferencesStorageKey.celebrationsEnabled) private var celebrationsEnabled: Bool = ChallengePreferencesStore.defaultCelebrationsEnabled
 
     @State private var sourceSnapshot: ChallengeSourceSnapshot = .empty
     @State private var progressByID: [UUID: ChallengeEngine.ChallengeProgress] = [:]
 
     private var challengePreferences: ChallengePreferences {
         ChallengePreferencesStore.preferences(enabledKindsRaw: enabledKindsRaw, presetRaw: presetRaw)
+    }
+
+    private var celebrationConfiguration: ChallengeCelebrationConfiguration {
+        ChallengeCelebrationConfiguration(
+            animationsEnabled: celebrationsEnabled,
+            hapticsEnabled: false,
+            reduceMotion: reduceMotion
+        )
     }
 
     var body: some View {
@@ -100,10 +110,11 @@ struct ChallengesSummaryCard: View {
 
     private func summaryTodayFocus(_ focus: ChallengeDashboardTodayFocus) -> some View {
         HStack(spacing: 12) {
-            ChallengeProgressRing(
+            ChallengeAnimatedProgressRing(
                 fraction: focus.item.progressFraction,
                 lineWidth: 7,
-                size: 54
+                size: 54,
+                configuration: celebrationConfiguration
             )
 
             VStack(alignment: .leading, spacing: 4) {
@@ -130,10 +141,11 @@ struct ChallengesSummaryCard: View {
 
     private func summaryHero(_ hero: ChallengeDashboardHero) -> some View {
         HStack(spacing: 12) {
-            ChallengeProgressRing(
+            ChallengeAnimatedProgressRing(
                 fraction: hero.progressFraction,
                 lineWidth: 7,
-                size: 54
+                size: 54,
+                configuration: celebrationConfiguration
             )
 
             VStack(alignment: .leading, spacing: 4) {

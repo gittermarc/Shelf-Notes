@@ -10,9 +10,16 @@ import SwiftUI
 struct ChallengeSettingsView: View {
     @AppStorage(ChallengePreferencesStorageKey.enabledKinds) private var enabledKindsRaw: String = ChallengePreferencesStore.defaultEnabledKindsRaw
     @AppStorage(ChallengePreferencesStorageKey.preset) private var presetRaw: String = ChallengePreferencesStore.defaultPresetRaw
+    @AppStorage(ChallengePreferencesStorageKey.celebrationsEnabled) private var celebrationsEnabled: Bool = ChallengePreferencesStore.defaultCelebrationsEnabled
+    @AppStorage(ChallengePreferencesStorageKey.hapticsEnabled) private var hapticsEnabled: Bool = ChallengePreferencesStore.defaultHapticsEnabled
 
     private var preferences: ChallengePreferences {
-        ChallengePreferencesStore.preferences(enabledKindsRaw: enabledKindsRaw, presetRaw: presetRaw)
+        ChallengePreferencesStore.preferences(
+            enabledKindsRaw: enabledKindsRaw,
+            presetRaw: presetRaw,
+            celebrationsEnabled: celebrationsEnabled,
+            hapticsEnabled: hapticsEnabled
+        )
     }
 
     private var selectedPreset: Binding<ChallengePreferencesPreset> {
@@ -28,6 +35,7 @@ struct ChallengeSettingsView: View {
         Form {
             presetSection
             cadenceSection
+            celebrationSection
             statusSection
         }
         .navigationTitle("Challenges")
@@ -81,8 +89,44 @@ struct ChallengeSettingsView: View {
         Section {
             LabeledContent("Aktiv", value: activeKindsText)
             LabeledContent("Preset", value: preferences.preset.title)
+            LabeledContent("Feiern", value: celebrationsEnabled ? "Animiert" : "Ruhig")
+            LabeledContent("Haptik", value: hapticsEnabled ? "An" : "Aus")
         } header: {
             Text("Aktueller Modus")
+        }
+    }
+
+    private var celebrationSection: some View {
+        Section {
+            Toggle(isOn: $celebrationsEnabled) {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Belohnungen animieren")
+                        Text("Trophy, Fortschrittsring und kleine Sparkles beim Einsammeln.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: "sparkles")
+                }
+            }
+
+            Toggle(isOn: $hapticsEnabled) {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Haptisches Feedback")
+                        Text("Ein kurzer Erfolgsklopfer, wenn du eine Challenge-Belohnung sicherst.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: "iphone.radiowaves.left.and.right")
+                }
+            }
+        } header: {
+            Text("Feiern & Feedback")
+        } footer: {
+            Text("Wenn „Bewegung reduzieren“ in iOS aktiv ist, zeigt Shelf Notes automatisch eine ruhigere Variante der Belohnungen.")
         }
     }
 

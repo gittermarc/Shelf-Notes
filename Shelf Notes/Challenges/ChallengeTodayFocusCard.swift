@@ -6,21 +6,33 @@
 import SwiftUI
 
 struct ChallengeTodayFocusCard: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(ChallengePreferencesStorageKey.celebrationsEnabled) private var celebrationsEnabled: Bool = ChallengePreferencesStore.defaultCelebrationsEnabled
+
     let focus: ChallengeDashboardTodayFocus
     let onClaim: (ChallengeDashboardItem) -> Void
     let onReroll: (ChallengeDashboardItem) -> Void
 
     private var item: ChallengeDashboardItem { focus.item }
 
+    private var celebrationConfiguration: ChallengeCelebrationConfiguration {
+        ChallengeCelebrationConfiguration(
+            animationsEnabled: celebrationsEnabled,
+            hapticsEnabled: false,
+            reduceMotion: reduceMotion
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
 
             HStack(alignment: .center, spacing: 16) {
-                ChallengeProgressRing(
+                ChallengeAnimatedProgressRing(
                     fraction: item.progressFraction,
                     lineWidth: 10,
-                    size: 92
+                    size: 92,
+                    configuration: celebrationConfiguration
                 )
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -56,6 +68,12 @@ struct ChallengeTodayFocusCard: View {
             RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .stroke(Color.accentColor.opacity(0.34), lineWidth: 1)
         }
+        .shadow(
+            color: Color.accentColor.opacity(item.isRewardReady ? 0.16 : 0),
+            radius: item.isRewardReady ? 18 : 0,
+            x: 0,
+            y: item.isRewardReady ? 8 : 0
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
     }

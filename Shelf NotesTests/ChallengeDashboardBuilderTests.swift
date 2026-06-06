@@ -370,4 +370,30 @@ struct ChallengeDashboardBuilderTests {
         #expect(state.unclaimedCount == 1)
     }
 
+    @Test @MainActor func readyToClaimItemExposesCelebrationState() {
+        let now = date(2026, 6, 3)
+        let weeklyID = UUID(uuidString: "00000000-0000-0000-0000-000000001201") ?? UUID()
+        let weekly = makeChallenge(
+            id: weeklyID,
+            kind: .weekly,
+            periodStart: date(2026, 6, 1, 0),
+            periodEnd: date(2026, 6, 8, 0),
+            completed: true,
+            claimed: false
+        )
+
+        let state = ChallengeDashboardBuilder.make(
+            challenges: [weekly],
+            progressByID: [weeklyID: ChallengeEngine.ChallengeProgress(value: 100, unitSuffix: "min")],
+            now: now,
+            calendar: calendar,
+            enabledKinds: [.weekly]
+        )
+
+        #expect(state.activeItems.first?.id == weeklyID)
+        #expect(state.activeItems.first?.celebrationState == .readyToClaim)
+        #expect(state.activeItems.first?.shouldHighlightCompletion == true)
+        #expect(state.activeItems.first?.statusSystemImage == "sparkles")
+    }
+
 }

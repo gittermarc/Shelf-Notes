@@ -7,24 +7,29 @@ import SwiftUI
 
 struct ChallengeRewardSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @AppStorage(ChallengePreferencesStorageKey.celebrationsEnabled) private var celebrationsEnabled: Bool = ChallengePreferencesStore.defaultCelebrationsEnabled
+    @AppStorage(ChallengePreferencesStorageKey.hapticsEnabled) private var hapticsEnabled: Bool = ChallengePreferencesStore.defaultHapticsEnabled
+
+    @State private var didPlayHaptic = false
 
     let item: ChallengeDashboardItem
 
-    var body: some View {
-        VStack(spacing: 18) {
-            ZStack {
-                Circle()
-                    .fill(.regularMaterial)
-                    .frame(width: 96, height: 96)
+    private var configuration: ChallengeCelebrationConfiguration {
+        ChallengeCelebrationConfiguration(
+            animationsEnabled: celebrationsEnabled,
+            hapticsEnabled: hapticsEnabled,
+            reduceMotion: reduceMotion
+        )
+    }
 
-                Image(systemName: "trophy.fill")
-                    .font(.system(size: 44, weight: .bold))
-                    .foregroundStyle(Color.accentColor)
-                    .accessibilityHidden(true)
-            }
+    var body: some View {
+        VStack(spacing: 20) {
+            ChallengeCelebrationView(item: item, configuration: configuration)
 
             VStack(spacing: 8) {
-                Text("Challenge eingesammelt")
+                Text(title)
                     .font(.title2.weight(.bold))
 
                 Text(item.title)
@@ -46,7 +51,7 @@ struct ChallengeRewardSheet: View {
             Button {
                 dismiss()
             } label: {
-                Text("Weiter geht's")
+                Text("Sieg sichern")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -54,5 +59,30 @@ struct ChallengeRewardSheet: View {
         .padding(24)
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
+        .onAppear {
+            playHapticIfNeeded()
+        }
+    }
+
+    private var title: String {
+        switch item.kind {
+        case .daily:
+            return "Tagesmission geschafft"
+        case .weekly:
+            return "Wochenmission geschafft"
+        case .monthly:
+            return "Monatsmission geschafft"
+        case .yearly:
+            return "Jahresquest geschafft"
+        case .unknown:
+            return "Challenge eingesammelt"
+        }
+    }
+
+    @MainActor
+    private func playHapticIfNeeded() {
+        guard !didPlayHaptic else { return }
+        didPlayHaptic = true
+        ChallengeHaptics.success(enabled: configuration.allowsHaptics)
     }
 }

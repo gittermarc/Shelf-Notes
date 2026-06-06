@@ -80,7 +80,7 @@ struct SettingsView: View {
                         Label("Challenge-Missionen", systemImage: "trophy")
                     }
 
-                    Text("Lege fest, ob Shelf Notes Tages-, Wochen-, Monats- oder Jahreschallenges automatisch vorbereitet.")
+                    Text("Lege fest, ob Shelf Notes Tages-, Wochen-, Monats- oder Jahreschallenges automatisch vorbereitet und wie stark Erfolge gefeiert werden.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

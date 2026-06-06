@@ -6,9 +6,20 @@
 import SwiftUI
 
 struct ChallengeActiveCard: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(ChallengePreferencesStorageKey.celebrationsEnabled) private var celebrationsEnabled: Bool = ChallengePreferencesStore.defaultCelebrationsEnabled
+
     let item: ChallengeDashboardItem
     let onClaim: (ChallengeDashboardItem) -> Void
     let onReroll: (ChallengeDashboardItem) -> Void
+
+    private var celebrationConfiguration: ChallengeCelebrationConfiguration {
+        ChallengeCelebrationConfiguration(
+            animationsEnabled: celebrationsEnabled,
+            hapticsEnabled: false,
+            reduceMotion: reduceMotion
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -20,7 +31,11 @@ struct ChallengeActiveCard: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(alignment: .center, spacing: 16) {
-                ChallengeProgressRing(fraction: item.progressFraction, size: 78)
+                ChallengeAnimatedProgressRing(
+                    fraction: item.progressFraction,
+                    size: 78,
+                    configuration: celebrationConfiguration
+                )
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(item.progressText)
@@ -50,6 +65,12 @@ struct ChallengeActiveCard: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(item.isRewardReady ? Color.accentColor.opacity(0.55) : Color.secondary.opacity(0.25), lineWidth: 1)
         }
+        .shadow(
+            color: Color.accentColor.opacity(item.shouldHighlightCompletion ? 0.16 : 0),
+            radius: item.shouldHighlightCompletion ? 16 : 0,
+            x: 0,
+            y: item.shouldHighlightCompletion ? 8 : 0
+        )
         .accessibilityElement(children: .contain)
     }
 
@@ -73,12 +94,16 @@ struct ChallengeActiveCard: View {
 
             Spacer(minLength: 8)
 
-            Label(item.statusText, systemImage: item.statusSystemImage)
+            Label(item.statusText, systemImage: statusSystemImage)
                 .font(.caption.weight(.semibold))
                 .labelStyle(.iconOnly)
                 .foregroundStyle(item.isRewardReady ? Color.accentColor : Color.secondary)
                 .accessibilityLabel(item.statusText)
         }
+    }
+
+    private var statusSystemImage: String {
+        item.celebrationState.isHighlighted ? item.celebrationState.systemImage : item.statusSystemImage
     }
 
     private var metadataPills: some View {

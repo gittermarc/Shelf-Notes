@@ -105,6 +105,21 @@ nonisolated struct ChallengeDashboardItem: Identifiable, Equatable {
         status == .readyToClaim || status == .claimed
     }
 
+    var celebrationState: ChallengeCelebrationState {
+        switch status {
+        case .readyToClaim:
+            return .readyToClaim
+        case .claimed:
+            return .claimed
+        case .active, .expired:
+            return .none
+        }
+    }
+
+    var shouldHighlightCompletion: Bool {
+        celebrationState.isHighlighted
+    }
+
     var statusText: String {
         switch status {
         case .active:
