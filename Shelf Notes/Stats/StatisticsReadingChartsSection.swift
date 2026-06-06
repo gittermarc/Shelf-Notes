@@ -31,7 +31,7 @@ struct StatisticsReadingChartsSection: View {
                 }
 
                 if !isValid {
-                    Text("Berechne Monats-Statistiken …")
+                    Text("Berechne Monats-Statistiken")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -41,7 +41,7 @@ struct StatisticsReadingChartsSection: View {
                     ForEach(series) { month in
                         BarMark(
                             x: .value("Monat", month.monthLabel),
-                            y: .value("Bücher", month.finishedCount)
+                            y: .value("Abschlüsse", month.finishedCount)
                         )
                         .opacity(0.9)
                     }
@@ -72,20 +72,20 @@ struct StatisticsReadingChartsSection: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    let maxBooks = series.map(\.finishedCount).max() ?? 1
+                    let maxCompletions = series.map(\.finishedCount).max() ?? 1
 
                     ForEach(series) { month in
                         BarListRow(
                             title: month.monthLabel,
-                            valueLeft: "\(month.finishedCount) Bücher",
+                            valueLeft: "\(month.finishedCount) Abschlüsse",
                             valueRight: "\(StatisticsSectionFormatting.formatInt(month.pages)) Seiten",
-                            fraction: StatisticsSectionFormatting.fraction(month.finishedCount, maxValue: maxBooks)
+                            fraction: StatisticsSectionFormatting.fraction(month.finishedCount, maxValue: maxCompletions)
                         )
                     }
                 }
                 #endif
 
-                Text("Seiten zählen nur, wenn `pageCount` gesetzt ist. Bücher zählen, wenn Status „Gelesen“ + Datum vorhanden.")
+                Text("Seiten zählen je abgeschlossenem Lesedurchgang. Re-Reads zählen als eigene Abschlüsse.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -105,12 +105,12 @@ struct ChallengeSessionImpactBuilderTests {
 
         let impact = ChallengeSessionImpactBuilder.makePendingSessionImpact(
             challenges: [challenge],
-            progressBeforeByID: [id: ChallengeEngine.ChallengeProgress(value: 0, unitSuffix: "Bücher")],
+            progressBeforeByID: [id: ChallengeEngine.ChallengeProgress(value: 0, unitSuffix: "Abschlüsse")],
             contribution: contribution,
             now: date(2026, 6, 10)
         )
 
-        #expect(impact?.entries.first?.contributionText == "+1 Bücher")
+        #expect(impact?.entries.first?.contributionText == "+1 Abschlüsse")
         #expect(impact?.entries.first?.didComplete == true)
     }
 }

@@ -150,7 +150,7 @@ struct ProgressHubView: View {
             LazyVGrid(columns: columns, spacing: 10) {
                 MetricTile(
                     systemImage: "checkmark.seal",
-                    title: "Gelesen",
+                    title: "Abschlüsse",
                     value: goalTarget != nil ? "\(finishedThisYear) / \(goalTarget!)" : "\(finishedThisYear)",
                     caption: goalTarget != nil ? "Jahresziel" : "dieses Jahr"
                 )

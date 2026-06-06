@@ -82,4 +82,35 @@ struct ChallengeTemplateProgressTests {
         #expect(rated.value == 2)
         #expect(noted.value == 1)
     }
+
+    @Test func booksFinishedCountsCompletedAttemptsForRereads() {
+        let bookID = UUID(uuidString: "00000000-0000-0000-0000-000000004001") ?? UUID()
+        let start = date(2026, 6, 1)
+        let end = date(2026, 7, 1)
+        let snapshot = ChallengeEngine.Snapshot(
+            sessions: [],
+            finishedBooks: [
+                ChallengeEngine.FinishedBookSnapshot(
+                    bookID: bookID,
+                    attemptID: UUID(uuidString: "00000000-0000-0000-0000-000000004101"),
+                    sequenceNumber: 1,
+                    readTo: date(2026, 6, 5),
+                    isReread: false
+                ),
+                ChallengeEngine.FinishedBookSnapshot(
+                    bookID: bookID,
+                    attemptID: UUID(uuidString: "00000000-0000-0000-0000-000000004102"),
+                    sequenceNumber: 2,
+                    readTo: date(2026, 6, 20),
+                    isReread: true
+                )
+            ]
+        )
+
+        let progress = ChallengeEngine.computeProgress(metric: .booksFinished, window: start..<end, snapshot: snapshot)
+
+        #expect(progress.value == 2)
+        #expect(progress.unitSuffix == "Abschlüsse")
+    }
+
 }

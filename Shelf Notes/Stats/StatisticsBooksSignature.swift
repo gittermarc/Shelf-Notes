@@ -3,7 +3,7 @@ import Foundation
 extension StatisticsSourceStore {
     static func booksSignature(_ books: [Book]) -> Int {
         var hasher = StableStatisticsHasher()
-        hasher.combine("statistics-books-v3")
+        hasher.combine("statistics-books-v4")
         hasher.combine(books.count)
 
         for book in books.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
@@ -37,6 +37,20 @@ extension StatisticsSourceStore {
                 hasher.combine(tag)
             }
             hasher.combine("tags-end")
+
+            let attempts = book.orderedReadingAttempts
+            hasher.combine(attempts.count)
+            for attempt in attempts {
+                hasher.combine(attempt.id.uuidString)
+                hasher.combine(attempt.sequenceNumber)
+                hasher.combine(attempt.statusRawValue)
+                hasher.combineDay(attempt.startedAt)
+                hasher.combineDay(attempt.finishedAt)
+                hasher.combine(attempt.pageCountSnapshot)
+                hasher.combineDate(attempt.updatedAt)
+            }
+            hasher.combine("attempts-end")
+
             hasher.combine("book-end")
         }
 

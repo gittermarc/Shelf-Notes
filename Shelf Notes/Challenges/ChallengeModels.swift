@@ -84,7 +84,7 @@ enum ChallengeMetric: String, Codable, CaseIterable, Identifiable, Sendable {
         case .pagesRead:
             return "Seiten"
         case .booksFinished:
-            return "Bücher"
+            return "Abschlüsse"
         case .shortSessions:
             return "Kurz-Sessions"
         case .booksProgressed:

@@ -11,6 +11,7 @@ import SwiftData
 struct ReadingTimelineBookRowView: View {
     @Bindable var book: Book
     let date: Date
+    let attemptLabel: String?
     let coverSize: CGSize
     let tileWidth: CGFloat
 
@@ -62,6 +63,13 @@ struct ReadingTimelineBookRowView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
+
+                        if let attemptLabel {
+                            Text(attemptLabel)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
                 }
             }
@@ -80,7 +88,14 @@ struct ReadingTimelineBookRowView: View {
                 .opacity(phase.isIdentity ? 1.0 : 0.85)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(book.title), beendet am \(date.formatted(date: .long, time: .omitted))")
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var accessibilityText: String {
+        if let attemptLabel {
+            return "\(book.title), \(attemptLabel), beendet am \(date.formatted(date: .long, time: .omitted))"
+        }
+        return "\(book.title), beendet am \(date.formatted(date: .long, time: .omitted))"
     }
 }
 

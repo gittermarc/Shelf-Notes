@@ -65,7 +65,7 @@ private nonisolated extension StatisticsHeatmapBuilder {
         case .all:
             return input
         case .finished:
-            return input.filter { $0.status == .finished }
+            return input.filter { $0.status == .finished || $0.hasCompletedReading }
         case .reading:
             return input.filter { $0.status == .reading }
         case .toRead:
@@ -86,7 +86,7 @@ private nonisolated extension StatisticsHeatmapBuilder {
         case .all:
             return source
         case .finished:
-            return source.filter { $0.status == .finished }
+            return source.filter { $0.status == .finished || $0.hasCompletedReading }
         case .reading:
             return source.filter { $0.status == .reading }
         case .toRead:
@@ -208,30 +208,25 @@ private nonisolated extension StatisticsHeatmapBuilder {
             return minutes
 
         case .completions:
-            for book in books where book.status == .finished {
-                if let date = book.readTo ?? book.readFrom {
-                    addDay(date)
+            for book in books {
+                for completion in book.readingCompletions {
+                    addDay(completion.finishedAt)
                 }
             }
 
         case .readingDays:
             for book in books {
-                switch book.status {
-                case .finished:
-                    if let from = book.readFrom, let to = book.readTo {
-                        addRange(from: from, to: to)
-                    } else if let date = book.readTo ?? book.readFrom {
-                        addDay(date)
+                for completion in book.readingCompletions {
+                    if let from = completion.startedAt {
+                        addRange(from: from, to: completion.finishedAt)
+                    } else {
+                        addDay(completion.finishedAt)
                     }
+                }
 
-                case .reading:
-                    if let from = book.readFrom {
-                        let clampedNow = min(range.end, calendar.startOfDay(for: now))
-                        addRange(from: from, to: clampedNow)
-                    }
-
-                case .toRead:
-                    break
+                if book.status == .reading, let from = book.activeAttemptStartedAt ?? book.readFrom {
+                    let clampedNow = min(range.end, calendar.startOfDay(for: now))
+                    addRange(from: from, to: clampedNow)
                 }
             }
         }

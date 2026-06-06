@@ -74,7 +74,7 @@ struct StatisticsSnapshotBuilderTests {
         #expect(cache.summary.overview.avgPagesPerBookText == "225")
         #expect(cache.summary.overview.avgDaysPerBookText == "4")
         #expect(cache.summary.yearOptions == [2027, 2026, 2021, 2020, 2019])
-        #expect(cache.summary.tinyTeaserLine == "Ø 55 Seiten/Tag • Ø 4 Tage/Buch (für „Gelesen“ mit Zeitraum)")
+        #expect(cache.summary.tinyTeaserLine == "Ø 55 Seiten/Tag • Ø 4 Tage/Abschluss")
     }
 
     @Test func buildsStableTopListsAndRatings() {
@@ -248,6 +248,68 @@ struct StatisticsSnapshotBuilderTests {
         #expect(cache.topGenres.map { $0.label } == ["Thriller"])
         #expect(cache.topTags.map { $0.label } == ["Crime"])
         #expect(cache.highestRated?.label == "Finished Thriller • 4.5 / 5")
+    }
+
+
+    @Test func summaryCountsRereadCompletionsSeparatelyFromUniqueBooks() {
+        let builder = StatisticsSnapshotBuilder(now: date(2026, 6, 15), calendar: calendar)
+        let bookID = UUID(uuidString: "00000000-0000-0000-0000-000000003001") ?? UUID()
+        let completions = [
+            ReadingCompletionRecord(
+                id: "attempt-one",
+                bookID: bookID,
+                attemptID: UUID(uuidString: "00000000-0000-0000-0000-000000003101"),
+                sequenceNumber: 1,
+                title: "Repeat",
+                author: "Ada",
+                startedAt: date(2026, 1, 1),
+                finishedAt: date(2026, 1, 8),
+                pageCount: 300,
+                isReread: false
+            ),
+            ReadingCompletionRecord(
+                id: "attempt-two",
+                bookID: bookID,
+                attemptID: UUID(uuidString: "00000000-0000-0000-0000-000000003102"),
+                sequenceNumber: 2,
+                title: "Repeat",
+                author: "Ada",
+                startedAt: date(2026, 3, 1),
+                finishedAt: date(2026, 3, 7),
+                pageCount: 300,
+                isReread: true
+            )
+        ]
+        let books = [
+            StatisticsBookSnapshot(
+                id: bookID,
+                title: "Repeat",
+                author: "Ada",
+                statusRawValue: ReadingStatus.reading.rawValue,
+                readFrom: date(2026, 6, 1),
+                readTo: nil,
+                pageCount: 300,
+                readingCompletions: completions,
+                activeAttemptStartedAt: date(2026, 6, 1)
+            )
+        ]
+
+        let cache = builder.makeStatsCache(
+            for: .init(selectedYear: 2026, scope: .finished, booksSignature: 301),
+            books: books
+        )
+
+        #expect(cache.summary.overview.scopedBooksCount == 1)
+        #expect(cache.summary.overview.finishedScopedBooksCount == 1)
+        #expect(cache.summary.overview.readingCompletionCount == 2)
+        #expect(cache.summary.overview.rereadCompletionCount == 1)
+        #expect(cache.summary.overview.finishedInSelectedYearCount == 2)
+        #expect(cache.summary.overview.uniqueBooksInSelectedYearCount == 1)
+        #expect(cache.summary.overview.rereadCompletionsInSelectedYearCount == 1)
+        #expect(cache.summary.overview.pagesInSelectedYear == 600)
+        #expect(cache.monthlySeries.map { $0.finishedCount } == [1, 0, 1, 0, 0, 0])
+        #expect(cache.monthlySeries.map { $0.pages } == [300, 0, 300, 0, 0, 0])
+        #expect(cache.summary.heroSubtitle == "1 Bücher • 2 Abschlüsse • 1 Bücher gelesen • 300 Seiten (wo vorhanden)")
     }
 
 }

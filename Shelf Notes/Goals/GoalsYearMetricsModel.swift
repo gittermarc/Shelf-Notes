@@ -88,6 +88,16 @@ final class GoalsYearMetricsModel: ObservableObject {
             hasher.combine(book.readTo?.timeIntervalSinceReferenceDate)
             hasher.combine(book.pageCount)
 
+            for attempt in book.orderedReadingAttempts {
+                hasher.combine(attempt.id)
+                hasher.combine(attempt.sequenceNumber)
+                hasher.combine(attempt.statusRawValue)
+                hasher.combine(attempt.startedAt?.timeIntervalSinceReferenceDate)
+                hasher.combine(attempt.finishedAt?.timeIntervalSinceReferenceDate)
+                hasher.combine(attempt.pageCountSnapshot)
+                hasher.combine(attempt.updatedAt.timeIntervalSinceReferenceDate)
+            }
+
             let hash = UInt64(bitPattern: Int64(hasher.finalize()))
             aggregate ^= hash &+ 0x9E37_79B9_7F4A_7C15 &+ (aggregate << 6) &+ (aggregate >> 2)
         }

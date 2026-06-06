@@ -315,4 +315,96 @@ struct GoalsYearMetricsBuilderTests {
         #expect(metrics.monthsCount == 4)
         #expect(metrics.pagesPerMonth == 0)
     }
+
+    @Test @MainActor func rereadAttemptsCountAsGoalCompletionsWithoutDuplicatingUniqueBooks() {
+        let now = date(2026, 6, 15)
+        let book = makeBook(
+            title: "Repeat",
+            status: .reading,
+            createdAt: date(2025, 1, 1),
+            readFrom: date(2026, 5, 1),
+            readTo: nil,
+            pageCount: 300,
+            author: "Ada"
+        )
+        let first = ReadingAttempt(
+            book: book,
+            sequenceNumber: 1,
+            status: .finished,
+            startedAt: date(2026, 1, 1),
+            finishedAt: date(2026, 1, 8),
+            pageCountSnapshot: 300
+        )
+        let second = ReadingAttempt(
+            book: book,
+            sequenceNumber: 2,
+            status: .finished,
+            startedAt: date(2026, 3, 1),
+            finishedAt: date(2026, 3, 7),
+            pageCountSnapshot: 300
+        )
+        let active = ReadingAttempt(
+            book: book,
+            sequenceNumber: 3,
+            status: .active,
+            startedAt: date(2026, 6, 1),
+            finishedAt: nil,
+            pageCountSnapshot: 300
+        )
+        book.readingAttempts = [first, second, active]
+
+        let metrics = GoalsYearMetricsBuilder.make(
+            selectedYear: 2026,
+            books: [book],
+            goals: [],
+            now: now,
+            calendar: calendar
+        )
+
+        #expect(metrics.finishedCompletionCount == 2)
+        #expect(metrics.finishedBooks.map(\.title) == ["Repeat", "Repeat"])
+        #expect(metrics.uniqueFinishedBooksCount == 1)
+        #expect(metrics.rereadCompletionCount == 1)
+        #expect(metrics.pagesReadInSelectedYear == 600)
+        #expect(metrics.countedBooksWithPagesCount == 2)
+        #expect(metrics.averagePagesPerBook == 300)
+    }
+
+
+    @Test @MainActor func activeRereadWithLegacyReadToKeepsPreviousGoalCompletion() {
+        let now = date(2026, 6, 15)
+        let book = makeBook(
+            title: "Legacy Repeat",
+            status: .reading,
+            createdAt: date(2025, 1, 1),
+            readFrom: date(2026, 1, 1),
+            readTo: date(2026, 1, 8),
+            pageCount: 280,
+            author: "Ada"
+        )
+        let active = ReadingAttempt(
+            book: book,
+            sequenceNumber: 2,
+            status: .active,
+            startedAt: date(2026, 6, 1),
+            finishedAt: nil,
+            pageCountSnapshot: 280
+        )
+        book.readingAttempts = [active]
+
+        let metrics = GoalsYearMetricsBuilder.make(
+            selectedYear: 2026,
+            books: [book],
+            goals: [],
+            now: now,
+            calendar: calendar
+        )
+
+        #expect(metrics.finishedCompletionCount == 1)
+        #expect(metrics.finishedBooks.map(\.title) == ["Legacy Repeat"])
+        #expect(metrics.uniqueFinishedBooksCount == 1)
+        #expect(metrics.rereadCompletionCount == 0)
+        #expect(metrics.pagesReadInSelectedYear == 280)
+    }
+
 }

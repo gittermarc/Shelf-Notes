@@ -136,8 +136,8 @@ nonisolated enum ChallengeTemplateRegistry {
             fallbackTarget: 1,
             baselineMultiplier: 1.0,
             baselineOffset: 1,
-            detail: "Dieser Monat zählt abgeschlossene Bücher mit Abschlussdatum.",
-            rewardText: "Ein Buch wirklich beendet. Der schönste Haken in jeder Bibliothek.",
+            detail: "Dieser Monat zählt abgeschlossene Lesedurchgänge mit Abschlussdatum.",
+            rewardText: "Ein Lesedurchgang wirklich beendet. Der schönste Haken in jeder Bibliothek.",
             emptyBaselinePriority: 86
         ),
         ChallengeTemplate(
@@ -290,7 +290,7 @@ nonisolated enum ChallengeTemplateRegistry {
         case .pagesRead:
             return "Seiten gemacht, Fortschritt sichtbar."
         case .booksFinished:
-            return "Ein Buch abgeschlossen. Sauberer Haken."
+            return "Ein Lesedurchgang abgeschlossen. Sauberer Haken."
         case .shortSessions:
             return "Kleine Fenster genutzt. Stark."
         case .booksProgressed:

@@ -37,14 +37,46 @@ extension ChallengeEngine {
     }
 
     struct FinishedBookSnapshot: Sendable {
+        let bookID: UUID?
+        let attemptID: UUID?
+        let sequenceNumber: Int
         let readTo: Date
         let hasUserNote: Bool
         let hasUserRating: Bool
+        let isReread: Bool
 
-        init(readTo: Date, hasUserNote: Bool = false, hasUserRating: Bool = false) {
+        init(
+            bookID: UUID? = nil,
+            attemptID: UUID? = nil,
+            sequenceNumber: Int = 1,
+            readTo: Date,
+            hasUserNote: Bool = false,
+            hasUserRating: Bool = false,
+            isReread: Bool = false
+        ) {
+            self.bookID = bookID
+            self.attemptID = attemptID
+            self.sequenceNumber = max(1, sequenceNumber)
             self.readTo = readTo
             self.hasUserNote = hasUserNote
             self.hasUserRating = hasUserRating
+            self.isReread = isReread
+        }
+
+        init(
+            completion: ReadingCompletionRecord,
+            hasUserNote: Bool = false,
+            hasUserRating: Bool = false
+        ) {
+            self.init(
+                bookID: completion.bookID,
+                attemptID: completion.attemptID,
+                sequenceNumber: completion.sequenceNumber,
+                readTo: completion.finishedAt,
+                hasUserNote: hasUserNote,
+                hasUserRating: hasUserRating,
+                isReread: completion.isReread
+            )
         }
     }
 
@@ -185,26 +217,25 @@ private extension ChallengeEngine {
         let start = range.lowerBound
         let end = range.upperBound
 
-        let statusFinished = ReadingStatus.finished.rawValue
-        let legacyFinished = "Gelesen"
-
         let descriptor = FetchDescriptor<Book>(
-            predicate: #Predicate<Book> {
-                ($0.statusRawValue == statusFinished || $0.statusRawValue == legacyFinished) &&
-                $0.readTo != nil &&
-                $0.readTo! >= start &&
-                $0.readTo! < end
-            }
+            sortBy: [SortDescriptor(\Book.createdAt, order: .forward)]
         )
 
         let results = (try? modelContext.fetch(descriptor)) ?? []
         if results.isEmpty { return [] }
 
-        return results.compactMap { book in
-            guard let readTo = book.readTo else { return nil }
+        return results.flatMap { book in
             let hasNote = !book.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             let hasRating = book.userRatingValues.contains { $0 > 0 }
-            return FinishedBookSnapshot(readTo: readTo, hasUserNote: hasNote, hasUserRating: hasRating)
+            return ReadingCompletionRecordBuilder.records(from: book)
+                .filter { $0.finishedAt >= start && $0.finishedAt < end }
+                .map { completion in
+                    FinishedBookSnapshot(
+                        completion: completion,
+                        hasUserNote: hasNote,
+                        hasUserRating: hasRating
+                    )
+                }
         }
     }
 }

@@ -101,10 +101,14 @@ nonisolated struct StatisticsStatsCache: Sendable {
         nonisolated struct Overview: Sendable {
             let scopedBooksCount: Int
             let finishedScopedBooksCount: Int
+            let readingCompletionCount: Int
+            let rereadCompletionCount: Int
             let uniqueAuthorsCount: Int
             let uniquePublishersCount: Int
             let pagesInSelectedYear: Int
             let finishedInSelectedYearCount: Int
+            let uniqueBooksInSelectedYearCount: Int
+            let rereadCompletionsInSelectedYearCount: Int
             let avgPagesPerBookText: String
             let avgDaysPerBookText: String
         }

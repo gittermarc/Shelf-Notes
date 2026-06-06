@@ -11,20 +11,12 @@ import UIKit
 
 /// A visually focused, horizontally scrollable reading timeline.
 ///
-/// - Data source: finished books.
-/// - Sorting key: `readTo ?? readFrom ?? createdAt`.
+/// - Data source: completed reading attempts, with legacy finished-book fallback.
+/// - Sorting key: completion date.
 /// - UI: year mini-map (auto-highlight) + year summary cards + cover tiles on a horizontal axis.
 struct ReadingTimelineView: View {
-    // Only finished books.
-    //
-    // NOTE: SwiftData's #Predicate macro does NOT like referencing enum cases inside the predicate
-    // (e.g. ReadingStatus.finished.rawValue). It can produce:
-    // "Key path cannot refer to enum case 'finished'"
-    //
-    // So we filter by the persisted raw string value directly.
-    // (v2: stable code "finished"; v1 legacy: "Gelesen")
-    @Query(filter: #Predicate<Book> { $0.statusRawValue == "finished" || $0.statusRawValue == "Gelesen" })
-    private var finishedBooks: [Book]
+    @Query(sort: \Book.createdAt, order: .reverse)
+    private var books: [Book]
 
     @StateObject private var vm = ReadingTimelineViewModel()
 
@@ -56,13 +48,13 @@ struct ReadingTimelineView: View {
     }
 
     var body: some View {
-        let signature = ReadingTimelineViewModel.taskSignature(books: finishedBooks)
+        let signature = ReadingTimelineViewModel.taskSignature(books: books)
 
         Group {
-            if finishedBooks.isEmpty {
-                emptyState
-            } else if vm.items.isEmpty {
+            if !vm.hasBuiltTimeline {
                 loadingState
+            } else if vm.items.isEmpty {
+                emptyState
             } else {
                 content
             }
@@ -95,7 +87,7 @@ struct ReadingTimelineView: View {
         }
         .task(id: signature) {
             // Keep view model derived data in sync with SwiftData changes.
-            vm.setBooks(finishedBooks)
+            vm.setBooks(books)
         }
     }
 
@@ -134,10 +126,11 @@ struct ReadingTimelineView: View {
                                     )
                                     .id(vm.scrollID(forYear: y))
 
-                                case .book(let book, let date):
+                                case .completion(let entry):
                                     ReadingTimelineBookRowView(
-                                        book: book,
-                                        date: date,
+                                        book: entry.book,
+                                        date: entry.date,
+                                        attemptLabel: entry.attemptLabel,
                                         coverSize: coverSize,
                                         tileWidth: coverTileWidth
                                     )
@@ -190,7 +183,7 @@ struct ReadingTimelineView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Deine gelesenen Bücher als Zeitstrahl")
+            Text("Deine Abschlüsse als Zeitstrahl")
                 .font(.headline)
 
             Text("Scroll nach rechts für die Zukunft. Scroll nach links für „Hä, was habe ich 2018 eigentlich gelesen?“ 😄")
@@ -217,7 +210,7 @@ struct ReadingTimelineView: View {
     private var loadingState: some View {
         VStack(spacing: 12) {
             ProgressView()
-            Text("Zeitleiste wird gebaut …")
+            Text("Zeitleiste wird gebaut")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -229,7 +222,7 @@ struct ReadingTimelineView: View {
         ContentUnavailableView {
             Label("Noch keine Zeitleiste", systemImage: "clock")
         } description: {
-            Text("Sobald du ein Buch als „Gelesen“ markierst, erscheint es hier – chronologisch sortiert.")
+            Text("Sobald du einen Lesedurchgang abschließt, erscheint er hier – auch wenn es ein Re-Read ist.")
         } actions: {
             NavigationLink {
                 LibraryView()

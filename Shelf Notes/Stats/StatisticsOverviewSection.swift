@@ -13,20 +13,20 @@ struct StatisticsOverviewSection: View {
 
         LazyVGrid(columns: columns, spacing: 10) {
             MetricCard(title: "Bücher", value: overview.map { "\($0.scopedBooksCount)" } ?? "–", systemImage: "books.vertical")
-            MetricCard(title: "Gelesen", value: overview.map { "\($0.finishedScopedBooksCount)" } ?? "–", systemImage: "checkmark.seal")
+            MetricCard(title: "Abschlüsse", value: overview.map { "\($0.readingCompletionCount)" } ?? "–", systemImage: "checkmark.seal")
 
-            MetricCard(title: "Autoren", value: overview.map { "\($0.uniqueAuthorsCount)" } ?? "–", systemImage: "person.2")
-            MetricCard(title: "Verlage", value: overview.map { "\($0.uniquePublishersCount)" } ?? "–", systemImage: "building.2")
+            MetricCard(title: "Gelesene Bücher", value: overview.map { "\($0.finishedScopedBooksCount)" } ?? "–", systemImage: "book.closed")
+            MetricCard(title: "Re-Reads", value: overview.map { "\($0.rereadCompletionCount)" } ?? "–", systemImage: "arrow.triangle.2.circlepath")
 
             MetricCard(
                 title: "Seiten (Jahr)",
                 value: overview.map { StatisticsSectionFormatting.formatInt($0.pagesInSelectedYear) } ?? "–",
                 systemImage: "doc.plaintext"
             )
-            MetricCard(title: "Bücher (Jahr)", value: overview.map { "\($0.finishedInSelectedYearCount)" } ?? "–", systemImage: "calendar")
+            MetricCard(title: "Abschlüsse (Jahr)", value: overview.map { "\($0.finishedInSelectedYearCount)" } ?? "–", systemImage: "calendar")
 
-            MetricCard(title: "Ø Seiten/Buch", value: overview?.avgPagesPerBookText ?? "–", systemImage: "divide")
-            MetricCard(title: "Ø Tage/Buch", value: overview?.avgDaysPerBookText ?? "–", systemImage: "clock")
+            MetricCard(title: "Ø Seiten/Abschluss", value: overview?.avgPagesPerBookText ?? "–", systemImage: "divide")
+            MetricCard(title: "Ø Tage/Abschluss", value: overview?.avgDaysPerBookText ?? "–", systemImage: "clock")
         }
     }
 }

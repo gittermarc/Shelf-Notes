@@ -206,4 +206,65 @@ struct ReadingAnalyticsIndexBuilderTests {
         #expect(index.recentActivity.activeDaysLast7 == 3)
         #expect(index.recentActivity.currentStreak == 2)
     }
+
+    @Test func yearSummaryCountsRereadCompletionsSeparatelyFromUniqueBooks() {
+        let bookID = UUID(uuidString: "00000000-0000-0000-0000-000000002001") ?? UUID()
+        let firstAttemptID = UUID(uuidString: "00000000-0000-0000-0000-000000002101") ?? UUID()
+        let secondAttemptID = UUID(uuidString: "00000000-0000-0000-0000-000000002102") ?? UUID()
+        let completions = [
+            ReadingCompletionRecord(
+                id: "attempt-first",
+                bookID: bookID,
+                attemptID: firstAttemptID,
+                sequenceNumber: 1,
+                title: "Repeat",
+                author: "Ada",
+                startedAt: date(2026, 1, 1),
+                finishedAt: date(2026, 1, 8),
+                pageCount: 300,
+                isReread: false
+            ),
+            ReadingCompletionRecord(
+                id: "attempt-second",
+                bookID: bookID,
+                attemptID: secondAttemptID,
+                sequenceNumber: 2,
+                title: "Repeat",
+                author: "Ada",
+                startedAt: date(2026, 3, 1),
+                finishedAt: date(2026, 3, 7),
+                pageCount: 300,
+                isReread: true
+            )
+        ]
+        let books = [
+            ReadingAnalyticsBookRecord(
+                id: bookID,
+                statusRawValue: ReadingStatus.reading.rawValue,
+                createdAt: date(2025, 1, 1),
+                readFrom: date(2026, 5, 1),
+                readTo: nil,
+                pageCount: 300,
+                readingCompletions: completions
+            )
+        ]
+
+        let index = ReadingAnalyticsIndexBuilder.make(
+            books: books,
+            sessions: [],
+            now: date(2026, 6, 1),
+            calendar: calendar
+        )
+
+        let summary2026 = index.summary(forYear: 2026)
+        #expect(summary2026.finishedBookCount == 2)
+        #expect(summary2026.uniqueFinishedBookCount == 1)
+        #expect(summary2026.rereadCompletionCount == 1)
+        #expect(summary2026.pagesRead == 600)
+        #expect(summary2026.countedBooksWithPagesCount == 2)
+        #expect(summary2026.averagePagesPerBook == 300)
+        #expect(summary2026.pagesByMonth[1] == 300)
+        #expect(summary2026.pagesByMonth[3] == 300)
+    }
+
 }

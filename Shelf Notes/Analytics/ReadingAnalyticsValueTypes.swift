@@ -7,6 +7,7 @@ nonisolated struct ReadingAnalyticsBookRecord: Hashable, Sendable {
     let readFrom: Date?
     let readTo: Date?
     let pageCount: Int?
+    let readingCompletions: [ReadingCompletionRecord]
 
     init(
         id: UUID,
@@ -14,7 +15,8 @@ nonisolated struct ReadingAnalyticsBookRecord: Hashable, Sendable {
         createdAt: Date,
         readFrom: Date?,
         readTo: Date?,
-        pageCount: Int?
+        pageCount: Int?,
+        readingCompletions: [ReadingCompletionRecord]? = nil
     ) {
         self.id = id
         self.statusRawValue = statusRawValue
@@ -22,6 +24,14 @@ nonisolated struct ReadingAnalyticsBookRecord: Hashable, Sendable {
         self.readFrom = readFrom
         self.readTo = readTo
         self.pageCount = pageCount
+        self.readingCompletions = readingCompletions ?? ReadingAnalyticsBookRecord.legacyCompletions(
+            id: id,
+            statusRawValue: statusRawValue,
+            createdAt: createdAt,
+            readFrom: readFrom,
+            readTo: readTo,
+            pageCount: pageCount
+        )
     }
 
     init(book: Book) {
@@ -31,7 +41,8 @@ nonisolated struct ReadingAnalyticsBookRecord: Hashable, Sendable {
             createdAt: book.createdAt,
             readFrom: book.readFrom,
             readTo: book.readTo,
-            pageCount: book.pageCount
+            pageCount: book.pageCount,
+            readingCompletions: ReadingCompletionRecordBuilder.records(from: book)
         )
     }
 
@@ -45,6 +56,29 @@ nonisolated struct ReadingAnalyticsBookRecord: Hashable, Sendable {
 
     var normalizedPageCount: Int {
         max(0, pageCount ?? 0)
+    }
+
+    private static func legacyCompletions(
+        id: UUID,
+        statusRawValue: String,
+        createdAt: Date,
+        readFrom: Date?,
+        readTo: Date?,
+        pageCount: Int?
+    ) -> [ReadingCompletionRecord] {
+        guard let record = ReadingCompletionRecord.legacyRecord(
+            bookID: id,
+            title: "",
+            author: "",
+            createdAt: createdAt,
+            statusRawValue: statusRawValue,
+            readFrom: readFrom,
+            readTo: readTo,
+            pageCount: pageCount
+        ) else {
+            return []
+        }
+        return [record]
     }
 }
 
@@ -83,6 +117,8 @@ nonisolated struct ReadingAnalyticsSessionRecord: Hashable, Sendable {
 nonisolated struct ReadingAnalyticsYearSummary: Equatable, Sendable {
     let year: Int
     let finishedBookCount: Int
+    let uniqueFinishedBookCount: Int
+    let rereadCompletionCount: Int
     let pagesRead: Int
     let countedBooksWithPagesCount: Int
     let averagePagesPerBook: Int?
@@ -92,6 +128,8 @@ nonisolated struct ReadingAnalyticsYearSummary: Equatable, Sendable {
         ReadingAnalyticsYearSummary(
             year: year,
             finishedBookCount: 0,
+            uniqueFinishedBookCount: 0,
+            rereadCompletionCount: 0,
             pagesRead: 0,
             countedBooksWithPagesCount: 0,
             averagePagesPerBook: nil,

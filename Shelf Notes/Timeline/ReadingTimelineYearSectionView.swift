@@ -66,7 +66,7 @@ struct ReadingTimelineYearSectionView: View {
                 .opacity(phase.isIdentity ? 1.0 : 0.9)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Jahr \(year), \(stats.count) Bücher")
+        .accessibilityLabel("Jahr \(year), \(stats.count) Abschlüsse")
         // Report marker positions so the mini-map can highlight the year closest to the viewport center.
         .background(ReadingTimelineYearMarkerPositionReporter(year: year, coordinateSpaceName: coordinateSpaceName))
     }
@@ -86,7 +86,7 @@ private struct ReadingTimelineYearSummaryCard: View {
 
                 Spacer()
 
-                Text("\(stats.count) \(stats.count == 1 ? "Buch" : "Bücher")")
+                Text("\(stats.count) \(stats.count == 1 ? "Abschluss" : "Abschlüsse")")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -116,6 +116,13 @@ private struct ReadingTimelineYearSummaryCard: View {
                 }
 
                 Spacer()
+            }
+
+            if stats.rereadCount > 0 {
+                Text("\(stats.uniqueBookCount) unterschiedliche Bücher · \(stats.rereadCount) Re-Reads")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
 
             if let range = stats.dateRangeText {

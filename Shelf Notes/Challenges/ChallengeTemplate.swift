@@ -90,7 +90,7 @@ nonisolated struct ChallengeTemplate: Identifiable, Equatable, Sendable {
         case .pagesRead:
             return "\(target) Seiten lesen"
         case .booksFinished:
-            return target == 1 ? "1 Buch beenden" : "\(target) Bücher beenden"
+            return target == 1 ? "1 Abschluss sammeln" : "\(target) Abschlüsse sammeln"
         case .shortSessions:
             return "\(target) kurze Sessions"
         case .booksProgressed:

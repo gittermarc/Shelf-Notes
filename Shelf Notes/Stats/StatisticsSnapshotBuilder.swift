@@ -24,6 +24,7 @@ nonisolated struct StatisticsReadingSessionSnapshot: Sendable {
 nonisolated struct StatisticsBookSnapshot: Sendable {
     typealias ReadingSessionSnapshot = StatisticsReadingSessionSnapshot
 
+    let id: UUID
     let title: String
     let author: String
     let statusRawValue: String
@@ -41,8 +42,11 @@ nonisolated struct StatisticsBookSnapshot: Sendable {
     let mainCategory: String?
     let userRatingAverage1: Double?
     let readingSessions: [ReadingSessionSnapshot]
+    let readingCompletions: [ReadingCompletionRecord]
+    let activeAttemptStartedAt: Date?
 
     init(
+        id: UUID = UUID(),
         title: String,
         author: String = "",
         statusRawValue: String = ReadingStatus.toRead.rawValue,
@@ -59,8 +63,11 @@ nonisolated struct StatisticsBookSnapshot: Sendable {
         ratingsCount: Int? = nil,
         mainCategory: String? = nil,
         userRatingAverage1: Double? = nil,
-        readingSessions: [ReadingSessionSnapshot] = []
+        readingSessions: [ReadingSessionSnapshot] = [],
+        readingCompletions: [ReadingCompletionRecord]? = nil,
+        activeAttemptStartedAt: Date? = nil
     ) {
+        self.id = id
         self.title = title
         self.author = author
         self.statusRawValue = statusRawValue
@@ -78,9 +85,20 @@ nonisolated struct StatisticsBookSnapshot: Sendable {
         self.mainCategory = mainCategory
         self.userRatingAverage1 = userRatingAverage1
         self.readingSessions = readingSessions
+        self.readingCompletions = readingCompletions ?? StatisticsBookSnapshot.legacyCompletions(
+            id: id,
+            title: title,
+            author: author,
+            statusRawValue: statusRawValue,
+            readFrom: readFrom,
+            readTo: readTo,
+            pageCount: pageCount
+        )
+        self.activeAttemptStartedAt = activeAttemptStartedAt
     }
 
     @MainActor init(book: Book, includeReadingSessions: Bool = false) {
+        self.id = book.id
         self.title = book.title
         self.author = book.author
         self.statusRawValue = book.statusRawValue
@@ -100,29 +118,67 @@ nonisolated struct StatisticsBookSnapshot: Sendable {
         self.readingSessions = includeReadingSessions
             ? book.readingSessionsSafe.map { ReadingSessionSnapshot(session: $0) }
             : []
+        self.readingCompletions = ReadingCompletionRecordBuilder.records(from: book)
+        self.activeAttemptStartedAt = book.activeReadingAttempt?.startedAt
     }
 
     var status: ReadingStatus {
         ReadingStatus.fromPersisted(statusRawValue) ?? .toRead
     }
+
+    var hasCompletedReading: Bool {
+        !readingCompletions.isEmpty
+    }
+
+    private static func legacyCompletions(
+        id: UUID,
+        title: String,
+        author: String,
+        statusRawValue: String,
+        readFrom: Date?,
+        readTo: Date?,
+        pageCount: Int?
+    ) -> [ReadingCompletionRecord] {
+        guard let record = ReadingCompletionRecord.legacyRecord(
+            bookID: id,
+            title: title,
+            author: author,
+            createdAt: readFrom ?? readTo ?? .distantPast,
+            statusRawValue: statusRawValue,
+            readFrom: readFrom,
+            readTo: readTo,
+            pageCount: pageCount
+        ) else {
+            return []
+        }
+        return [record]
+    }
 }
 
 nonisolated struct StatisticsSessionBookSnapshot: Sendable {
     let statusRawValue: String
+    let hasCompletedReading: Bool
     let readingSessions: [StatisticsReadingSessionSnapshot]
 
-    init(statusRawValue: String, readingSessions: [StatisticsReadingSessionSnapshot]) {
+    init(
+        statusRawValue: String,
+        hasCompletedReading: Bool = false,
+        readingSessions: [StatisticsReadingSessionSnapshot]
+    ) {
         self.statusRawValue = statusRawValue
+        self.hasCompletedReading = hasCompletedReading
         self.readingSessions = readingSessions
     }
 
     init(bookSnapshot: StatisticsBookSnapshot) {
         self.statusRawValue = bookSnapshot.statusRawValue
+        self.hasCompletedReading = bookSnapshot.hasCompletedReading
         self.readingSessions = bookSnapshot.readingSessions
     }
 
     @MainActor init(book: Book) {
         self.statusRawValue = book.statusRawValue
+        self.hasCompletedReading = book.completedReadingAttemptCount > 0
         self.readingSessions = book.readingSessionsSafe.map { StatisticsReadingSessionSnapshot(session: $0) }
     }
 
@@ -145,8 +201,8 @@ nonisolated struct StatisticsSnapshotBuilder {
         books: [StatisticsBookSnapshot]
     ) -> StatisticsStatsCache {
         let scoped = scopedBooks(for: key.scope, in: books)
-        let finishedInYear = finishedBooks(in: key.selectedYear, from: scoped)
-        let summary = makeSummary(allBooks: books, scopedBooks: scoped, finishedInYear: finishedInYear)
+        let completionsInYear = completedReadings(in: key.selectedYear, from: scoped)
+        let summary = makeSummary(allBooks: books, scopedBooks: scoped, completionsInYear: completionsInYear)
         let months = StatisticsMonthAxisBuilder.months(for: key.selectedYear, now: now, calendar: calendar)
         let topGenres = topGenresList(scoped, limit: 8)
         let topSubgenres = topSubgenresList(scoped, limit: 8)
@@ -159,16 +215,16 @@ nonisolated struct StatisticsSnapshotBuilder {
             key: key,
             summary: summary,
             monthsCount: months.count,
-            monthlySeries: monthlySeriesFor(months: months, finishedBooks: finishedInYear),
+            monthlySeries: monthlySeriesFor(months: months, completions: completionsInYear),
             topGenres: topGenres,
             topSubgenres: topSubgenres,
             topAuthors: topAuthors,
             topPublishers: topPublishers,
             topLanguages: topLanguages,
             topTags: topTags,
-            fastest: fastestBook(finishedInYear),
-            slowest: slowestBook(finishedInYear),
-            biggest: biggestBook(finishedInYear),
+            fastest: fastestCompletion(completionsInYear),
+            slowest: slowestCompletion(completionsInYear),
+            biggest: biggestCompletion(completionsInYear),
             highestRated: highestRatedBook(scoped)
         )
     }
@@ -184,7 +240,7 @@ private nonisolated extension StatisticsSnapshotBuilder {
         case .all:
             return input
         case .finished:
-            return input.filter { $0.status == .finished }
+            return input.filter { $0.status == .finished || $0.hasCompletedReading }
         case .reading:
             return input.filter { $0.status == .reading }
         case .toRead:
@@ -201,8 +257,8 @@ private nonisolated extension StatisticsSnapshotBuilder {
         years.insert(nextYear)
 
         for book in input {
-            if let date = readKeyDate(book) {
-                years.insert(calendar.component(.year, from: date))
+            for completion in book.readingCompletions {
+                years.insert(calendar.component(.year, from: completion.finishedAt))
             }
             if let year = publishedYear(from: book.publishedDate) {
                 years.insert(year)
@@ -212,27 +268,27 @@ private nonisolated extension StatisticsSnapshotBuilder {
         return years.sorted(by: >)
     }
 
-    func finishedBooks(
+    func completedReadings(
         in year: Int,
         from input: [StatisticsBookSnapshot]
-    ) -> [StatisticsBookSnapshot] {
+    ) -> [ReadingCompletionRecord] {
         let start = calendar.date(from: DateComponents(year: year, month: 1, day: 1)) ?? .distantPast
         let end = calendar.date(from: DateComponents(year: year + 1, month: 1, day: 1)) ?? .distantFuture
 
-        return input.filter { book in
-            guard book.status == .finished else { return false }
-            guard let date = readKeyDate(book) else { return false }
-            return date >= start && date < end
-        }
-    }
-
-    func readKeyDate(_ book: StatisticsBookSnapshot) -> Date? {
-        guard book.status == .finished else { return nil }
-        return book.readTo ?? book.readFrom
+        return input
+            .flatMap(\.readingCompletions)
+            .filter { completion in
+                completion.finishedAt >= start && completion.finishedAt < end
+            }
+            .sorted(by: ReadingCompletionRecordBuilder.compare)
     }
 
     func totalPages(_ input: [StatisticsBookSnapshot]) -> Int {
         input.reduce(0) { $0 + ($1.pageCount ?? 0) }
+    }
+
+    func totalPages(_ completions: [ReadingCompletionRecord]) -> Int {
+        completions.reduce(0) { $0 + $1.normalizedPageCount }
     }
 
     func uniqueAuthors(_ input: [StatisticsBookSnapshot]) -> Set<String> {
@@ -260,44 +316,56 @@ private nonisolated extension StatisticsSnapshotBuilder {
     func makeSummary(
         allBooks: [StatisticsBookSnapshot],
         scopedBooks: [StatisticsBookSnapshot],
-        finishedInYear: [StatisticsBookSnapshot]
+        completionsInYear: [ReadingCompletionRecord]
     ) -> StatisticsStatsCache.Summary {
         let scopedCount = scopedBooks.count
-        let finishedScopedCount = scopedBooks.reduce(into: 0) { partial, book in
-            if book.status == .finished {
-                partial += 1
-            }
-        }
+        let scopedCompletions = scopedBooks.flatMap(\.readingCompletions)
+        let completionCount = scopedCompletions.count
+        let finishedScopedCount = Set(scopedCompletions.map(\.bookID)).count
+        let rereadCount = scopedCompletions.filter(\.isReread).count
         let scopedPages = totalPages(scopedBooks)
         let uniqueAuthorsCount = uniqueAuthors(scopedBooks).count
         let uniquePublishersCount = uniquePublishers(scopedBooks).count
-        let pagesInSelectedYear = totalPages(finishedInYear)
-        let avgPagesPerBook = avgPagesPerBookText(for: finishedInYear)
-        let avgDaysPerBook = avgDaysPerBookText(for: finishedInYear)
-        let avgPagesPerDay = avgPagesPerDayText(for: finishedInYear)
+        let pagesInSelectedYear = totalPages(completionsInYear)
+        let uniqueBooksInSelectedYear = Set(completionsInYear.map(\.bookID)).count
+        let rereadsInSelectedYear = completionsInYear.filter(\.isReread).count
+        let avgPagesPerBook = avgPagesPerCompletionText(for: completionsInYear)
+        let avgDaysPerBook = avgDaysPerCompletionText(for: completionsInYear)
+        let avgPagesPerDay = avgPagesPerDayText(for: completionsInYear)
 
         let tinyTeaserLine: String?
-        if finishedInYear.count >= 2, avgPagesPerBook != "–" || avgDaysPerBook != "–" || avgPagesPerDay != "–" {
+        if completionsInYear.count >= 2, avgPagesPerBook != "–" || avgDaysPerBook != "–" || avgPagesPerDay != "–" {
             if avgPagesPerDay == "–" && avgDaysPerBook == "–" {
                 tinyTeaserLine = nil
             } else {
-                tinyTeaserLine = "Ø \(avgPagesPerDay) Seiten/Tag • Ø \(avgDaysPerBook) Tage/Buch (für „Gelesen“ mit Zeitraum)"
+                tinyTeaserLine = "Ø \(avgPagesPerDay) Seiten/Tag • Ø \(avgDaysPerBook) Tage/Abschluss"
             }
         } else {
             tinyTeaserLine = nil
         }
 
+        let progressText: String
+        if completionCount == finishedScopedCount {
+            progressText = "\(finishedScopedCount) gelesen"
+        } else {
+            progressText = "\(completionCount) Abschlüsse • \(finishedScopedCount) Bücher gelesen"
+        }
+
         return StatisticsStatsCache.Summary(
             yearOptions: availableYears(from: allBooks),
-            heroSubtitle: "\(scopedCount) Bücher • \(finishedScopedCount) gelesen • \(formatInt(scopedPages)) Seiten (wo vorhanden)",
+            heroSubtitle: "\(scopedCount) Bücher • \(progressText) • \(formatInt(scopedPages)) Seiten (wo vorhanden)",
             tinyTeaserLine: tinyTeaserLine,
             overview: StatisticsStatsCache.Summary.Overview(
                 scopedBooksCount: scopedCount,
                 finishedScopedBooksCount: finishedScopedCount,
+                readingCompletionCount: completionCount,
+                rereadCompletionCount: rereadCount,
                 uniqueAuthorsCount: uniqueAuthorsCount,
                 uniquePublishersCount: uniquePublishersCount,
                 pagesInSelectedYear: pagesInSelectedYear,
-                finishedInSelectedYearCount: finishedInYear.count,
+                finishedInSelectedYearCount: completionsInYear.count,
+                uniqueBooksInSelectedYearCount: uniqueBooksInSelectedYear,
+                rereadCompletionsInSelectedYearCount: rereadsInSelectedYear,
                 avgPagesPerBookText: avgPagesPerBook,
                 avgDaysPerBookText: avgDaysPerBook
             )
@@ -306,19 +374,19 @@ private nonisolated extension StatisticsSnapshotBuilder {
 
     func monthlySeriesFor(
         months: [StatisticsMonthKey],
-        finishedBooks: [StatisticsBookSnapshot]
+        completions: [ReadingCompletionRecord]
     ) -> [StatisticsMonthSeriesPoint] {
         var countBy: [StatisticsMonthKey: Int] = [:]
         var pagesBy: [StatisticsMonthKey: Int] = [:]
 
-        for book in finishedBooks {
-            guard let date = readKeyDate(book) else { continue }
+        for completion in completions {
+            let date = completion.finishedAt
             let key = StatisticsMonthKey(
                 year: calendar.component(.year, from: date),
                 month: calendar.component(.month, from: date)
             )
             countBy[key, default: 0] += 1
-            pagesBy[key, default: 0] += (book.pageCount ?? 0)
+            pagesBy[key, default: 0] += completion.normalizedPageCount
         }
 
         return months.map { month in
@@ -541,26 +609,27 @@ private nonisolated extension StatisticsSnapshotBuilder {
         value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    func avgPagesPerBookText(for finishedBooks: [StatisticsBookSnapshot]) -> String {
-        let withPages = finishedBooks.filter { ($0.pageCount ?? 0) > 0 }
+    func avgPagesPerCompletionText(for completions: [ReadingCompletionRecord]) -> String {
+        let withPages = completions.filter { $0.normalizedPageCount > 0 }
         guard !withPages.isEmpty else { return "–" }
-        let pages = withPages.reduce(0) { $0 + ($1.pageCount ?? 0) }
+        let pages = withPages.reduce(0) { $0 + $1.normalizedPageCount }
         let average = Double(pages) / Double(withPages.count)
         return formatInt(Int(average.rounded()))
     }
 
-    func avgDaysPerBookText(for finishedBooks: [StatisticsBookSnapshot]) -> String {
-        let durations = finishedBooks.compactMap { daysBetween($0.readFrom, $0.readTo) }
+    func avgDaysPerCompletionText(for completions: [ReadingCompletionRecord]) -> String {
+        let durations = completions.compactMap { daysBetween($0.startedAt, $0.finishedAt) }
         guard !durations.isEmpty else { return "–" }
         let average = Double(durations.reduce(0, +)) / Double(durations.count)
         return formatInt(Int(average.rounded()))
     }
 
-    func avgPagesPerDayText(for finishedBooks: [StatisticsBookSnapshot]) -> String {
+    func avgPagesPerDayText(for completions: [ReadingCompletionRecord]) -> String {
         var speeds: [Double] = []
-        for book in finishedBooks {
-            guard let pages = book.pageCount, pages > 0 else { continue }
-            guard let days = daysBetween(book.readFrom, book.readTo), days > 0 else { continue }
+        for completion in completions {
+            let pages = completion.normalizedPageCount
+            guard pages > 0 else { continue }
+            guard let days = daysBetween(completion.startedAt, completion.finishedAt), days > 0 else { continue }
             speeds.append(Double(pages) / Double(days))
         }
         guard !speeds.isEmpty else { return "–" }
@@ -579,11 +648,11 @@ private nonisolated extension StatisticsSnapshotBuilder {
         return nil
     }
 
-    func fastestBook(_ finishedBooks: [StatisticsBookSnapshot]) -> StatisticsNerdPick? {
+    func fastestCompletion(_ completions: [ReadingCompletionRecord]) -> StatisticsNerdPick? {
         var best: StatisticsNerdPick?
-        for book in finishedBooks {
-            guard let days = daysBetween(book.readFrom, book.readTo) else { continue }
-            let name = normalizedTitle(for: book)
+        for completion in completions {
+            guard let days = daysBetween(completion.startedAt, completion.finishedAt) else { continue }
+            let name = normalizedTitle(for: completion)
             let pick = StatisticsNerdPick(
                 label: "\(name) • \(formatInt(days)) Tage",
                 sortKey: days
@@ -595,11 +664,11 @@ private nonisolated extension StatisticsSnapshotBuilder {
         return best
     }
 
-    func slowestBook(_ finishedBooks: [StatisticsBookSnapshot]) -> StatisticsNerdPick? {
+    func slowestCompletion(_ completions: [ReadingCompletionRecord]) -> StatisticsNerdPick? {
         var best: StatisticsNerdPick?
-        for book in finishedBooks {
-            guard let days = daysBetween(book.readFrom, book.readTo) else { continue }
-            let name = normalizedTitle(for: book)
+        for completion in completions {
+            guard let days = daysBetween(completion.startedAt, completion.finishedAt) else { continue }
+            let name = normalizedTitle(for: completion)
             let pick = StatisticsNerdPick(
                 label: "\(name) • \(formatInt(days)) Tage",
                 sortKey: days
@@ -611,12 +680,12 @@ private nonisolated extension StatisticsSnapshotBuilder {
         return best
     }
 
-    func biggestBook(_ finishedBooks: [StatisticsBookSnapshot]) -> StatisticsNerdPick? {
+    func biggestCompletion(_ completions: [ReadingCompletionRecord]) -> StatisticsNerdPick? {
         var best: StatisticsNerdPick?
-        for book in finishedBooks {
-            let pages = book.pageCount ?? 0
+        for completion in completions {
+            let pages = completion.normalizedPageCount
             guard pages > 0 else { continue }
-            let name = normalizedTitle(for: book)
+            let name = normalizedTitle(for: completion)
             let pick = StatisticsNerdPick(
                 label: "\(name) • \(formatInt(pages)) Seiten",
                 sortKey: pages
@@ -647,6 +716,11 @@ private nonisolated extension StatisticsSnapshotBuilder {
 
     func normalizedTitle(for book: StatisticsBookSnapshot) -> String {
         let title = book.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? "Ohne Titel" : title
+    }
+
+    func normalizedTitle(for completion: ReadingCompletionRecord) -> String {
+        let title = completion.title.trimmingCharacters(in: .whitespacesAndNewlines)
         return title.isEmpty ? "Ohne Titel" : title
     }
 

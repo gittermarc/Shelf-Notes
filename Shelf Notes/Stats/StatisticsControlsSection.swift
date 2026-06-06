@@ -26,7 +26,7 @@ struct StatisticsControlsSection: View {
                     .pickerStyle(.menu)
                 }
 
-                Text("Hinweis: Monats-Charts basieren auf „Gelesen“ (readTo/readFrom).")
+                Text("Hinweis: Monats-Charts basieren auf abgeschlossenen Lesedurchgängen.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -31,23 +31,27 @@ nonisolated enum ReadingAnalyticsIndexBuilder {
         var accumulators: [Int: YearAccumulator] = [:]
 
         for book in books {
-            guard book.isFinished else { continue }
-            guard let keyDate = book.readKeyDate else { continue }
+            for completion in book.readingCompletions {
+                let keyDate = completion.finishedAt
+                let year = calendar.component(.year, from: keyDate)
+                let month = calendar.component(.month, from: keyDate)
+                let pages = completion.normalizedPageCount
 
-            let year = calendar.component(.year, from: keyDate)
-            let month = calendar.component(.month, from: keyDate)
-            let pages = book.normalizedPageCount
+                var accumulator = accumulators[year] ?? YearAccumulator()
+                accumulator.finishedBookCount += 1
+                accumulator.uniqueBookIDs.insert(completion.bookID)
+                if completion.isReread {
+                    accumulator.rereadCompletionCount += 1
+                }
+                accumulator.pagesRead += pages
 
-            var accumulator = accumulators[year] ?? YearAccumulator()
-            accumulator.finishedBookCount += 1
-            accumulator.pagesRead += pages
+                if pages > 0 {
+                    accumulator.countedBooksWithPagesCount += 1
+                }
 
-            if pages > 0 {
-                accumulator.countedBooksWithPagesCount += 1
+                accumulator.pagesByMonth[month, default: 0] += pages
+                accumulators[year] = accumulator
             }
-
-            accumulator.pagesByMonth[month, default: 0] += pages
-            accumulators[year] = accumulator
         }
 
         return Dictionary(uniqueKeysWithValues: accumulators.map { year, accumulator in
@@ -68,6 +72,8 @@ nonisolated enum ReadingAnalyticsIndexBuilder {
                 ReadingAnalyticsYearSummary(
                     year: year,
                     finishedBookCount: accumulator.finishedBookCount,
+                    uniqueFinishedBookCount: accumulator.uniqueBookIDs.count,
+                    rereadCompletionCount: accumulator.rereadCompletionCount,
                     pagesRead: accumulator.pagesRead,
                     countedBooksWithPagesCount: accumulator.countedBooksWithPagesCount,
                     averagePagesPerBook: averagePagesPerBook,
@@ -81,6 +87,8 @@ nonisolated enum ReadingAnalyticsIndexBuilder {
 
 private nonisolated struct YearAccumulator {
     var finishedBookCount: Int = 0
+    var uniqueBookIDs: Set<UUID> = []
+    var rereadCompletionCount: Int = 0
     var pagesRead: Int = 0
     var countedBooksWithPagesCount: Int = 0
     var pagesByMonth: [Int: Int] = [:]

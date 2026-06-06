@@ -7,27 +7,45 @@
 
 import Foundation
 
+nonisolated struct GoalsYearCompletion: Identifiable {
+    let id: String
+    let book: Book
+    let record: ReadingCompletionRecord
+}
+
 nonisolated struct GoalsYearMetrics {
     let selectedYear: Int
     let availableYears: [Int]
-    let finishedBooks: [Book]
+    let finishedCompletions: [GoalsYearCompletion]
     let pagesReadInSelectedYear: Int
     let countedBooksWithPagesCount: Int
     let averagePagesPerBook: Int?
     let monthsCount: Int
     let pagesPerMonth: Int
+    let uniqueFinishedBooksCount: Int
+    let rereadCompletionCount: Int
+
+    var finishedBooks: [Book] {
+        finishedCompletions.map(\.book)
+    }
+
+    var finishedCompletionCount: Int {
+        finishedCompletions.count
+    }
 }
 
 extension GoalsYearMetrics: Equatable {
     static func == (lhs: GoalsYearMetrics, rhs: GoalsYearMetrics) -> Bool {
         lhs.selectedYear == rhs.selectedYear &&
         lhs.availableYears == rhs.availableYears &&
-        lhs.finishedBooks.map(\.id) == rhs.finishedBooks.map(\.id) &&
+        lhs.finishedCompletions.map(\.id) == rhs.finishedCompletions.map(\.id) &&
         lhs.pagesReadInSelectedYear == rhs.pagesReadInSelectedYear &&
         lhs.countedBooksWithPagesCount == rhs.countedBooksWithPagesCount &&
         lhs.averagePagesPerBook == rhs.averagePagesPerBook &&
         lhs.monthsCount == rhs.monthsCount &&
-        lhs.pagesPerMonth == rhs.pagesPerMonth
+        lhs.pagesPerMonth == rhs.pagesPerMonth &&
+        lhs.uniqueFinishedBooksCount == rhs.uniqueFinishedBooksCount &&
+        lhs.rereadCompletionCount == rhs.rereadCompletionCount
     }
 
     static func placeholder(
@@ -67,19 +85,21 @@ nonisolated enum GoalsYearMetricsBuilder {
             now: now,
             calendar: calendar
         )
-        let finishedBooks = finishedBooks(in: selectedYear, books: books, calendar: calendar)
+        let finishedCompletions = completions(in: selectedYear, books: books, calendar: calendar)
         let monthsCount = monthsCount(for: selectedYear, now: now, calendar: calendar)
         let pagesPerMonth = Int((Double(yearSummary.pagesRead) / Double(max(1, monthsCount))).rounded())
 
         return GoalsYearMetrics(
             selectedYear: selectedYear,
             availableYears: availableYears,
-            finishedBooks: finishedBooks,
+            finishedCompletions: finishedCompletions,
             pagesReadInSelectedYear: yearSummary.pagesRead,
             countedBooksWithPagesCount: yearSummary.countedBooksWithPagesCount,
             averagePagesPerBook: yearSummary.averagePagesPerBook,
             monthsCount: monthsCount,
-            pagesPerMonth: pagesPerMonth
+            pagesPerMonth: pagesPerMonth,
+            uniqueFinishedBooksCount: yearSummary.uniqueFinishedBookCount,
+            rereadCompletionCount: yearSummary.rereadCompletionCount
         )
     }
 
@@ -109,50 +129,51 @@ nonisolated enum GoalsYearMetricsBuilder {
         return years.sorted(by: >)
     }
 
-    private static func finishedBooks(
+    private static func completions(
         in selectedYear: Int,
         books: [Book],
         calendar: Calendar
-    ) -> [Book] {
+    ) -> [GoalsYearCompletion] {
         let start = calendar.date(from: DateComponents(year: selectedYear, month: 1, day: 1)) ?? .distantPast
         let end = calendar.date(from: DateComponents(year: selectedYear + 1, month: 1, day: 1)) ?? .distantFuture
 
         return books
-            .filter { book in
-                guard ReadingStatus.fromPersisted(book.statusRawValue) == .finished else { return false }
-                guard let keyDate = readKeyDate(book) else { return false }
-                return keyDate >= start && keyDate < end
+            .flatMap { book in
+                ReadingCompletionRecordBuilder.records(from: book).compactMap { record in
+                    guard record.finishedAt >= start && record.finishedAt < end else { return nil }
+                    return GoalsYearCompletion(id: record.id, book: book, record: record)
+                }
             }
-            .sorted(by: compareFinishedBooks)
+            .sorted(by: compareCompletions)
     }
 
-    private static func compareFinishedBooks(_ lhs: Book, _ rhs: Book) -> Bool {
-        let lhsKeyDate = readKeyDate(lhs) ?? lhs.createdAt
-        let rhsKeyDate = readKeyDate(rhs) ?? rhs.createdAt
+    private static func compareCompletions(_ lhs: GoalsYearCompletion, _ rhs: GoalsYearCompletion) -> Bool {
+        let left = lhs.record
+        let right = rhs.record
 
-        if lhsKeyDate != rhsKeyDate {
-            return lhsKeyDate < rhsKeyDate
+        if left.finishedAt != right.finishedAt {
+            return left.finishedAt < right.finishedAt
         }
 
-        if lhs.createdAt != rhs.createdAt {
-            return lhs.createdAt < rhs.createdAt
+        if lhs.book.createdAt != rhs.book.createdAt {
+            return lhs.book.createdAt < rhs.book.createdAt
         }
 
-        let titleComparison = lhs.title.localizedCaseInsensitiveCompare(rhs.title)
+        let titleComparison = lhs.book.title.localizedCaseInsensitiveCompare(rhs.book.title)
         if titleComparison != .orderedSame {
             return titleComparison == .orderedAscending
         }
 
-        let authorComparison = lhs.author.localizedCaseInsensitiveCompare(rhs.author)
+        let authorComparison = lhs.book.author.localizedCaseInsensitiveCompare(rhs.book.author)
         if authorComparison != .orderedSame {
             return authorComparison == .orderedAscending
         }
 
-        return lhs.id.uuidString < rhs.id.uuidString
-    }
+        if left.sequenceNumber != right.sequenceNumber {
+            return left.sequenceNumber < right.sequenceNumber
+        }
 
-    private static func readKeyDate(_ book: Book) -> Date? {
-        book.readTo ?? book.readFrom
+        return left.id < right.id
     }
 
     private static func monthsCount(
