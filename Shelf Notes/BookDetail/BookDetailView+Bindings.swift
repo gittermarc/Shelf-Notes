@@ -289,9 +289,7 @@ extension BookDetailView {
     }
 
     var tagSuggestionsDomainIndex: TagsDomainIndex {
-        TagsDomainIndex(
-            suggestionSnapshots: TagSuggestionEngine.makeSnapshots(books: allBooks)
-        )
+        tagsIndexStore.domainIndex
     }
 
     /// Vorschläge passend zur aktuellen Eingabe.

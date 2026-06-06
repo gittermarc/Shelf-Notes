@@ -44,4 +44,81 @@ struct TagsIndexStoreTests {
         #expect(store.tagCounts.map(\.tag) == ["History", "Noir"])
         #expect(store.tagCounts.map(\.count) == [2, 1])
     }
+
+    @Test func storeCachesSuggestionDomainIndexAndSkipsIdenticalSignature() {
+        let store = TagsIndexStore()
+        let snapshots = [
+            makeSuggestionSnapshot(1, title: "Noir One", author: "A. Author", tags: ["Crime"], categories: ["Fiction / Mystery & Detective"]),
+            makeSuggestionSnapshot(2, title: "Noir Two", author: "A. Author", tags: ["Noir", "Crime"], categories: ["Fiction / Mystery & Detective"]),
+            makeSuggestionSnapshot(3, title: "Space", author: "B. Author", tags: ["Sci-Fi"], categories: ["Science Fiction"])
+        ]
+
+        let didUpdate = store.update(suggestionSnapshots: snapshots)
+        let didUpdateAgain = store.update(suggestionSnapshots: snapshots)
+
+        #expect(didUpdate)
+        #expect(!didUpdateAgain)
+        #expect(store.domainIndex.suggestionSnapshots.map(\.id) == snapshots.map(\.id))
+        #expect(store.tagCounts.map(\.tag) == ["Crime", "Noir", "Sci-Fi"])
+        #expect(store.tagCounts.map(\.count) == [2, 1, 1])
+    }
+
+    @Test func cachedDomainIndexProducesSameSuggestionsAsDirectIndex() {
+        let store = TagsIndexStore()
+        let target = makeSuggestionSnapshot(
+            1,
+            title: "Noir One",
+            author: "A. Author",
+            tags: ["Crime"],
+            categories: ["Fiction / Mystery & Detective"]
+        )
+        let snapshots = [
+            target,
+            makeSuggestionSnapshot(2, title: "Noir Two", author: "A. Author", tags: ["Noir", "Crime"], categories: ["Fiction / Mystery & Detective"]),
+            makeSuggestionSnapshot(3, title: "Space", author: "B. Author", tags: ["Sci-Fi"], categories: ["Science Fiction"])
+        ]
+        let directIndex = TagsDomainIndex(suggestionSnapshots: snapshots)
+
+        store.update(suggestionSnapshots: snapshots)
+
+        let directState = TagSuggestionViewStateBuilder.make(
+            target: target,
+            domainIndex: directIndex,
+            selectedTags: target.tags
+        )
+        let cachedState = TagSuggestionViewStateBuilder.make(
+            target: target,
+            domainIndex: store.domainIndex,
+            selectedTags: target.tags
+        )
+
+        #expect(cachedState.smartItems.map(\.id) == directState.smartItems.map(\.id))
+        #expect(cachedState.smartItems.map(\.reasonLabel) == directState.smartItems.map(\.reasonLabel))
+        #expect(cachedState.frequentItems.map(\.id) == directState.frequentItems.map(\.id))
+        #expect(cachedState.frequentItems.map(\.count) == directState.frequentItems.map(\.count))
+    }
+
+    private func makeSuggestionSnapshot(
+        _ value: Int,
+        title: String = "Test Book",
+        author: String = "Test Author",
+        tags: [String],
+        categories: [String] = [],
+        mainCategory: String? = nil,
+        status: ReadingStatus = .toRead
+    ) -> TagSuggestionBookSnapshot {
+        TagSuggestionBookSnapshot(
+            id: fixedID(value),
+            title: title,
+            author: author,
+            tags: tags,
+            categories: categories,
+            mainCategory: mainCategory,
+            statusRawValue: status.rawValue
+        )
+    }
+
+    private func fixedID(_ value: Int) -> UUID {
+        UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", value))!
+    }
 }

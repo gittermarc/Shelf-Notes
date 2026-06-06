@@ -18,6 +18,10 @@ enum TagsIndexBuilder {
         books.map { BookTagsSnapshot(id: $0.id, tags: $0.tags) }
     }
 
+    static func makeSuggestionSnapshot(books: [Book]) -> [TagSuggestionBookSnapshot] {
+        TagSuggestionEngine.makeSnapshots(books: books)
+    }
+
     static func uniqueNormalizedTags(_ tags: [String]) -> [String] {
         var out: [String] = []
         out.reserveCapacity(tags.count)
@@ -114,6 +118,10 @@ enum TagsIndexBuilder {
         computeSignature(snapshot: makeSnapshot(books: books))
     }
 
+    static func suggestionTaskSignature(books: [Book]) -> UInt64 {
+        computeSuggestionSignature(snapshot: makeSuggestionSnapshot(books: books))
+    }
+
     static func computeTagCounts(snapshot: [BookTagsSnapshot]) -> [TagCount] {
         struct Aggregate {
             var tag: String
@@ -180,5 +188,9 @@ enum TagsIndexBuilder {
         }
 
         return aggregate
+    }
+
+    static func computeSuggestionSignature(snapshot: [TagSuggestionBookSnapshot]) -> UInt64 {
+        TagsDomainIndex(suggestionSnapshots: snapshot).inputSignature
     }
 }

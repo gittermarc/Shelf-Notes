@@ -26,9 +26,6 @@ struct BookDetailView: View {
     @EnvironmentObject var tagsIndexStore: TagsIndexStore
     @Bindable var book: Book
 
-    @Query(sort: \Book.createdAt, order: .reverse)
-    var allBooks: [Book]
-
     @State var tagsText: String = ""
     @State var tagDraft: String = ""
 
@@ -199,6 +196,7 @@ struct BookDetailView: View {
             tagsText = book.tags.joined(separator: ", ")
             tagDraft = ""
             notesDraft = book.notes
+            refreshTagSuggestionIndex()
         }
         #if canImport(PhotosUI)
         .onChange(of: pickedCoverItem) { _, newValue in

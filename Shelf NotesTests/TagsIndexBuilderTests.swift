@@ -56,6 +56,43 @@ struct TagsIndexBuilderTests {
         #expect(unchangedSignature != TagsIndexBuilder.computeSignature(snapshot: changedTags))
     }
 
+    @MainActor
+    @Test func suggestionSnapshotCapturesFieldsUsedByTagSuggestions() {
+        let book = Book(title: "Project Hail Mary", author: "Andy Weir", status: .finished, tags: ["Sci-Fi"])
+        book.id = UUID(uuidString: "00000000-0000-0000-0000-000000000100")!
+        book.categories = ["Science Fiction", "Space"]
+        book.mainCategory = "Fiction"
+
+        let snapshot = TagsIndexBuilder.makeSuggestionSnapshot(books: [book])
+
+        #expect(snapshot.count == 1)
+        #expect(snapshot.first?.id == book.id)
+        #expect(snapshot.first?.title == "Project Hail Mary")
+        #expect(snapshot.first?.author == "Andy Weir")
+        #expect(snapshot.first?.tags == ["Sci-Fi"])
+        #expect(snapshot.first?.categories == ["Science Fiction", "Space"])
+        #expect(snapshot.first?.mainCategory == "Fiction")
+        #expect(snapshot.first?.statusRawValue == ReadingStatus.finished.rawValue)
+    }
+
+    @MainActor
+    @Test func suggestionSignatureIgnoresCollectionMembershipChanges() {
+        let book = Book(title: "Noir Nights", author: "A. Author", status: .toRead, tags: ["Crime"])
+        book.id = UUID(uuidString: "00000000-0000-0000-0000-000000000101")!
+        book.categories = ["Fiction / Mystery & Detective"]
+        let collection = BookCollection(name: "Favorites")
+
+        let unchangedSignature = TagsIndexBuilder.suggestionTaskSignature(books: [book])
+        CollectionMembershipMutation.add(book, to: collection, now: Date(timeIntervalSince1970: 1_000))
+        let membershipOnlySignature = TagsIndexBuilder.suggestionTaskSignature(books: [book])
+
+        book.tags.append("Noir")
+        let changedTagsSignature = TagsIndexBuilder.suggestionTaskSignature(books: [book])
+
+        #expect(unchangedSignature == membershipOnlySignature)
+        #expect(unchangedSignature != changedTagsSignature)
+    }
+
     @Test func suggestionsPreferPrefixMatchesAndExcludeSelectedTags() {
         let tagCounts = [
             TagsIndexBuilder.TagCount(tag: "Crime", count: 5),

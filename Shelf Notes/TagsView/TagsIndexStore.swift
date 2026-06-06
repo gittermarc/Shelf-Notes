@@ -15,18 +15,21 @@ final class TagsIndexStore: ObservableObject {
     typealias BookTagsSnapshot = TagsIndexBuilder.BookTagsSnapshot
 
     @Published private(set) var tagCounts: [TagCount] = []
+    @Published private(set) var domainIndex = TagsDomainIndex(suggestionSnapshots: [])
 
-    private var lastSignature: UInt64 = 0
-    private var didComputeOnce: Bool = false
+    private var lastTagCountsSignature: UInt64 = 0
+    private var didComputeTagCountsOnce: Bool = false
+    private var lastDomainIndexSignature: UInt64 = 0
+    private var didComputeDomainIndexOnce: Bool = false
 
     @discardableResult
     func update(snapshot: [BookTagsSnapshot], signature: UInt64) -> Bool {
-        guard didComputeOnce == false || signature != lastSignature else {
+        guard didComputeTagCountsOnce == false || signature != lastTagCountsSignature else {
             return false
         }
 
-        didComputeOnce = true
-        lastSignature = signature
+        didComputeTagCountsOnce = true
+        lastTagCountsSignature = signature
         tagCounts = TagsIndexBuilder.computeTagCounts(snapshot: snapshot)
         return true
     }
@@ -39,12 +42,39 @@ final class TagsIndexStore: ObservableObject {
         )
     }
 
-    func update(books: [Book], signature: UInt64) {
-        let snapshot = TagsIndexBuilder.makeSnapshot(books: books)
-        update(snapshot: snapshot, signature: signature)
+    @discardableResult
+    func update(suggestionSnapshots: [TagSuggestionBookSnapshot]) -> Bool {
+        update(domainIndex: TagsDomainIndex(suggestionSnapshots: suggestionSnapshots))
+    }
+
+    @discardableResult
+    func update(domainIndex newDomainIndex: TagsDomainIndex) -> Bool {
+        let signature = newDomainIndex.inputSignature
+        guard didComputeDomainIndexOnce == false || signature != lastDomainIndexSignature else {
+            return false
+        }
+
+        didComputeDomainIndexOnce = true
+        didComputeTagCountsOnce = true
+        lastDomainIndexSignature = signature
+        lastTagCountsSignature = signature
+        domainIndex = newDomainIndex
+        tagCounts = newDomainIndex.tagCounts
+        return true
+    }
+
+    @discardableResult
+    func update(books: [Book]) -> Bool {
+        update(suggestionSnapshots: TagsIndexBuilder.makeSuggestionSnapshot(books: books))
+    }
+
+    @discardableResult
+    func update(books: [Book], signature: UInt64) -> Bool {
+        _ = signature
+        return update(books: books)
     }
 
     static func taskSignature(books: [Book]) -> UInt64 {
-        TagsIndexBuilder.taskSignature(books: books)
+        TagsIndexBuilder.suggestionTaskSignature(books: books)
     }
 }

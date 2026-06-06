@@ -103,6 +103,7 @@ extension BookDetailView {
         book.tags = out
         tagsText = out.joined(separator: ", ")
         _ = saveDetail()
+        refreshTagSuggestionIndex()
     }
 
     func addTagsFromDraft() {
@@ -117,6 +118,7 @@ extension BookDetailView {
         tagsText = out.joined(separator: ", ")
         tagDraft = ""
         _ = saveDetail()
+        refreshTagSuggestionIndex()
     }
 
     func acceptTagSuggestion(_ suggestion: String) {
@@ -129,6 +131,7 @@ extension BookDetailView {
         tagsText = out.joined(separator: ", ")
         tagDraft = ""
         _ = saveDetail()
+        refreshTagSuggestionIndex()
     }
 
     func removeTag(_ tag: String) {
@@ -137,6 +140,12 @@ extension BookDetailView {
         book.tags = out
         tagsText = out.joined(separator: ", ")
         _ = saveDetail()
+        refreshTagSuggestionIndex()
+    }
+
+    func refreshTagSuggestionIndex() {
+        let snapshot = AppStartupMaintenanceService.fetchTagSuggestionSnapshot(modelContext: modelContext)
+        tagsIndexStore.update(suggestionSnapshots: snapshot)
     }
 
     // MARK: - Collections helpers
