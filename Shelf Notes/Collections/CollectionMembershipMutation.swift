@@ -22,33 +22,26 @@ enum CollectionMembershipMutation {
         to collection: BookCollection,
         now: Date = Date()
     ) -> Bool {
-        var didChange = false
+        let currentCollections = book.collectionsSafe
+        let isLinkedFromBook = containsCollection(collection.id, in: currentCollections)
 
-        let originalCollections = book.collectionsSafe
-        var normalizedCollections = dedupCollections(originalCollections)
-        if normalizedCollections.count != originalCollections.count {
-            didChange = true
+        let currentBooks = collection.booksSafe
+        let isLinkedFromCollection = containsBook(book.id, in: currentBooks)
+
+        guard !isLinkedFromBook || !isLinkedFromCollection else { return false }
+
+        if !isLinkedFromBook {
+            var updatedCollections = currentCollections
+            updatedCollections.append(collection)
+            book.collectionsSafe = updatedCollections
         }
 
-        if !normalizedCollections.contains(where: { $0.id == collection.id }) {
-            normalizedCollections.append(collection)
-            didChange = true
+        if !isLinkedFromCollection {
+            var updatedBooks = currentBooks
+            updatedBooks.append(book)
+            collection.booksSafe = updatedBooks
         }
 
-        let originalBooks = collection.booksSafe
-        var normalizedBooks = dedupBooks(originalBooks)
-        if normalizedBooks.count != originalBooks.count {
-            didChange = true
-        }
-
-        if !normalizedBooks.contains(where: { $0.id == book.id }) {
-            normalizedBooks.append(book)
-            didChange = true
-        }
-
-        guard didChange else { return false }
-        book.collectionsSafe = normalizedCollections
-        collection.booksSafe = normalizedBooks
         collection.updatedAt = now
         return true
     }
@@ -59,15 +52,37 @@ enum CollectionMembershipMutation {
         to collection: BookCollection,
         now: Date = Date()
     ) -> Int {
-        var changedCount = 0
+        let uniqueBooks = uniqueBooksPreservingOrder(books)
+        guard !uniqueBooks.isEmpty else { return 0 }
 
-        for book in books {
-            if add(book, to: collection, now: now) {
-                changedCount += 1
+        var collectionBooks = collection.booksSafe
+        var collectionBookIDs = Set(collectionBooks.map(\.id))
+        var changedBookIDs = Set<UUID>()
+        var didChangeCollectionBooks = false
+
+        for book in uniqueBooks {
+            let currentCollections = book.collectionsSafe
+            if !containsCollection(collection.id, in: currentCollections) {
+                var updatedCollections = currentCollections
+                updatedCollections.append(collection)
+                book.collectionsSafe = updatedCollections
+                changedBookIDs.insert(book.id)
+            }
+
+            if collectionBookIDs.insert(book.id).inserted {
+                collectionBooks.append(book)
+                changedBookIDs.insert(book.id)
+                didChangeCollectionBooks = true
             }
         }
 
-        return changedCount
+        guard !changedBookIDs.isEmpty else { return 0 }
+
+        if didChangeCollectionBooks {
+            collection.booksSafe = collectionBooks
+        }
+        collection.updatedAt = now
+        return changedBookIDs.count
     }
 
     @discardableResult
@@ -76,35 +91,24 @@ enum CollectionMembershipMutation {
         from collection: BookCollection,
         now: Date = Date()
     ) -> Bool {
-        var didChange = false
+        let currentCollections = book.collectionsSafe
+        let updatedCollections = currentCollections.filter { $0.id != collection.id }
+        let didChangeBookCollections = updatedCollections.count != currentCollections.count
 
-        let originalCollections = book.collectionsSafe
-        var normalizedCollections = dedupCollections(originalCollections)
-        if normalizedCollections.count != originalCollections.count {
-            didChange = true
+        let currentBooks = collection.booksSafe
+        let updatedBooks = currentBooks.filter { $0.id != book.id }
+        let didChangeCollectionBooks = updatedBooks.count != currentBooks.count
+
+        guard didChangeBookCollections || didChangeCollectionBooks else { return false }
+
+        if didChangeBookCollections {
+            book.collectionsSafe = updatedCollections
         }
 
-        let collectionCountBeforeRemoval = normalizedCollections.count
-        normalizedCollections.removeAll { $0.id == collection.id }
-        if normalizedCollections.count != collectionCountBeforeRemoval {
-            didChange = true
+        if didChangeCollectionBooks {
+            collection.booksSafe = updatedBooks
         }
 
-        let originalBooks = collection.booksSafe
-        var normalizedBooks = dedupBooks(originalBooks)
-        if normalizedBooks.count != originalBooks.count {
-            didChange = true
-        }
-
-        let bookCountBeforeRemoval = normalizedBooks.count
-        normalizedBooks.removeAll { $0.id == book.id }
-        if normalizedBooks.count != bookCountBeforeRemoval {
-            didChange = true
-        }
-
-        guard didChange else { return false }
-        book.collectionsSafe = normalizedCollections
-        collection.booksSafe = normalizedBooks
         collection.updatedAt = now
         return true
     }
@@ -115,15 +119,39 @@ enum CollectionMembershipMutation {
         from collection: BookCollection,
         now: Date = Date()
     ) -> Int {
-        var changedCount = 0
+        let uniqueBooks = uniqueBooksPreservingOrder(books)
+        guard !uniqueBooks.isEmpty else { return 0 }
 
-        for book in books {
-            if remove(book, from: collection, now: now) {
-                changedCount += 1
-            }
+        let bookIDsToRemove = Set(uniqueBooks.map(\.id))
+        var changedBookIDs = Set<UUID>()
+
+        for book in uniqueBooks {
+            let currentCollections = book.collectionsSafe
+            let updatedCollections = currentCollections.filter { $0.id != collection.id }
+            guard updatedCollections.count != currentCollections.count else { continue }
+
+            book.collectionsSafe = updatedCollections
+            changedBookIDs.insert(book.id)
         }
 
-        return changedCount
+        let currentBooks = collection.booksSafe
+        var removedCollectionBookIDs = Set<UUID>()
+        let updatedBooks = currentBooks.filter { book in
+            let shouldRemove = bookIDsToRemove.contains(book.id)
+            if shouldRemove {
+                removedCollectionBookIDs.insert(book.id)
+            }
+            return !shouldRemove
+        }
+
+        if updatedBooks.count != currentBooks.count {
+            collection.booksSafe = updatedBooks
+            changedBookIDs.formUnion(removedCollectionBookIDs)
+        }
+
+        guard !changedBookIDs.isEmpty else { return 0 }
+        collection.updatedAt = now
+        return changedBookIDs.count
     }
 
     @discardableResult
@@ -135,31 +163,23 @@ enum CollectionMembershipMutation {
         remove(books, from: collection, now: now)
     }
 
-    private static func dedupBooks(_ input: [Book]) -> [Book] {
-        var seen = Set<UUID>()
-        var output: [Book] = []
-        output.reserveCapacity(input.count)
-
-        for book in input {
-            if seen.insert(book.id).inserted {
-                output.append(book)
-            }
-        }
-
-        return output
+    private static func containsBook(_ bookID: UUID, in books: [Book]) -> Bool {
+        books.contains { $0.id == bookID }
     }
 
-    private static func dedupCollections(_ input: [BookCollection]) -> [BookCollection] {
-        var seen = Set<UUID>()
-        var output: [BookCollection] = []
-        output.reserveCapacity(input.count)
+    private static func containsCollection(_ collectionID: UUID, in collections: [BookCollection]) -> Bool {
+        collections.contains { $0.id == collectionID }
+    }
 
-        for collection in input {
-            if seen.insert(collection.id).inserted {
-                output.append(collection)
-            }
+    private static func uniqueBooksPreservingOrder(_ books: [Book]) -> [Book] {
+        var seenIDs = Set<UUID>()
+        var result: [Book] = []
+        result.reserveCapacity(books.count)
+
+        for book in books where seenIDs.insert(book.id).inserted {
+            result.append(book)
         }
 
-        return output
+        return result
     }
 }

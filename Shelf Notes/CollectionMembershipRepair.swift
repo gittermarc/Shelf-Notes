@@ -43,7 +43,7 @@ enum CollectionMembershipRepair {
 
             // 1) Deduplicate both sides (defensive)
             for b in books {
-                let deduped = dedupCollections(b.collectionsSafe)
+                let deduped = uniqueCollections(b.collectionsSafe)
                 if deduped.count != b.collectionsSafe.count {
                     b.collectionsSafe = deduped
                     didChange = true
@@ -51,7 +51,7 @@ enum CollectionMembershipRepair {
             }
 
             for c in collections {
-                let deduped = dedupBooks(c.booksSafe)
+                let deduped = uniqueBooks(c.booksSafe)
                 if deduped.count != c.booksSafe.count {
                     c.booksSafe = deduped
                     didChange = true
@@ -96,7 +96,44 @@ enum CollectionMembershipRepair {
         }
     }
 
-    private static func dedupBooks(_ input: [Book]) -> [Book] {
+    @discardableResult
+    static func repair(
+        book: Book,
+        collection: BookCollection,
+        now: Date = Date()
+    ) -> Bool {
+        let originalCollections = book.collectionsSafe
+        var repairedCollections = uniqueCollections(originalCollections)
+        var didChange = repairedCollections.count != originalCollections.count
+
+        let originalBooks = collection.booksSafe
+        var repairedBooks = uniqueBooks(originalBooks)
+        if repairedBooks.count != originalBooks.count {
+            didChange = true
+        }
+
+        let bookReferencesCollection = repairedCollections.contains { $0.id == collection.id }
+        let collectionReferencesBook = repairedBooks.contains { $0.id == book.id }
+
+        if bookReferencesCollection && !collectionReferencesBook {
+            repairedBooks.append(book)
+            didChange = true
+        }
+
+        if collectionReferencesBook && !bookReferencesCollection {
+            repairedCollections.append(collection)
+            didChange = true
+        }
+
+        guard didChange else { return false }
+
+        book.collectionsSafe = repairedCollections
+        collection.booksSafe = repairedBooks
+        collection.updatedAt = now
+        return true
+    }
+
+    static func uniqueBooks(_ input: [Book]) -> [Book] {
         var seen = Set<UUID>()
         var out: [Book] = []
         out.reserveCapacity(input.count)
@@ -109,7 +146,7 @@ enum CollectionMembershipRepair {
         return out
     }
 
-    private static func dedupCollections(_ input: [BookCollection]) -> [BookCollection] {
+    static func uniqueCollections(_ input: [BookCollection]) -> [BookCollection] {
         var seen = Set<UUID>()
         var out: [BookCollection] = []
         out.reserveCapacity(input.count)
