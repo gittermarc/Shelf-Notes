@@ -148,11 +148,7 @@ struct GoalsView: View {
     }
 
     private func formatInt(_ n: Int) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .decimal
-        f.groupingSeparator = "."
-        f.decimalSeparator = ","
-        return f.string(from: NSNumber(value: n)) ?? "\(n)"
+        n.formatted(.number.grouping(.automatic).locale(Locale(identifier: "de_DE")))
     }
 
     private func formatOptionalInt(_ value: Int?) -> String {
@@ -246,24 +242,20 @@ private struct StatPill: View {
 }
 
 private struct GoalSlotView: View {
-    @Environment(\.modelContext) private var modelContext
-
     let book: Book?
     let isFilled: Bool
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-                .opacity(isFilled ? 0.18 : 0.12)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.secondary.opacity(isFilled ? 0.08 : 0.10))
 
             if let book {
                 GeometryReader { geo in
-                    BookCoverThumbnailView(
+                    GoalSlotCoverView(
                         book: book,
                         size: geo.size,
-                        cornerRadius: 12,
-                        contentMode: .fill
+                        cornerRadius: 12
                     )
                 }
             } else {

@@ -1,792 +1,1151 @@
 # ARCHITECTURE_NOTES.md
 
-## Scope / Methode
+Stand: Analyse des Projekt-ZIPs `sn_context.zip` vom 2026-06-06. Es wurde keine Build- oder Testausführung durchgeführt. Aussagen beziehen sich auf den geprüften Codebestand. Unklare Punkte sind als **UNKNOWN** markiert.
 
-Diese Notizen basieren auf statischer Analyse des ZIPs. Es wurden Ordnerstruktur, Swift-Dateien, Xcode-Projektdatei, Entitlements, Info.plist, xcconfig-Dateien und zentrale Hot Paths geprüft. Es wurde kein Build, kein Testlauf und keine Laufzeitprofilierung ausgeführt.
+## Scope und Methode
 
-Priorität der Analyse:
+Geprüft wurden:
 
-1. Sync, Storage und Model: SwiftData, CloudKit, Stores, Migrations, Caches.
-2. Entry Points und Navigation.
-3. Große Views und Services: Wartbarkeit, Performance, Concurrency.
-4. Konventionen und Workflows für künftige Features.
+- Ordnerstruktur und Feature-Module
+- App Entry Points
+- SwiftData-Modelle und Container-Konfiguration
+- CloudKit-/Entitlement-Konfiguration
+- Root Navigation, Tabs, Sheets und Startup-Maintenance
+- Große Dateien nach Zeilenzahl
+- Hot Paths für Rendering, Scroll, Sync, Storage, Concurrency und Caching
+- Tests und Testpläne
 
----
+Nicht durchgeführt:
 
-## Big Files List
+- Kein Xcode Build
+- Keine Unit-Test-Ausführung
+- Keine CloudKit-Laufzeitprüfung
+- Keine App-Store-/Provisioning-Prüfung
 
-Top 15 Swift-Dateien nach Zeilen aus `Shelf Notes/` und `ShelfNotesLiveActivity/`, gemessen per `wc -l`.
+## Big Files List: Top 15 Dateien nach Zeilen
 
-| Rang | Datei | Zeilen | Grober Zweck | Warum riskant |
-|---:|---|---:|---|---|
-| 1 | `Shelf Notes/Stats/StatisticsSnapshotBuilder.swift` | 667 | Baut Statistik-Snapshots, Summaries und Top-Listen. | Viele Aggregationen, Datumslogik und Sortierungen in einer Datei; hohe Regressions- und Performance-Gefahr bei neuen Feldern. |
-| 2 | `Shelf Notes/Challenges/ChallengeEngine+Compute.swift` | 521 | Berechnet Challenge-Fortschritte über Sessions, Bücher und Zeiträume. | Viele Metriken und Periodenregeln; kleine Änderungen können Completion, Reroll oder Progress falsch machen. |
-| 3 | `Shelf Notes/Collections/CollectionsSmartActionBuilder.swift` | 470 | Erzeugt Smart Actions für Collections. | Heuristiken hängen an Book-, Tag-, Status- und Collection-Daten; schwer isolierbar ohne klare Submodule. |
-| 4 | `Shelf Notes/Stats/StatisticsHeatmapBuilder.swift` | 444 | Baut Heatmap-Daten für Leseaktivität. | Potenziell verschachtelte Datums-/Session-Loops; kritisch für Stats-Renderpfad. |
-| 5 | `Shelf Notes/Settings/AppearanceSettings/AppearancePreferences.swift` | 407 | Appearance-Optionen, Storage Keys und Presets. | Viele persistierte UI-Keys in einer Datei; Risiko für Key-Drift und ungewollte globale View-Invalidations. |
-| 6 | `Shelf Notes/BookDetail/BookDetailView+Cards.swift` | 400 | Detailkarten für BookDetail. | Große SwiftUI-Builder-Datei; Änderung an einer Card kann Compile-Zeit und View-Invalidation beeinflussen. |
-| 7 | `Shelf Notes/LibraryView/LibraryView+Header.swift` | 396 | Bibliotheksheader, Counts, Aktionen und UI-Zusammenfassung. | Header hängt an abgeleiteten Library-Daten; Risiko für teure Rekalkulation und komplexe Zustände. |
-| 8 | `Shelf Notes/TagsView/TagHygieneBuilder.swift` | 391 | Erzeugt Tag-Hygiene-Insights. | Normalisierung, Dedupe und Vorschlagslogik sind korrektheitskritisch; ähnliche Logik existiert auch in Suggestions/Index. |
-| 9 | `Shelf Notes/TagsView/TagSuggestionEngine.swift` | 387 | Tag-Vorschlagsengine. | Heuristiken scannen Bibliotheksdaten; Risiko für doppelte Normalisierung und O(n) Arbeit bei jeder Aktualisierung. |
-| 10 | `Shelf Notes/LibraryView/LibraryView+Grid.swift` | 386 | Grid-Layout der Bibliothek. | Scroll-Hotpath mit Cover-Rendering, Navigation und Selektionszustand; jede Side Effect wäre teuer. |
-| 11 | `Shelf Notes/BookDetail/BookDetailView+Bindings.swift` | 386 | Bindings zwischen UI und Book-Feldern. | Viele persistente Felder und Nebenwirkungen gebündelt; Risiko für unbeabsichtigte Saves und Modellkopplung. |
-| 12 | `Shelf Notes/BookDetail/Sessions/SessionsCard.swift` | 385 | Session-Liste, Quick-Log/Edit und Challenge-Refresh. | Mischt Query, UI, Mutationen, Save und Challenge-Refresh; Hotspot für MainActor- und Datenkonsistenzprobleme. |
-| 13 | `Shelf Notes/AddBook/AddBookViewModel.swift` | 385 | State Machine für manuelles Hinzufügen und Import-Drafts. | Viele Published-Zustände und Validierung; Sheet-/Task-State kann leicht inkonsistent werden. |
-| 14 | `Shelf Notes/Stats/StatisticsSourceStore.swift` | 368 | Beobachtet Books/Sessions, baut Signaturen und Cache-State. | MainActor-Signaturen sortieren und hashen viele Felder; bei großen Bibliotheken potenzieller Contention-Punkt. |
-| 15 | `Shelf Notes/TagsView/TagsView.swift` | 361 | Tags-Rootscreen mit Dashboard, Suche, Hygiene und Mutationen. | Große Root-View mit viel abgeleitetem Zustand; Risiko für View-Invalidations und UI-/Domain-Kopplung. |
+### 1. `Shelf Notes/Stats/StatisticsSnapshotBuilder.swift` - 667 Zeilen
 
----
+Zweck:
+
+- Baut Statistik-Snapshots für Fortschritt, Jahreswerte, Monatswerte, Top-Listen, Genres und weitere Auswertungen.
+
+Warum riskant:
+
+- Sehr viele fachliche Statistikregeln in einer Datei.
+- Date-/Calendar-Logik, Aggregation und Präsentationsableitung liegen eng zusammen.
+- Änderungen können viele Statistikbereiche gleichzeitig beeinflussen.
+- Hotspot bei großen Libraries, weil Statistiken über viele Bücher und Sessions aggregieren.
+
+### 2. `Shelf Notes/Challenges/ChallengeEngine+Compute.swift` - 521 Zeilen
+
+Zweck:
+
+- Berechnet Challenge-Fortschritt, Baselines, Metriken und Zielerreichung.
+
+Warum riskant:
+
+- Dichte Fachlogik mit vielen Challenge-Metriken.
+- Date-Window- und Session-Overlap-Logik ist fehleranfällig.
+- Änderungen können Completion, Rewards und Hints beeinflussen.
+- Potenzieller Hotspot nach Session-Saves, weil Challenge-Refresh häufig getriggert wird.
+
+### 3. `Shelf Notes/Collections/CollectionsSmartActionBuilder.swift` - 470 Zeilen
+
+Zweck:
+
+- Baut Smart Actions und Empfehlungen für Collections.
+
+Warum riskant:
+
+- UI-nahe Heuristiken und fachliche Auswahlregeln sind in einer großen Datei gekoppelt.
+- Hohe Regression-Gefahr bei Änderungen an Collection-Snapshots.
+- Performance-Risiko, falls der Builder im Renderpfad großer Collections läuft.
+
+### 4. `Shelf Notes/Stats/StatisticsHeatmapBuilder.swift` - 444 Zeilen
+
+Zweck:
+
+- Baut Heatmap-Daten, Tages-/Wochenwerte und vermutlich Streak-nahe Auswertungen.
+
+Warum riskant:
+
+- Calendar-/Timezone-Logik und Aggregation sind empfindlich.
+- Bei vielen Sessions kann tägliche Aggregation teuer werden.
+- Muss konsistent mit `StatisticsSnapshotBuilder` bleiben.
+
+### 5. `Shelf Notes/BookDetail/BookDetailView+Cards.swift` - 408 Zeilen
+
+Zweck:
+
+- Enthält mehrere Karten/Abschnitte der Buchdetailansicht.
+
+Warum riskant:
+
+- Große SwiftUI-Datei mit vielen View-Zweigen.
+- Bindings, Navigation und Mutationen können indirekt gekoppelt sein.
+- Hohe Invalidationsfläche bei Änderungen an `Book`.
+
+### 6. `Shelf Notes/Settings/AppearanceSettings/AppearancePreferences.swift` - 407 Zeilen
+
+Zweck:
+
+- Beschreibt Appearance-Optionen, Darstellungseinstellungen und vermutlich zugehörige Presentation Values.
+
+Warum riskant:
+
+- Globale App-Darstellung hängt an `@AppStorage` in `RootView`.
+- Änderungen an Appearance können Root- und Tab-Invalidationen auslösen.
+- Viele Optionen in einer Datei erschweren Review.
+
+### 7. `Shelf Notes/TagsView/TagSuggestionEngine.swift` - 402 Zeilen
+
+Zweck:
+
+- Erzeugt Tag-Vorschläge aus Buchdaten, Kategorien, Autor, Titel und vorhandenen Tags.
+
+Warum riskant:
+
+- String-Normalisierung und Heuristiken können leicht Edge Cases erzeugen.
+- Performance-Risiko bei großen Bibliotheken, wenn Vorschläge häufig neu gebaut werden.
+- Muss konsistent mit Tag-Hygiene und Tag-Mutationen bleiben.
+
+### 8. `Shelf Notes/BookDetail/BookDetailView+Bindings.swift` - 399 Zeilen
+
+Zweck:
+
+- Bindings, State-Ableitungen und Mutationsbrücken für `BookDetailView`.
+
+Warum riskant:
+
+- Viele Speicherpfade und UI-Bindings in einer Datei.
+- Änderungen können SwiftData-Saves, Ratings, Status, Dates, Tags und Notizen betreffen.
+- Hohe MainActor- und View-Invalidation-Relevanz.
+
+### 9. `Shelf Notes/TagsView/TagHygieneBuilder.swift` - 398 Zeilen
+
+Zweck:
+
+- Ermittelt Tag-Hygiene-Probleme wie Dubletten, Case-Varianten oder Singular/Plural-Kandidaten.
+
+Warum riskant:
+
+- Data-Cleanup-Logik ist fachlich sensibel.
+- Falsche Gruppierung kann zu falschen Merge-/Rename-Vorschlägen führen.
+- Muss sehr gut getestet bleiben, weil Nutzeraktionen Daten verändern können.
+
+### 10. `Shelf Notes/LibraryView/LibraryView+Header.swift` - 396 Zeilen
+
+Zweck:
+
+- Header, Filter, Such-/Sortiersteuerung und UI-Controls der Bibliothek.
+
+Warum riskant:
+
+- Viele UI-Controls hängen am zentralen Library-Zustand.
+- `@AppStorage`, Filter-State und Derived State können viele Re-Renders auslösen.
+- Header-Änderungen können den gesamten Library-Screen invalidieren.
+
+### 11. `Shelf Notes/BookDetail/Sessions/SessionsCard.swift` - 385 Zeilen
+
+Zweck:
+
+- Zeigt Lesesessions, Timer-Controls, Session-Aktionen und Challenge-Hints im Buchdetail.
+
+Warum riskant:
+
+- Nutzt eigene Queries und reagiert auf Session-/Challenge-Änderungen.
+- UI, Mutation, Notification und Async-Refresh liegen nah beieinander.
+- Risiko für wiederholte Challenge-Refreshes und MainActor-Arbeit.
+
+### 12. `Shelf Notes/AddBook/AddBookViewModel.swift` - 385 Zeilen
+
+Zweck:
+
+- ViewModel für Buch-Hinzufügen, Draft State, Such-/Importzustand und Speichern.
+
+Warum riskant:
+
+- Viele `@Published` Zustände können breite UI-Updates erzeugen.
+- Netzwerk-, Draft-, Routing- und Persistenzlogik sind wahrscheinlich gekoppelt.
+- Hohe Änderungsfrequenz bei Import-UX.
+
+### 13. `Shelf Notes/Stats/StatisticsSourceStore.swift` - 368 Zeilen
+
+Zweck:
+
+- Beobachtet Bücher/Sessions, baut Source-Snapshots und steuert Statistik-Compute-Caches.
+
+Warum riskant:
+
+- `@MainActor` Store mit Observation Tracking.
+- Muss SwiftData-Objekte sicher in Value-Snapshots überführen.
+- Fehlerhafte Signaturen führen zu stale oder zu häufig neu berechneten Statistiken.
+
+### 14. `Shelf Notes/LibraryView/LibraryView+Grid.swift` - 362 Zeilen
+
+Zweck:
+
+- Grid-/List-Darstellung der Bibliothek.
+
+Warum riskant:
+
+- Scroll-Hotpath.
+- Viele Cover-Views, Navigation Links und Cell-Zustände können SwiftUI-Invalidationskosten erhöhen.
+- Muss strikt vermeiden, beim Rendern SwiftData zu mutieren.
+
+### 15. `Shelf Notes/TagsView/TagsView.swift` - 358 Zeilen
+
+Zweck:
+
+- Hauptscreen für Tags Dashboard, Suche, Sortierung, Hygiene und Navigation.
+
+Warum riskant:
+
+- Volle Bibliotheksdaten werden für Tag-Indizes genutzt.
+- Mehrere Sheets/Flows und Cleanup-Aktionen sind gekoppelt.
+- Datenqualität und UI-Performance hängen an denselben Indizes.
 
 ## Hot Path Analyse
 
-### Rendering / Scrolling
+## Rendering / Scrolling
 
-#### `Shelf Notes/LibraryView/LibraryView.swift`
+### Library
 
-Hotspot-Gründe:
+Betroffene Dateien:
 
-- `activeDerivedTaskToken` ruft `LibraryDerivedStateBuilder.makeInputToken(books:)` auf.
-- `LibrarySourceSnapshot.taskSignature(books:)` iteriert über alle Bücher und hasht Titel, Autor, Status, Tags, Notizstatus, ISBN, Lesezeitraum und Rating-Bucket.
-- `displayedBooksForCurrentDerivedState` erstellt pro Zugriff ein `Dictionary(uniqueKeysWithValues: books.map { ($0.id, $0) })`.
-- `alphaSectionsForUI` erstellt erneut ein `booksByID`-Dictionary.
-- `libraryContent` liest `displayed`, `counts`, `alphaSections` und `alphaLetters` im View-Aufbau.
+- `Shelf Notes/LibraryView/LibraryView.swift`
+- `Shelf Notes/LibraryView/LibraryBooksIndex.swift`
+- `Shelf Notes/LibraryView/LibraryDerivedState.swift`
+- `Shelf Notes/LibraryView/LibraryDerivedStateBuilder.swift`
+- `Shelf Notes/LibraryView/LibraryDisplayStore.swift`
+- `Shelf Notes/LibraryView/LibraryView+Grid.swift`
+- `Shelf Notes/ImageViews/LibraryRowCoverView.swift`
 
-Bewertung:
+Beobachtung:
 
-- Die Derived-State-Pipeline ist bereits besser als direkte Filter-/Sortierlogik im Body.
-- Der Token- und Mapping-Teil bleibt aber O(n) im SwiftUI-Invalidationspfad.
-- Für kleine Bibliotheken ist das wahrscheinlich unkritisch; für große Bibliotheken wird jede globale Appearance-/Query-/Search-Invalidation teuer.
+- `LibraryView` nutzt `@Query(sort: \Book.createdAt, order: .reverse)` und hält damit die Buchliste direkt im Screen.
+- `activeBooksIndex` baut aus den `Book`-Objekten einen `LibraryBooksIndex`.
+- `LibraryDerivedState` erzeugt Signaturen über viele Book-Felder, darunter Titel, Autor, Status, Tags, Notizen, Lesezeitraum und Ratings.
+- `LibraryDerivedStateBuilder` filtert, sortiert und sectioned über Value-Snapshots.
+- `LibraryDisplayStore` reduziert direkte Arbeit im `body`, aber die Quelle bleibt eine vollständige `@Query`.
 
-Konkreter Optimierungshebel:
+Hotspot-Grund:
 
-- `booksByID`, `sourceSignature`, `displayedBookIDs` und Alpha-Sektionen in einen `LibraryDisplayStore` oder eine erweiterte `LibraryDerivedStateCoordinator`-Schicht verschieben.
-- Body nur noch fertige Value-States lesen lassen.
-- `booksByID` einmal pro Source-Signature bauen.
+- Full-array Fetch in einem zentralen Screen.
+- Snapshot-/Index-Aufbau über alle Bücher.
+- Suche, Sortierung und Filter können bei großen Libraries teuer werden.
+- Breite Invalidierung möglich, wenn globale Appearance-/Library-AppStorage-Werte wechseln.
 
-#### `Shelf Notes/LibraryView/LibraryView+Grid.swift`
+Positiv:
 
-Hotspot-Gründe:
+- Derived State ist bereits testbar ausgelagert.
+- Suchtext wird debounced.
+- Grid-Cover nutzen scroll-schonende Views.
 
-- Grid ist Scroll-Hotpath.
-- Cover-Views, NavigationLinks und Selektionszustand laufen in vielen Zellen.
-- Gute Gegenmaßnahme ist bereits vorhanden: `LibraryRowCoverView` ist laut Dateikommentar side-effect-free und dekodiert synced thumbnails off-main.
+Empfohlener Hebel:
+
+- `LibraryBooksIndex` nur neu bauen, wenn sich eine Source-Signature geändert hat.
+- Search Tokens und normalisierte Felder im Snapshot speichern.
+- Sort-/Filter-Ergebnis im `LibraryDisplayStore` stärker memoizen.
+
+### Cover in Listen und Grids
+
+Betroffene Dateien:
+
+- `Shelf Notes/CoverImageLoader.swift`
+- `Shelf Notes/CachedAsyncImage.swift`
+- `Shelf Notes/ImageCaching/ImageDiskCache.swift`
+- `Shelf Notes/ImageCaching/CoverImageRequestDeduper.swift`
+- `Shelf Notes/ImageCaching/RemoteCoverFailureCache.swift`
+- `Shelf Notes/CoverThumbnailer/CoverThumbnailer.swift`
+- `Shelf Notes/ImageViews/LibraryRowCoverView.swift`
+- `Shelf Notes/ImageViews/SyncedThumbnailImage.swift`
+
+Beobachtung:
+
+- Remote-Requests werden per normalisierter URL dedupliziert.
+- Remote-Fehler werden kurzzeitig gecacht.
+- Disk Cache ist lokal und auf 120 MB begrenzt.
+- Decoding läuft off-main.
+- `SyncedThumbnailImage` downscaled JPEGs via ImageIO off-main und cached im Memory Cache.
+- `LibraryRowCoverView` ist explizit read-only und triggert keine SwiftData-Saves im Scrollpfad.
+- `BookCoverThumbnailView` kann beim Auflösen einer Remote-URL `book.persistResolvedCoverURL` und Thumbnail-Refresh triggern.
+
+Hotspot-Grund:
+
+- Viele gleichzeitige Cover in Grids/Listen erzeugen I/O, Decoding und Netzwerkdruck.
+- Request-Deduping löst nur identische URLs, nicht viele unterschiedliche URLs.
+- SwiftData-Mutationen aus Cover-Views können Sync und View-Invalidation anstoßen, wenn diese View in scroll-intensiven Kontexten eingesetzt wird.
+
+Positiv:
+
+- Die Library nutzt eine side-effect-freie Cover-Variante.
+- Disk- und Memory-Caches existieren.
+- Decoding ist off-main.
+
+Empfohlener Hebel:
+
+- Zusätzlich ein globales Limit für parallele unterschiedliche Remote-Cover-Downloads einführen.
+- Sicherstellen, dass in allen Listen/Grid-Kontexten `LibraryRowCoverView` oder eine gleichwertig read-only Variante genutzt wird.
+- Cover-Persistenz nur in Detail-/Import-Kontexten erlauben.
+
+### Stats
+
+Betroffene Dateien:
+
+- `Shelf Notes/Stats/StatisticsView.swift`
+- `Shelf Notes/Stats/StatisticsSourceStore.swift`
+- `Shelf Notes/Stats/StatisticsComputePipeline.swift`
+- `Shelf Notes/Stats/StatisticsSnapshotBuilder.swift`
+- `Shelf Notes/Stats/StatisticsHeatmapBuilder.swift`
+
+Beobachtung:
+
+- `StatisticsView` liest alle Bücher über `@Query`.
+- `StatisticsSourceStore` beobachtet Buch- und Session-Quellen und hält Snapshots/Caches.
+- Schwere Berechnungen laufen in `Task.detached(priority: .utility)` über Value-Snapshots.
+- Session-Source wird nur bei Bedarf für bestimmte Auswertungen aufgebaut.
+
+Hotspot-Grund:
+
+- Vollständiger Buchbestand wird als Source betrachtet.
+- Session-Snapshots über alle relevanten Bücher können bei vielen Sessions teuer werden.
+- Observation Tracking kann bei vielen Einzeländerungen mehrfach refreshen.
+
+Positiv:
+
+- Compute Pipeline ist bereits vom MainActor entkoppelt.
+- Es gibt Source-Signaturen und Tests.
+
+Empfohlener Hebel:
+
+- Per-Book Session-Aggregate cachen.
+- Session-Source strikter nach aktivem Zeitraum und aktiver Statistikansicht laden.
+- Observation-Refresh coalescen.
+
+### Tags
+
+Betroffene Dateien:
+
+- `Shelf Notes/TagsView/TagsView.swift`
+- `Shelf Notes/TagsView/TagsIndexStore.swift`
+- `Shelf Notes/TagsView/TagsIndexBuilder.swift`
+- `Shelf Notes/TagsView/TagsDomainIndex.swift`
+- `Shelf Notes/TagsView/TagSuggestionEngine.swift`
+- `Shelf Notes/TagsView/TagHygieneBuilder.swift`
+
+Beobachtung:
+
+- Tags werden aus dem gesamten Buchbestand abgeleitet.
+- Root aktualisiert den `TagsIndexStore` beim Aktivwerden der App und beim Startup.
+- Suggestions, Hygiene und Dashboard nutzen verwandte, aber nicht vollständig identische Indizes.
+
+Hotspot-Grund:
+
+- Tag-Indizes wachsen mit Anzahl Bücher und Tags.
+- Hygiene-Analysen sind stringlastig und können bei vielen Tags teuer werden.
+- Cleanup-Flows haben Datenqualitätsrisiko.
+
+Empfohlener Hebel:
+
+- Einen gemeinsamen `TagsDomainIndex` als Quelle für Dashboard, Suggestions und Hygiene etablieren.
+- Index nur bei Tag-relevanter Source-Signature neu bauen.
+- Cleanup-Aktionen nach Mutation mit gezielter Index-Invalidation koppeln.
+
+### Sessions im Buchdetail
+
+Betroffene Dateien:
+
+- `Shelf Notes/BookDetail/Sessions/SessionsCard.swift`
+- `Shelf Notes/BookDetail/Sessions/ReadingTimerManager/*`
+- `Shelf Notes/ReadingSessionChangeNotification.swift`
+- `Shelf Notes/Challenges/ChallengeRefreshCoordinator.swift`
+
+Beobachtung:
+
+- `SessionsCard` kombiniert Sessionliste, Timer-UI und Challenge-Hints.
+- Nach Session-Mutationen werden Challenge-Refreshes und Notifications ausgelöst.
+- Pro Buch ist die Sessionmenge kleiner als global, aber häufige Updates können dennoch mehrere Nebenwirkungen auslösen.
+
+Hotspot-Grund:
+
+- Mutation und UI liegen nah beieinander.
+- Notifications können mehrere Screens triggern.
+- Challenge-Hints können nach jeder Session neu berechnet werden.
+
+Empfohlener Hebel:
+
+- `SessionsCardViewModel` oder `SessionsCardController` einführen.
+- Challenge-Hints coalescen und nur bei relevanter Signature aktualisieren.
+- Session-Zusammenfassungen pro Buch cachen.
+
+## Sync / Storage
+
+### Container-Strategie
+
+Betroffene Dateien:
+
+- `Shelf Notes/AppBootstrap/AppBootstrapper.swift`
+- `Shelf Notes/AppContainerHostView.swift`
+- `Shelf Notes/Persistence/ModelContainerFactory.swift`
+- `Shelf Notes/Persistence/StorageMode.swift`
+
+Beobachtung:
+
+- App startet mit CloudKit-Store.
+- Bei Fehlern wird nicht gecrasht, sondern eine Failure UI angeboten.
+- Local-only und In-Memory sind explizite Modi.
+- Local-only nutzt separaten Store und andere Repair-Scope-ID.
 
 Risiko:
 
-- Jede spätere Persistenz-Aktion oder Remote-URL-Persistierung in Grid-Zellen würde Scroll-Performance und CloudKit-Save-Frequenz verschlechtern.
+- Local-only Daten sind getrennt von CloudKit-Daten.
+- Eine spätere automatische Zusammenführung von Local-only nach CloudKit wurde nicht gefunden: **UNKNOWN**.
+- Nutzer können unterschiedliche Datenstände je Modus sehen.
 
-Konkreter Optimierungshebel:
+Empfehlung:
 
-- Grid-Cards strikt read-only halten.
-- Cover-Resolver/Backfill nur in Import, Detail oder expliziten Hintergrundjobs ausführen.
+- Local-only Mode weiterhin deutlich kennzeichnen.
+- In Docs und UI klar machen: separater Store, kein automatischer Merge.
+- Optional Export-Hinweis im Local-only Mode anbieten.
 
-#### `Shelf Notes/CoverThumbnailer/CoverThumbnailer.swift`
+### CloudKit-Kompatibilität des Modells
 
-Hotspot-Gründe:
+Betroffene Dateien:
 
-- `BookCoverThumbnailView` dekodiert `book.userCoverData` mit `UIImage(data:)` direkt in `body`.
-- `localUserCoverUIImage()` liest lokale Full-res-Datei mit `UIImage(contentsOfFile:)` direkt aus dem View-Pfad.
-- Bei Remote-Fallback wird in `onResolvedURL` `book.persistResolvedCoverURL` aufgerufen und anschließend ein Task für Thumbnail-Refresh gestartet.
+- `Shelf Notes/BookModel/Book.swift`
+- `Shelf Notes/ReadingSession.swift`
+- `Shelf Notes/ReadingGoal.swift`
+- `Shelf Notes/BookCollection.swift`
+- `Shelf Notes/Challenges/ChallengeModels.swift`
 
-Bewertung:
+Beobachtung:
 
-- Für Detailflächen ist Persistierung des resolved URL nachvollziehbar.
-- Für wiederholte Listen-/Grid-Flächen ist diese View ungeeignet. Das Projekt nutzt dafür bereits `LibraryRowCoverView`.
-- Falls `BookCoverThumbnailView` in scrollenden Flächen außerhalb der Library verwendet wird, entsteht synchrones Decode-/File-I/O-Risiko.
+- Kommentare im Modell weisen auf CloudKit-Einschränkungen hin.
+- IDs sind nicht unique markiert.
+- Beziehungen sind optional.
+- Defaults sind vorhanden.
 
-Konkreter Optimierungshebel:
+Risiko:
 
-- `BookCoverThumbnailView` intern auf `SyncedThumbnailImage` und `CoverImageLoader` umstellen.
-- `persistResolvedCoverURL` nur durch explizite Policy erlauben, nicht als Default in einer allgemeinen Cover-View.
+- Ohne Unique Constraints sind Dubletten fachlich möglich.
+- Konfliktauflösung zwischen Geräten ist nicht zentral dokumentiert: **UNKNOWN**.
+- Merge-Regeln für gleiche ISBN oder gleiche Google Volume ID sind nicht als globale Policy sichtbar: **UNKNOWN**.
 
-#### `Shelf Notes/CachedAsyncImage.swift` und `Shelf Notes/CoverImageLoader.swift`
+Empfehlung:
 
-Hotspot-Gründe:
+- Fachliche Duplicate-Detection in Import und Repair klar dokumentieren.
+- Optional `BookIdentityIndex` als nicht-persistierten Index einführen.
+- Multi-Device-Konfliktfälle gezielt testen.
 
-- `CachedAsyncImage` startet `.task(id: url)` pro URL.
-- `CoverImageLoader` hat Memory- und Disk-Cache, aber keinen sichtbaren In-flight-Request-Deduper.
-- Viele identische oder ähnliche Cover-URLs können parallel geladen werden, bis Cache gefüllt ist.
+### Migration und Repair
 
-Gegenmaßnahmen im Code:
+Betroffene Dateien:
 
-- Memory Cache.
-- Disk Cache in `Caches/cover-cache`.
-- URLRequest nutzt Cache Policy.
-- Decode und Disk-I/O laufen off-main.
+- `Shelf Notes/Persistence/ReadingStatusMigrator.swift`
+- `Shelf Notes/CollectionMembershipRepair.swift`
+- `Shelf Notes/AppLifecycle/AppStartupMaintenanceService.swift`
+- `Shelf Notes/AppLifecycle/AppStartupMaintenanceState.swift`
 
-Konkreter Optimierungshebel:
+Beobachtung:
 
-- In-flight-Dedupe nach normalisierter URL einführen.
-- Disk-Cache-Größenlimit und LRU/Pruning ergänzen.
-- Remote-Failure-Cache mit kurzer TTL für fehlerhafte Kandidaten ergänzen.
+- Es gibt konkrete Reparatur-/Migration-Jobs für Status und Collection Membership.
+- Cover-Backfill wird beim Startup geplant.
+- Eine zentrale Modellversions- oder Migration-Policy wurde nicht gefunden.
 
-#### `Shelf Notes/Stats/StatisticsView.swift` und `Shelf Notes/Stats/StatisticsSourceStore.swift`
+Risiko:
 
-Hotspot-Gründe:
+- SwiftData/CloudKit-Schemaänderungen sind besonders sensibel.
+- Unkoordinierte Modelländerungen können CloudKit-Sync oder bestehende Stores beschädigen.
 
-- `StatisticsView` lädt alle Books über `@Query`.
-- `StatisticsSourceStore.booksSignature(_:)` sortiert alle Books nach UUID und hasht viele Felder.
-- `sessionsSignature(_:)` sortiert Books und Sessions und hasht Session-Daten.
-- Signatur- und Snapshot-Erzeugung laufen MainActor-nah, die eigentliche Statistikberechnung wird danach in `StatisticsComputePipeline` detached.
+Empfehlung:
 
-Gegenmaßnahmen im Code:
+- `MIGRATIONS.md` einführen.
+- Jede Modelländerung mit Migration/Repair/Backfill-Plan dokumentieren.
+- Tests für Migration-Helfer ergänzen.
 
-- `StatisticsSourceSnapshot` und `StatisticsSessionSourceSnapshot` sind Value-Snapshots.
-- `StatisticsComputePipeline` nutzt `Task.detached(priority: .utility)`.
-- Cache Keys trennen Stats und Heatmap.
+### Secrets und Konfiguration
 
-Konkreter Optimierungshebel:
+Betroffene Dateien:
 
-- Signature-Inkremente pro Book/Session prüfen, statt komplette sortierte Listen bei jeder relevanten Änderung zu hashen.
-- Session-Day-Expansion für Heatmaps cachen.
-- Große Berechnungen stärker cancellation-aware machen.
+- `Shelf Notes/config/base.xcconfig`
+- `Shelf Notes/config/secrets.xcconfig`
+- `Shelf Notes/.gitignore`
+- `Shelf Notes/Info.plist`
 
-#### `Shelf Notes/TagsView/TagsIndexStore.swift`, `TagSuggestionEngine.swift`, `TagHygieneBuilder.swift`
+Beobachtung:
 
-Hotspot-Gründe:
+- `Info.plist` liest `GOOGLE_BOOKS_API_KEY` aus Build Settings.
+- `base.xcconfig` inkludiert `secrets.xcconfig`.
+- `.gitignore` schließt `config/secrets.xcconfig` aus.
+- Das bereitgestellte ZIP enthält trotzdem eine `secrets.xcconfig` mit einem echten Key im Klartext.
 
-- Tags-Index, Suggestions und Hygiene scannen ähnliche Book-/Tag-Daten.
-- `RootView` triggert `tagsIndexStore.update(books:signature:)` per `.task(id: tagsIndexSignature)`.
-- Mehrere Feature-Screens können ähnliche Normalisierung wiederholen.
+Risiko:
 
-Konkreter Optimierungshebel:
+- Key-Leak über ZIP, Backup oder historisches Git ist möglich.
+- Ob der Key in Google Cloud eingeschränkt ist, ist **UNKNOWN**.
 
-- Gemeinsamen `LibrarySemanticIndex` oder `TagsDomainIndex` einführen.
-- Normalisierte Tags, BookIDs pro Tag, unbenutzte/ähnliche Tags und Tag-Counts einmal pro Books-Signature bauen.
-- Suggestions, Hygiene, Tags Dashboard und Library-Filter daraus speisen.
+Empfehlung:
 
----
+- Key rotieren, falls das ZIP geteilt wurde.
+- Key in Google Cloud auf Bundle ID/API einschränken.
+- Optional `secrets.template.xcconfig` ohne echten Key committen.
 
-### Sync / Storage
+## Concurrency
 
-#### `Shelf Notes/AppContainerHostView.swift`
+### Projektweite Actor-Isolation
 
-Hotspot-Gründe:
+Betroffene Datei:
 
-- Datei enthält Bootstrapper, StorageMode, ModelContainerFactory, AppContainerHostView, LocalOnlyBanner und FailureView.
-- Sync-/Store-Policy ist fachlich kritisch, aber mit UI vermischt.
-- `ModelContainerFactory` definiert Schema, Store-URLs, CloudKit-/Local-only-Konfigurationen.
+- `Shelf Notes.xcodeproj/project.pbxproj`
 
-Risiken:
+Beobachtung:
 
-- Künftige Modelländerungen, Store-Migrationen und UX für Startfehler landen in einer großen Datei.
-- CloudKit- und Local-only-Datenstände bleiben bewusst getrennt; UX muss das dauerhaft klar kommunizieren.
+- `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` ist gesetzt.
+- Viele UI-nahe Stores und ViewModels sind `@MainActor`.
 
-Konkreter Optimierungshebel:
+Risiko:
 
-- `StorageMode`, `AppBootstrapper`, `ModelContainerFactory`, FailureView und Banner splitten.
-- Store-Policy testbarer machen.
+- MainActor-Arbeit ist leichter korrekt, aber Performance-kritischer.
+- Heavy Builder dürfen nicht versehentlich wieder in den MainActor-Renderepfad wandern.
 
-#### `Shelf Notes/RootView.swift` Cover-Backfill
+Empfehlung:
 
-Hotspot-Gründe:
+- Rechenintensive Builder strikt mit Value-Snapshots und `Task.detached` ausführen.
+- MainActor-Funktionen kurz halten.
+- Signposts für MainActor-Hotpaths ergänzen.
 
-- Beim aktiven ScenePhase-Start wird ein Utility-Task verzögert gestartet.
-- `CoverThumbnailer.backfillAllBooksIfNeeded` fetched alle Books, filtert pending Books und arbeitet in Batches.
-- `backfillThumbnailIfNeeded` kann für jedes Book ein `saveWithDiagnostics()` auslösen.
+### Task Lifetimes
 
-Gegenmaßnahmen im Code:
+Betroffene Dateien:
 
-- Einmal-Flag `did_run_cover_backfill_v2`.
-- Verzögerung nach Launch.
-- Batchgröße 4 und Inter-Batch-Delay 650 ms.
-- Cancel bei inaktiver ScenePhase.
+- `Shelf Notes/BookImport/BookImportView/BookImportViewModel+Tasks.swift`
+- `Shelf Notes/LibraryView/LibraryView.swift`
+- `Shelf Notes/Challenges/ChallengesView.swift`
+- `Shelf Notes/BookDetail/Sessions/SessionsCard.swift`
+- `Shelf Notes/ImageCaching/CoverImageRequestDeduper.swift`
+- `Shelf Notes/CoverImageLoader.swift`
 
-Risiken:
+Beobachtung:
 
-- Viele kleine Saves können viele CloudKit-Transaktionen erzeugen.
-- Wird der Task vor Abschluss gecancelt, bleibt das Flag false und der Backfill startet später erneut.
-- Remote-Cover-Fetch plus Thumbnail-Save direkt nach Launch kann Startup, Akku und Datenverbrauch beeinflussen.
+- Book Import nutzt Debounce, Generation Guards und Cancellation.
+- Library-Suche nutzt eine Debounce-Task.
+- Challenge-Refresh wird über Tasks nach Notifications und View-Lifecycle ausgelöst.
+- Cover-Deduper hält geteilte Tasks pro URL.
 
-Konkreter Optimierungshebel:
+Risiko:
 
-- Backfill-Fortschritt pro Book oder pro Batch persistieren.
-- Saves batchen, wenn SwiftData/CloudKit-Verhalten das zulässt.
-- Backfill optional in Settings/Debug-Diagnose sichtbar machen.
+- Unstrukturierte Tasks können länger laufen als die View.
+- Deduper-Tasks sind für geteilte Loads sinnvoll, aber brauchen saubere Completion-Entfernung.
+- Mehrere Session-Notifications können Challenge-Refreshes stapeln.
 
-#### `Shelf Notes/CollectionMembershipRepair.swift`
+Empfehlung:
 
-Hotspot-Gründe:
-
-- Fetches alle Books und Collections.
-- Dedupliziert beide Seiten.
-- Erzwingt Symmetrie Book -> Collection und Collection -> Book.
-- Läuft einmalig pro Store-Scope beim Container-Ready.
-
-Bewertung:
-
-- Sinnvoller Repair für alte Datenstände.
-- Bei sehr großer Bibliothek potenziell spürbarer Launch-Workload.
-
-Konkreter Optimierungshebel:
-
-- Metrik/Log für Anzahl geänderter Beziehungen.
-- Repair-Versionen dokumentieren.
-- Optional Fortschritt/Fehler in SyncDiagnostics sichtbar machen.
-
-#### `Shelf Notes/Challenges/ChallengeRefreshCoordinator.swift`
-
-Hotspot-Gründe:
-
-- `prepareCurrentChallenges` läuft nach Container-Ready.
-- Session-Saves rufen `refreshAfterReadingSessionSave` auf, das Current Challenges vorbereitet, aktive Challenges fetched, Progress Map berechnet und Notifications postet.
-
-Risiken:
-
-- Session-Save wird fachlich an Challenge-Refresh gekoppelt.
-- Bei vielen Sessions oder Challenges kann ein Save mehr MainActor-Arbeit auslösen als erwartet.
-
-Konkreter Optimierungshebel:
-
-- Challenge-Fetch/Save in ein Repository kapseln.
-- Progress-Berechnung rein value-basiert halten und Caches nach Session-Signature nutzen.
-
-#### `Shelf Notes/SyncDiagnostics.swift`
-
-Hotspot-Gründe:
-
-- Singleton `@MainActor ObservableObject`.
-- Beobachtet Network Path, iCloud Account, UserRecordID und lokale Saves.
-- `diagnosticsReport` fasst Gerät, Netzwerk, iCloud und lokale Save-Breadcrumbs zusammen.
-
-Limitierung:
-
-- SwiftData-CloudKit-Upload-/Download-Fortschritt wird nicht direkt beobachtet.
-- `lastLocalSave` bedeutet nicht, dass CloudKit-Sync abgeschlossen ist.
-
-Konkreter Optimierungshebel:
-
-- Diagnose klar zwischen lokal gespeichert und cloud-synchronisiert unterscheiden.
-- Repair-/Migration-/Backfill-Events in Diagnostics aufnehmen.
-- Support-Export ohne sensible Daten anbieten.
-
-#### Full-res Cover Storage
-
-Hotspot-Gründe:
-
-- `Book.userCoverData` syncs als Thumbnail.
-- `Book.userCoverFileName` referenziert lokale Full-res-Datei.
-- Auf einem zweiten Gerät kann die Full-res-Datei fehlen, obwohl das Thumbnail vorhanden ist.
-
-Bewertung:
-
-- Gute CloudKit-Payload-Entscheidung für Performance und Speicher.
-- UX muss akzeptieren, dass Full-res User-Cover gerätespezifisch sind.
-
-Open Point:
-
-- **UNKNOWN**: Ob Thumbnail-only für Multi-Device dauerhaft gewünscht ist.
-
----
-
-### Concurrency
-
-#### MainActor-Grundlage
-
-- Das App-Target setzt `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`.
-- SwiftData-`ModelContext` wird in Views und Services MainActor-nah genutzt.
-- `AppBootstrapper`, `ChallengeRefreshCoordinator`, `SyncDiagnostics` und `ReadingTimerManager` sind MainActor-gebunden.
-
-Risiken:
-
-- Große Signaturen, Snapshots und Repairs können MainActor blockieren.
-- Entwickler könnten versehentlich teure pure Arbeit auf MainActor halten, weil Default Actor Isolation dies begünstigt.
-
-Gegenmaßnahmen:
-
-- Stats nutzen Value-Snapshots und `Task.detached`.
-- Cover-Konvertierung und ImageIO-Thumbnailing laufen off-main.
-- CoverImageLoader verlagert File-I/O und Decode auf DispatchQueue.
-
-#### Task-Lifetimes
-
-- `RootView` hält `coverBackfillTask` und cancelt bei inaktiver ScenePhase.
-- `LibraryView` debounced Search mit `pendingRecomputeTask`.
-- `BookImportViewModel+Tasks.swift` hält eigene Tasks für Suche, Load-More und Debounce und cancelt sie explizit.
-- `ReadingTimerManager` persistiert aktive und pending Sessions in App Group UserDefaults.
-
-Risiken:
-
-- Nicht jede detached Berechnung prüft innerhalb langer Loops kooperativ auf Cancellation.
-- View-Tasks können bei schneller Navigation mehrfach starten, wenn Tokens zu grob oder zu fein sind.
-- Timer-Pending-Completion hängt davon ab, dass die App die Pending-Daten später verarbeitet.
-
-#### Reading Timer / Live Activity
-
-- App-seitig: `Shelf Notes/Shared/LiveActivity/ReadingTimerManager.swift`.
-- Extension-seitig: `ShelfNotesLiveActivity/ReadingSessionLiveActivityIntents.swift`.
-- Steuerung läuft über App-Group-UserDefaults-Blobs für active und pending completion.
-
-Risiken:
-
-- Wenn Stop über Live Activity erfolgt und die App lange nicht geöffnet wird, bleibt nur Pending Completion persistiert; eine `ReadingSession` entsteht erst später.
-- `ReadingTimerManager` verwendet manuelle `objectWillChange.send`-Aufrufe wegen dokumentiertem Update-Problem im Code; das ist ein bewusster Workaround, sollte aber nicht überall kopiert werden.
-
----
+- Challenge-Refresh-Coalescer als Actor oder `@MainActor` Coordinator einführen.
+- Import-Patterns als Standard für neue Netzwerkflows dokumentieren.
+- Cover-Deduper zusätzlich mit globaler Remote-Concurrency-Begrenzung kombinieren.
 
 ## Refactor Map
 
-### Konkrete Splits
+## Konkrete Splits
 
-#### `Shelf Notes/AppContainerHostView.swift` -> Persistence/AppBootstrap
-
-Ziel:
-
-- Store-/Sync-Policy aus UI entfernen.
-
-Vorschlag:
-
-- `Shelf Notes/Persistence/StorageMode.swift`
-- `Shelf Notes/Persistence/ModelContainerFactory.swift`
-- `Shelf Notes/Persistence/AppBootstrapper.swift`
-- `Shelf Notes/AppBootstrap/AppContainerHostView.swift`
-- `Shelf Notes/AppBootstrap/ModelContainerFailureView.swift`
-- `Shelf Notes/AppBootstrap/LocalOnlyBanner.swift`
-
-Nutzen:
-
-- Leichtere Tests für Container-Erstellung.
-- Klarere Verantwortlichkeit für CloudKit vs Local-only.
-- Weniger Risiko bei SwiftData-Migrationen.
-
-#### `Shelf Notes/LibraryView/LibraryView.swift` -> Display Store / Index
+### `StatisticsSnapshotBuilder.swift`
 
 Ziel:
 
-- Body-nahe O(n)-Arbeit entfernen.
+- Statistikregeln isolieren und testbarer machen.
 
 Vorschlag:
 
-- `Shelf Notes/LibraryView/LibraryDisplayStore.swift`
-- `Shelf Notes/LibraryView/LibraryBooksIndex.swift`
-- `Shelf Notes/LibraryView/LibraryAlphaSectionResolver.swift`
-- `Shelf Notes/LibraryView/LibrarySearchDebouncer.swift`
-
-Verschiebung:
-
-- `LibrarySourceSnapshot.taskSignature(books:)` aus Body-Token-Pfad in Store.
-- `booksByID` in Index pro Source-Signature.
-- `displayedBooksForCurrentDerivedState` und `alphaSectionsForUI` als Store-Ausgabe.
-
-Nutzen:
-
-- Stabilere SwiftUI-Invalidations.
-- Weniger Dictionary-Allokationen im Renderpfad.
-- Besser messbare Search-/Sort-Performance.
-
-#### `Shelf Notes/CoverThumbnailer/CoverThumbnailer.swift` -> Cover Pipeline
-
-Ziel:
-
-- Cover-Rendering, Remote-Resolution, Thumbnail-Sync und Cache klar trennen.
-
-Vorschlag:
-
-- `Shelf Notes/Cover/CoverRenderPolicy.swift`
-- `Shelf Notes/Cover/CoverImageRepository.swift`
-- `Shelf Notes/Cover/CoverThumbnailWriter.swift`
-- `Shelf Notes/Cover/CoverRemoteResolver.swift`
-- `Shelf Notes/Cover/CoverBackfillService.swift`
-
-Verschiebung:
-
-- UI-Views lesen nur Render-State.
-- Persistierende URL-/Thumbnail-Updates laufen über Service-Methoden.
-- `BookCoverThumbnailView` wird read-only by default; persistierende Variante explizit benennen.
-
-Nutzen:
-
-- Weniger Sync-Side-Effects aus Views.
-- Einfachere Cache-Invalidation.
-- Einheitliche off-main Decode-Pipeline.
-
-#### `Shelf Notes/Stats/StatisticsSnapshotBuilder.swift`
-
-Ziel:
-
-- Aggregationen nach Verantwortung trennen.
-
-Vorschlag:
-
-- `StatisticsSummaryBuilder.swift`
-- `StatisticsTopListsBuilder.swift`
-- `StatisticsRatingStatsBuilder.swift`
 - `StatisticsYearOptionsBuilder.swift`
-- `StatisticsDateParsing.swift`
+- `StatisticsMonthlySeriesBuilder.swift`
+- `StatisticsTopListsBuilder.swift`
+- `StatisticsGenreDistributionBuilder.swift`
+- `StatisticsNerdStatsBuilder.swift`
+- `StatisticsSnapshotFormatting.swift`
 
-Nutzen:
+Risiko:
 
-- Kleinere Testflächen.
-- Weniger Merge-Konflikte.
-- Schnellere Orientierung bei neuen Statistik-Kennzahlen.
+- Niedrig bis mittel, wenn Tests grün bleiben.
+- Gefahr liegt vor allem in identischer Sortier- und Rundungslogik.
 
-#### `Shelf Notes/Stats/StatisticsHeatmapBuilder.swift`
-
-Ziel:
-
-- Datumslogik, Session-Splitting und Heatmap-Layout trennen.
-
-Vorschlag:
-
-- `StatisticsHeatmapRangeBuilder.swift`
-- `StatisticsSessionDayExpander.swift`
-- `StatisticsHeatmapGridBuilder.swift`
-- `StatisticsMonthAxisBuilder.swift`
-
-Nutzen:
-
-- Session-Day-Expansion kann separat gecacht und getestet werden.
-- Weniger Risiko bei Kalender-/Zeitzonenbugs.
-
-#### `Shelf Notes/Challenges/ChallengeEngine+Compute.swift`
+### `ChallengeEngine+Compute.swift`
 
 Ziel:
 
-- Metrikberechnung nach ChallengeMetric modularisieren.
+- Challenge-Metriken, Baselines und Auswahlpolitik trennen.
 
 Vorschlag:
 
-- `ChallengeProgressComputing.swift` als Protokoll oder enum-dispatch.
-- `ChallengeReadingMinutesComputer.swift`
-- `ChallengeBooksFinishedComputer.swift`
-- `ChallengePagesReadComputer.swift`
-- `ChallengeSessionNotesComputer.swift`
+- `ChallengeMetricProgressCalculator.swift`
+- `ChallengeBaselineCalculator.swift`
+- `ChallengeDateWindowMath.swift`
+- `ChallengeCompletionEvaluator.swift`
+- `ChallengeTargetPolicy.swift`
 
-Nutzen:
+Risiko:
 
-- Neue Metriken ohne Änderung an einer 500-Zeilen-Datei.
-- Testfälle pro Metric fokussierter.
+- Mittel.
+- Challenge-Completion und Rewards dürfen sich nicht sichtbar ändern.
 
-#### `Shelf Notes/TagsView/TagHygieneBuilder.swift` und `TagSuggestionEngine.swift`
+### `BookDetailView+Cards.swift`
 
 Ziel:
 
-- Gemeinsame Normalisierung und Indexbildung zentralisieren.
+- Buchdetail-UI wartbarer und mit weniger Invalidationsfläche strukturieren.
 
 Vorschlag:
 
-- `Shelf Notes/TagsView/TagsDomainIndex.swift`
-- `Shelf Notes/TagsView/TagSimilarityIndex.swift`
-- `Shelf Notes/TagsView/TagUsageIndex.swift`
+- `BookDetailStatusCard.swift`
+- `BookDetailMetadataCard.swift`
+- `BookDetailRatingCard.swift`
+- `BookDetailTagsCard.swift`
+- `BookDetailCollectionsCard.swift`
+- `BookDetailNotesCard.swift`
 
-Nutzen:
+Risiko:
 
-- Weniger doppelte Scans.
-- Einheitlichere Vorschläge und Hygiene-Regeln.
+- Niedrig bis mittel.
+- Hauptgefahr sind versehentlich veränderte Bindings oder Animationen.
 
-#### `Shelf Notes/Settings/AppearanceSettings/AppearancePreferences.swift`
+### `BookDetailView+Bindings.swift`
 
 Ziel:
 
-- Persistierte Keys, Optionen, Presets und Reset-Logik entkoppeln.
+- Mutationen klarer und zentraler machen.
 
 Vorschlag:
 
-- `AppearanceStorageKey.swift`
-- `AppearanceOptions.swift`
-- `AppearancePreset.swift`
-- `AppearancePreferenceStore.swift`
+- `BookDetailDraftBindings.swift`
+- `BookDetailRatingBindings.swift`
+- `BookDetailStatusMutations.swift`
+- `BookDetailDateRangePolicy.swift`
+
+Risiko:
+
+- Mittel.
+- Statuswechsel haben Seiteneffekte auf Dates und Ratings.
+
+### `SessionsCard.swift`
+
+Ziel:
+
+- UI, Mutation, Timer und Challenge-Hints entkoppeln.
+
+Vorschlag:
+
+- `SessionsCardViewModel.swift`
+- `SessionsSummaryBuilder.swift`
+- `SessionsPreviewList.swift`
+- `SessionTimerControls.swift`
+- `SessionChallengeHintController.swift`
+
+Risiko:
+
+- Mittel.
+- Timer- und Live-Activity-Verhalten muss unverändert bleiben.
+
+### `AddBookViewModel.swift`
+
+Ziel:
+
+- Draft, Routing, Import-Mapping und Persistenz trennen.
+
+Vorschlag:
+
+- `AddBookDraft.swift`
+- `AddBookDraftMapper.swift`
+- `AddBookSaveService.swift`
+- `AddBookRoutingState.swift`
+- `AddBookDuplicatePolicy.swift`
+
+Risiko:
+
+- Mittel.
+- Import- und manuelle Anlage dürfen keine Felder verlieren.
+
+### `TagsView.swift` und Tag Builder
+
+Ziel:
+
+- Tags-Domain-Index als zentrale Quelle etablieren.
+
+Vorschlag:
+
+- `TagsDashboardScene.swift`
+- `TagsHygieneScene.swift`
+- `TagsNavigationState.swift`
+- `TagsDomainIndexStore.swift`
+
+Risiko:
+
+- Mittel.
+- Cleanup-Flows müssen exakt bestätigt und reversibel nachvollziehbar bleiben.
+
+### `CollectionsSmartActionBuilder.swift`
+
+Ziel:
+
+- Smart Actions nach Intent und Datenquelle splitten.
+
+Vorschlag:
+
+- `CollectionSmartActionModels.swift`
+- `CollectionSmartActionRules.swift`
+- `CollectionSmartActionRanker.swift`
+- `CollectionSmartActionPresentationBuilder.swift`
+
+Risiko:
+
+- Niedrig bis mittel.
+- Gefahr liegt in geänderter Reihenfolge oder fehlenden Actions.
+
+## Cache- und Index-Ideen
+
+### Library Source Index
+
+Betroffene Dateien:
+
+- `Shelf Notes/LibraryView/LibraryView.swift`
+- `Shelf Notes/LibraryView/LibraryBooksIndex.swift`
+- `Shelf Notes/LibraryView/LibraryDerivedState.swift`
+- `Shelf Notes/LibraryView/LibraryDisplayStore.swift`
+
+Idee:
+
+- `LibraryBooksIndex` nur neu berechnen, wenn eine `LibrarySourceSignature` sich ändert.
+- Normalisierte Suchfelder pro BookSnapshot cachen:
+  - lowercased title
+  - lowercased author
+  - normalized tags
+  - note-presence flag
+  - rating average bucket
+
+Invalidation:
+
+- Änderung an titel-/autor-/tag-/status-/rating-/date-/note-relevanten Feldern.
+- Änderung an globalem Sort-/Filter-State.
+
+Erwarteter Effekt:
+
+- Weniger MainActor-Arbeit bei großen Libraries.
+- Stabilere Scroll-Performance.
+
+### Stats Session Aggregates
+
+Betroffene Dateien:
+
+- `Shelf Notes/Stats/StatisticsSourceStore.swift`
+- `Shelf Notes/Stats/StatisticsSnapshotBuilder.swift`
+- `Shelf Notes/Stats/StatisticsHeatmapBuilder.swift`
+
+Idee:
+
+- Pro Buch und Jahr Session-Aggregate bilden:
+  - Minuten
+  - Seiten
+  - Session Count
+  - aktive Tage
+  - Notizen Count
+- Für Heatmap zusätzlich Tages-Buckets cachen.
+
+Invalidation:
+
+- ReadingSession insert/update/delete.
+- Änderung an `startedAt`, `endedAt`, `durationSeconds`, `pagesRead`, `note`.
+
+Erwarteter Effekt:
+
+- Weniger wiederholte Sorts und Reduces in Stats.
+- Schnellere Heatmap und Monatsauswertung.
+
+### Challenge Refresh Coalescing
+
+Betroffene Dateien:
+
+- `Shelf Notes/Challenges/ChallengeRefreshCoordinator.swift`
+- `Shelf Notes/Challenges/ChallengeEngine.swift`
+- `Shelf Notes/BookDetail/Sessions/SessionsCard.swift`
+- `Shelf Notes/Challenges/ChallengesView.swift`
+
+Idee:
+
+- Refresh-Anfragen innerhalb eines kurzen Fensters bündeln.
+- Aktive Challenge-Snapshot-Signatur wiederverwenden.
+- Unterschiedliche Gründe protokollieren, aber nur einmal compute ausführen.
+
+Invalidation:
+
+- Session-Mutation.
+- Statuswechsel zu `finished`.
+- Rating-/Notizänderungen, falls aktive Challenge-Metrik betroffen ist.
+- Periodenwechsel.
+
+Erwarteter Effekt:
+
+- Weniger SwiftData-Fetches und Challenge-Computes nach Session-Saves.
+
+### Cover Network Concurrency
+
+Betroffene Dateien:
+
+- `Shelf Notes/CoverImageLoader.swift`
+- `Shelf Notes/ImageCaching/CoverImageRequestDeduper.swift`
+- `Shelf Notes/ImageCaching/ImageDiskCache.swift`
+
+Idee:
+
+- Bestehendes Deduping pro URL behalten.
+- Zusätzlich globale Obergrenze für parallele unterschiedliche Remote-URLs einführen.
+- Disk-Cache-Pruning optional im Batch oder nach Schwellenwert statt nach jedem Store.
+
+Invalidation:
+
+- Keine fachliche Invalidation, nur Cache-Verhalten.
+
+Erwarteter Effekt:
+
+- Besseres Verhalten bei schlechter Verbindung und großen Grids.
+- Weniger I/O-Spikes.
+
+## Vereinheitlichungen
+
+### Mutation Services
+
+Problem:
+
+- Mutationen liegen in Views, Bindings, Sheets und einzelnen Helpern verteilt.
+
+Vorschlag:
+
+- `BookMutationService`
+- `ReadingSessionMutationService`
+- `CollectionMutationService`
+- `TagMutationService` existiert fachlich bereits teilweise über `TagLibraryMutation`
 
 Nutzen:
 
-- Weniger Key-Drift.
-- Einfachere Tests für Defaults und Presets.
+- Einheitliche Saves mit Diagnose.
+- Weniger versehentliche Side Effects in Views.
+- Bessere Testbarkeit.
 
----
+### Repository / Store Pattern
 
-### Cache- und Index-Ideen
+Problem:
 
-#### Library
-
-- `LibraryBooksIndex`
-  - Key: `sourceSignature`.
-  - Daten: `booksByID`, `bookSnapshots`, `tagCounts`, `statusCounts`.
-- `LibraryDisplayCacheKey`
-  - Key-Bestandteile: `sourceSignature`, Search Text, Statusfilter, Tagfilter, Notesfilter, SortField, SortDirection, Layout/Alpha-Flag.
-- Invalidation:
-  - Book-Feldänderungen, die in `LibrarySourceSnapshot` enthalten sind, invalidieren Display-State.
-  - Cover-Feldänderungen sollten Display-State nicht invalidieren, wenn Sort/Filter davon unabhängig bleiben.
-
-#### Tags
-
-- `TagsDomainIndex`
-  - Key: `TagsIndexBuilder.taskSignature(books:)` oder gemeinsamer Book-Semantic-Key.
-  - Daten: normalisierte Tags, Originalschreibweisen, BookIDs pro Tag, Counts, ähnliche Tags.
-- Invalidation:
-  - Nur bei Änderungen an `Book.tags`, `Book.status`, optional `Book.title/author` für Suggestions.
-
-#### Stats / Challenges
-
-- `StatisticsBookSnapshot` existiert bereits; Signatur inkrementell prüfen.
-- `SessionDayExpansionCache`
-  - Key: `sessionsSignature`, Kalender-ID, Zeitzone, Jahr.
-  - Daten: Minuten/Tage/Counts pro Tag.
-- `ChallengeProgressCacheKey`
-  - Key: `periodStart`, `periodEnd`, `metric`, `sessionsSignature`, `finishedBooksSignature`.
-- Invalidation:
-  - Session-Add/Edit/Delete invalidiert Session-Signature.
-  - Book-Statuswechsel zu oder von finished invalidiert Challenge/Stats für finished books.
-  - Rating/Notes-Änderungen invalidieren nur betroffene Metriken.
-
-#### Cover
-
-- `CoverMemoryKey`
-  - Key: `bookID`, Hash von `userCoverData`, target maxPixel, contentMode.
-- `RemoteCoverKey`
-  - Key: normalisierte URL inklusive Google-Zoom-Policy.
-- `RemoteFailureCache`
-  - Key: URL.
-  - TTL: kurz, zum Beispiel 1 bis 24 Stunden je nach Fehlerart.
-- Invalidation:
-  - `userCoverData` geändert: synced thumbnail cache entfernen.
-  - `thumbnailURL` oder `coverURLCandidates` geändert: remote candidate cache für Book erneuern.
-  - User löscht Cover-Cache in Settings: Disk, Memory und SyncedThumbnailMemoryCache werden bereits gelöscht.
-
----
-
-### Vereinheitlichungen
-
-#### Repository / Store Pattern
-
-Aktueller Zustand:
-
-- Views nutzen `@Query` direkt.
-- Viele Builder sind pure und gut testbar.
-- SwiftData-Fetch/Save ist noch teilweise in Views, Coordinators und Engines verteilt.
+- Viele Views nutzen direkte `@Query` und bauen eigene Derived State.
 
 Vorschlag:
 
-- Für SwiftData-kritische Domänen schlanke Repositories einführen:
-  - `BookRepository`
-  - `ReadingSessionRepository`
-  - `CollectionRepository`
-  - `ChallengeRepository`
-  - `GoalRepository`
-- Repositories sollen nicht schwergewichtig sein; Ziel ist konsistente FetchDescriptor, Save-Diagnostics und Mutation-Policy.
+- UI-nahe Stores pro Hotpath, keine große globale Repository-Schicht erzwingen.
+- Kandidaten:
+  - `LibrarySourceStore`
+  - `StatsSourceStore` existiert bereits
+  - `TagsDomainIndexStore`
+  - `ChallengeSourceStore`
 
-#### Domain Indices
+Nutzen:
 
-- Ein gemeinsamer Book-Snapshot/Index kann Library, Tags, Stats und Collections entlasten.
-- Wichtig: Nicht ein riesiges God-Object bauen. Besser getrennte, kleine Indices mit klaren Keys:
-  - `LibraryBooksIndex`
-  - `TagsDomainIndex`
-  - `ReadingAnalyticsIndex`
-  - `CollectionDashboardIndex`
+- Weniger SwiftUI-Body-Arbeit.
+- Explizite Signaturen und Invalidation.
 
-#### Dependency Injection
+### Logging
 
-Aktueller Zustand:
+Problem:
 
-- Singletons: `GoogleBooksClient.shared`, `ImageDiskCache.shared`, `ImageMemoryCache.shared`, `SyncDiagnostics.shared`, `ProManager` als EnvironmentObject.
+- Diagnose existiert für Sync, aber Performance- und Feature-Logs sind nicht als einheitliches Pattern sichtbar.
 
 Vorschlag:
 
-- Für Tests und Previewbarkeit Protokolle oder Environment Keys für Netzwerk, CoverLoader und Purchase-Service ergänzen.
-- Nicht alles auf einmal refactoren; zuerst GoogleBooksClient und CoverImageLoader, weil sie externe I/O haben.
+- `os.Logger` Kategorien:
+  - `storage`
+  - `sync`
+  - `covers`
+  - `import`
+  - `library`
+  - `stats`
+  - `challenges`
+  - `tags`
 
----
+Nutzen:
+
+- Bessere Reproduktion von Sync-/Performance-Problemen.
+- Weniger Debug-Print-Wildwuchs.
 
 ## Risiken & Edge Cases
 
-### Datenverlust / Datenabweichung
+### Datenverlust / Divergente Stores
 
-- Local-only-Modus ist ein separater Store. Nutzer können Änderungen im Local-only-Store erzeugen, die später nicht automatisch im CloudKit-Store erscheinen.
-- App zeigt Banner/Alert, aber ein späterer Merge-Workflow ist **UNKNOWN**.
-- Full-res User-Cover sind lokal. Zweitgeräte bekommen nur das synchronisierte Thumbnail.
-- `Book.userCoverFileName` kann auf einem anderen Gerät oder nach Datenbereinigung auf eine fehlende lokale Datei zeigen.
+- Local-only Store ist getrennt vom CloudKit Store.
+- Automatischer Merge Local-only nach CloudKit ist **UNKNOWN**.
+- Nutzer könnten im Fallback-Modus Daten erfassen und später im CloudKit-Modus andere Daten sehen.
 
-### SwiftData / CloudKit Migration
+Empfehlung:
 
-- Modelle vermeiden Unique Constraints und nutzen Defaults; das ist CloudKit-kompatibel.
-- Neue nicht-optionale Felder ohne Defaults würden Migration/CloudKit-Modell brechen.
-- Many-to-many `Book` <-> `BookCollection` ist optional und wird manuell über Helper gepflegt; Drift bleibt ein Risiko bei direkter Mutation.
-- `CollectionMembershipRepair` läuft einmal pro Store-Scope. Spätere Bugs nach gesetztem Repair-Flag werden nicht automatisch erneut repariert.
+- Export-Hinweis im Local-only Banner.
+- Debug-Anzeige für aktiven `StorageMode`.
+- Dokumentierte Wiederherstellungsstrategie.
 
-### Multi-Device / Sync
+### CloudKit und SwiftData Schema
 
-- Keine explizite app-level Dedupe-Strategie für logisch gleiche Books mit unterschiedlichen UUIDs gefunden.
-- Keine Unique Constraints wegen CloudKit; Duplikate müssen fachlich behandelt werden.
-- CloudKit-Konfliktregeln bei parallelen Edits an Tags, Notes, Ratings und Collections sind **UNKNOWN**.
-- `SyncDiagnostics` kann lokale Saves zeigen, aber keinen Abschluss der CloudKit-Replikation.
+- Keine Unique Constraints bedeutet fachliche Dubletten sind möglich.
+- Optionale Beziehungen schützen CloudKit-Kompatibilität, erhöhen aber Nil-Handling-Aufwand.
+- Migration Strategy ist **UNKNOWN**.
 
-### Offline
+Empfehlung:
 
-- Offline-Lokalsaves werden in Diagnostics gezählt.
-- Exakte Wiederanlauf- und Konfliktauflösung hängt an SwiftData/CloudKit und ist im App-Code nicht sichtbar.
-- Remote-Cover-Fetches können fehlschlagen; Disk/Memory-Cache mindert das, aber Failure-Caching ist nicht sichtbar.
+- Modelländerungen nur mit Migration-Notiz.
+- Multi-Device-Testfälle für neue Beziehungen.
+- Duplicate Policy für ISBN/Google Volume ID dokumentieren.
 
-### Live Activity / Timer
+### Offline und Multi-Device
 
-- Stop/Pause aus der Extension kommuniziert über App-Group-Defaults.
-- Pending Completion muss später in der App in eine `ReadingSession` überführt werden.
-- Auto-Stop nach Inaktivität ist per AppStorage steuerbar, Standard 45 Minuten.
-- Edge Case: Gerät stoppt Session über Live Activity, App bleibt lange geschlossen, Challenge/Stats aktualisieren sich erst beim späteren Persistieren der Session.
+- SwiftData/CloudKit synchronisiert im Hintergrund.
+- Sync-Fortschritt ist laut Code nicht detailliert verfügbar.
+- `SyncDiagnostics` zeigt iCloud Account, User Record, Netzwerkstatus, lokale Saves und Offline-Save-Counter.
 
-### Secrets / Configuration
+Risiken:
 
-- `Shelf Notes/config/secrets.xcconfig` war im ZIP enthalten und enthält einen Google-Books-Key. Der Wert ist in dieser Dokumentation nicht wiedergegeben.
-- `.gitignore` ignoriert diese Datei, aber ZIP-/Backup-Prozesse können sie trotzdem enthalten.
-- Rotation des Keys ist ratsam, falls das ZIP außerhalb eines sicheren Kontexts geteilt wurde.
+- Nutzer kann Sync-Verzögerung mit Datenverlust verwechseln.
+- Konflikte bei gleichzeitiger Bearbeitung auf mehreren Geräten sind **UNKNOWN**.
 
-### Build / Plattform
+Empfehlung:
 
-- `IPHONEOS_DEPLOYMENT_TARGET = 26.0` ist im Projekt gesetzt.
-- **UNKNOWN**: Ob iOS 26 absichtlich ist. Falls nicht, schränkt das Test- und Nutzerbasis stark ein.
-- UI unterstützt iPhone und iPad über `TARGETED_DEVICE_FAMILY = "1,2"`; konkrete iPad-UX-Qualität ist **UNKNOWN**.
+- Sync-Diagnose um “letzter lokaler Save” und “aktiver Store” prominent halten.
+- Konfliktfälle manuell testen:
+  - gleicher Book-Edit auf zwei Geräten
+  - Session auf Gerät A, Statuswechsel auf Gerät B
+  - Tag-Rename während Buch auf anderem Gerät bearbeitet wird
 
-### Template / Dead Code
+### Cover-Daten
 
-- `ShelfNotesLiveActivity/ShelfNotesLiveActivityBundle.swift` inkludiert nur `ShelfNotesLiveActivityLiveActivity()`.
-- `ShelfNotesLiveActivity/ShelfNotesLiveActivity.swift` und `ShelfNotesLiveActivity/ShelfNotesLiveActivityControl.swift` sehen nach Template-/Beispielresten aus.
-- `ShelfNotesLiveActivity/ShelfNotesLiveActivityControl.swift` enthält einen Platzhalterzustand `isRunning = true`.
-- Risiko entsteht, falls diese Widgets später versehentlich in das Bundle aufgenommen werden.
+- `userCoverData` ist synced/externalStorage.
+- Full-res User Cover liegt lokal im App Group Container.
+- Remote Cover Cache ist lokal und darf gelöscht werden.
 
----
+Risiken:
+
+- Auf Zweitgerät ist eventuell nur Thumbnail verfügbar.
+- Große synced Thumbnails könnten CloudKit-Payloads belasten.
+- Remote-URL-Änderungen können unnötige Thumbnail-Refreshes auslösen.
+
+Empfehlung:
+
+- Thumbnail-Größe hart begrenzen und testen.
+- Full-res als bewusst lokales Feature dokumentieren.
+- Cover-Refresh nur außerhalb des Scrollpfads persistieren.
+
+### Live Activity
+
+- Live Activity Support ist per `NSSupportsLiveActivities = true` aktiviert.
+- Shared-Typen liegen unter `Shelf Notes/Shared/LiveActivity`.
+- Extension nutzt App Group.
+
+Risiken:
+
+- Welche Daten konkret zwischen App und Extension geteilt werden, wurde nicht vollständig bewertet: **UNKNOWN**.
+- Live Activity und Reading Timer müssen bei App-Lifecycle-Events konsistent bleiben.
+
+Empfehlung:
+
+- Timer-Ende, App-Kill und Geräte-Neustart als Edge Cases testen.
+
+### StoreKit / Pro
+
+- StoreKit-Konfigurationsdatei: `Shelf Notes/unlimited_collections.storekit`.
+- `ProManager` wird root-level als Environment Object injiziert.
+
+Risiken:
+
+- Produktionsprodukt-IDs, Restore-Flow und App-Store-Konfiguration wurden nicht verifiziert: **UNKNOWN**.
+
+Empfehlung:
+
+- StoreKit Tests und manuelle Sandbox-Checkliste dokumentieren.
+
+### Secrets
+
+- Google-Books-Key liegt im ZIP im Klartext.
+- `.gitignore` schließt die Datei aus, aber Repository-Historie ist **UNKNOWN**.
+
+Empfehlung:
+
+- Key rotieren, falls das ZIP geteilt wurde.
+- `secrets.template.xcconfig` einführen.
+- CI/Build-Doku ergänzen.
 
 ## Observability / Debuggability
 
 ### Vorhanden
 
-- `Shelf Notes/ModelContext+Diagnostics.swift`
-  - `saveWithDiagnostics()` zeichnet lokale Saves mit Quelle auf.
 - `Shelf Notes/SyncDiagnostics.swift`
-  - Beobachtet Netzwerkstatus über `NWPathMonitor`.
-  - Prüft iCloud Account Status und UserRecordID über CloudKit.
-  - Speichert letzte lokale Save-Zeit, Fehler, Quelle und Offline-Save-Anzahl.
-  - Erzeugt Diagnosebericht mit App-, Device-, System-, Netzwerk-, iCloud- und Save-Infos.
+  - iCloud Account Status
+  - User Record Short ID
+  - Netzwerkstatus über `NWPathMonitor`
+  - letzter lokaler Save
+  - Offline-Save-Counter
+  - Diagnose-Report
 - `Shelf Notes/SyncDiagnosticsView.swift`
-  - UI-Zugang in Settings.
-- `Shelf NotesTests/`
-  - Gute Abdeckung für viele pure Builder und Mutationen, darunter LibraryDerivedState, Tags, Stats, Challenges, CSV und Collections.
+  - UI für Sync-Diagnose.
+- `Shelf Notes/ModelContext+Diagnostics.swift`
+  - zeichnet erfolgreiche und fehlgeschlagene Saves auf.
+- `Shelf Notes/ReadingSessionChangeNotification.swift`
+  - signalisiert Session-Änderungen an andere Bereiche.
+- `Shelf Notes/ImageCaching/ImageDiskCache.swift`
+  - liefert Cache-Größe als Byte/String.
+- Tests:
+  - Library: `LibraryDerivedStateBuilderTests`, `LibraryDisplayStoreTests`, `LibraryBooksIndexTests`
+  - Stats: `StatisticsSnapshotBuilderTests`, `StatisticsSourceStoreTests`, `StatisticsComputePipelineTests`
+  - Challenges: mehrere `Challenge*Tests`
+  - Tags: mehrere `Tag*Tests`
+  - Collections: mehrere `Collection*Tests`
+  - Covers: `CoverImageCachingPerformanceTests`, `CoverPipelineSplitTests`
 
 ### Lücken
 
-- Kein direkter CloudKit-Progress oder CloudKit-Operation-Log sichtbar.
-- Kein strukturierter Performance-Trace für Library-Search, Stats-Compute, Cover-Backfill oder Challenge-Refresh sichtbar.
-- Kein einheitliches Event-Log für Migrationen, Repairs und Backfills sichtbar.
-- Keine im Scan erkennbare UI-Performance- oder Large-Library-Test-Fixture.
+- Keine zentrale Logging-Konvention sichtbar.
+- Keine Performance-Signposts sichtbar.
+- Keine zentrale Migration-Historie sichtbar.
+- Testplan `Shelf Notes.xctestplan` enthält keine Testtargets.
+- CloudKit Runtime-Fortschritt bleibt durch SwiftData limitiert.
 
-### Empfehlungen
+### Empfohlene Ergänzungen
 
-- `SyncDiagnostics` erweitern um:
-  - letzte Migration/Repair mit Erfolg, Dauer und Count.
-  - Cover-Backfill: pending, processed, failed, saved.
-  - Challenge refresh: Dauer und Anzahl aktiver Records.
-- Debug-only Performance-Marker ergänzen:
-  - Library derived state compute duration.
-  - Stats snapshot duration.
-  - Heatmap duration.
-  - Tags index duration.
-- Repro-Szenarien als Tests oder Debug-Menü dokumentieren:
-  - 1.000 Bücher mit Tags, Sessions und Covers.
-  - Offline Save, danach CloudKit-Start.
-  - Local-only Start, danach CloudKit-Start.
-  - Zweitgerät ohne Full-res User-Cover.
-  - Live Activity Stop, App später öffnen.
-
----
+- `os.Logger` Wrapper:
+  - `ShelfLogger.storage`
+  - `ShelfLogger.sync`
+  - `ShelfLogger.covers`
+  - `ShelfLogger.stats`
+  - `ShelfLogger.challenges`
+  - `ShelfLogger.import`
+- Signposts für:
+  - Library Derived State rebuild
+  - Stats Source refresh
+  - Stats Compute pipeline
+  - Challenge refresh
+  - Cover remote load
+  - Cover disk prune
+- Debug-Screen-Erweiterung:
+  - aktiver `StorageMode`
+  - SwiftData store URL ohne persönliche Pfade im Export
+  - Cover disk usage
+  - letzte Challenge refresh duration
+  - letzte Stats compute duration
+- Reproduktions-Checklisten:
+  - iCloud ausloggen
+  - Offline speichern
+  - große Library importieren
+  - 500+ Sessions erzeugen
+  - Cover-Cache löschen
 
 ## Open Questions
 
-- **UNKNOWN**: Ist `IPHONEOS_DEPLOYMENT_TARGET = 26.0` absichtlich?
-- **UNKNOWN**: Was ist die erwartete maximale Bibliotheksgröße?
-- **UNKNOWN**: Soll Local-only-Datenbestand in CloudKit importierbar sein?
-- **UNKNOWN**: Gibt es fachliche Dedupe-Regeln für gleiche Bücher ohne Unique Constraint?
-- **UNKNOWN**: Welche CloudKit-Konfliktstrategie gilt für parallele Edits an Notes, Tags, Ratings und Collections?
-- **UNKNOWN**: Sollen Full-res User-Cover künftig synchronisiert werden oder bleibt Thumbnail-only die Produktentscheidung?
-- **UNKNOWN**: Wie groß darf `Book.userCoverData` maximal werden, bevor CloudKit-Payload oder Speicher ein Problem wird?
-- **UNKNOWN**: Gibt es Production-Store-Snapshots für SwiftData-Migrationstests?
-- **UNKNOWN**: Ist die Live-Activity-Control-Datei bewusst nicht im Bundle enthalten oder nur Template-Rest?
-- **UNKNOWN**: Welche Release-Diagnostik darf Support erhalten, ohne sensible Nutzerdaten offenzulegen?
-- **UNKNOWN**: Sind Share- oder Collaboration-Features geplant?
-- **UNKNOWN**: Welche Geräteklasse ist Performance-Baseline?
+- Ist iOS 26.0 als Deployment Target fachlich bewusst gesetzt oder nur aktueller Xcode-Stand? **UNKNOWN**.
+- Gibt es eine verbindliche SwiftData-Migrationsstrategie für zukünftige Modelländerungen? **UNKNOWN**.
+- Soll Local-only jemals zurück in CloudKit migriert werden können? **UNKNOWN**.
+- Wie sollen Dubletten über ISBN, Google Volume ID und Titel/Autor global behandelt werden? **UNKNOWN**.
+- Welche Konfliktauflösung wird bei Multi-Device-Edits fachlich erwartet? **UNKNOWN**.
+- Ist der Google-Books-Key in Google Cloud auf Bundle/API eingeschränkt? **UNKNOWN**.
+- Wurde der im ZIP enthaltene Key jemals committed oder extern geteilt? **UNKNOWN**.
+- Sind Produktions-Entitlements für Push/Live Activities final konfiguriert? **UNKNOWN**.
+- Welche Live-Activity-Daten werden exakt persistiert oder über App Group geteilt? **UNKNOWN**.
+- Gibt es eine App-Store-Privacy-Dokumentation jenseits von `PrivacyInfo.xcprivacy`? **UNKNOWN**.
+- Soll die Extension Zugriff auf SwiftData haben oder ausschließlich App-Group-State lesen? **UNKNOWN**.
+- Gibt es geplante Share-/Collaboration-Funktionen jenseits von CloudKit Private Database? **UNKNOWN**.
+- Sind Performance-Zielwerte definiert, zum Beispiel maximale Library-Größe oder maximale Sessions? **UNKNOWN**.
+- Welcher Testplan ist der kanonische Plan für lokale Entwicklung und CI? **UNKNOWN**.
 
----
+## First 3 Refactors I would do (P0)
 
-## First 3 Refactors I would do
-
-### P0.1: Persistence Bootstrap aus `AppContainerHostView.swift` splitten
-
-Ziel:
-
-- Sync-/Store-Policy isolieren und testbarer machen.
-- UI für Startfehler von SwiftData/CloudKit-Konfiguration trennen.
-
-Betroffene Dateien:
-
-- `Shelf Notes/AppContainerHostView.swift`
-- Neu: `Shelf Notes/Persistence/StorageMode.swift`
-- Neu: `Shelf Notes/Persistence/ModelContainerFactory.swift`
-- Neu: `Shelf Notes/Persistence/AppBootstrapper.swift`
-- Neu: `Shelf Notes/AppBootstrap/ModelContainerFailureView.swift`
-- Neu: `Shelf Notes/AppBootstrap/LocalOnlyBanner.swift`
-
-Risiko:
-
-- Niedrig bis mittel. Funktional sollte sich nichts ändern, aber Bootstrap ist App-kritisch. Manuelle Tests für CloudKit, Local-only und In-memory sind nötig.
-
-Erwarteter Nutzen:
-
-- Klarere Architektur für das wichtigste Risiko im Projekt: SwiftData/CloudKit-Start, Store-Separation und Migration.
-- Bessere Grundlage für Tests und künftige Store-Policy-Änderungen.
-
-### P0.2: Library Display Store einführen und Body-nahe O(n)-Arbeit entfernen
+### P0.1 Library Source Index kontrolliert invalidieren
 
 Ziel:
 
-- `LibraryView` soll im Body keine Dictionaries und Signaturen über alle Bücher bauen.
-- Search, Sort, Filter und Alpha-Sektionen sollen als gecachter Display-State bereitstehen.
+- Full-library Snapshot-/Index-Arbeit aus dem SwiftUI-Renderpfad weiter reduzieren.
+- `LibraryBooksIndex` nur neu bauen, wenn sich die relevante Source-Signature ändert.
 
 Betroffene Dateien:
 
 - `Shelf Notes/LibraryView/LibraryView.swift`
+- `Shelf Notes/LibraryView/LibraryBooksIndex.swift`
 - `Shelf Notes/LibraryView/LibraryDerivedState.swift`
 - `Shelf Notes/LibraryView/LibraryDerivedStateBuilder.swift`
-- `Shelf Notes/LibraryView/LibraryView+Grid.swift`
-- `Shelf Notes/LibraryView/LibraryView+Lists.swift`
-- Optional: `Shelf Notes/TagsView/TagsIndexStore.swift`
-- Neu: `Shelf Notes/LibraryView/LibraryDisplayStore.swift`
-- Neu: `Shelf Notes/LibraryView/LibraryBooksIndex.swift`
+- `Shelf Notes/LibraryView/LibraryDisplayStore.swift`
+- `Shelf NotesTests/LibraryBooksIndexTests.swift`
+- `Shelf NotesTests/LibraryDerivedStateBuilderTests.swift`
+- `Shelf NotesTests/LibraryDisplayStoreTests.swift`
 
 Risiko:
 
-- Mittel. Library ist Hauptscreen; Fehler betreffen Suche, Sortierung, Counts, A-Z-Index, Bulk Selection und Navigation.
+- Mittel.
+- Hauptgefahr ist stale UI, wenn die Signature ein Feld vergisst.
+- Such-, Sortier- und Filterverhalten muss exakt gleich bleiben.
 
-Erwarteter Nutzen:
+Erwarteter Effekt:
 
-- Weniger SwiftUI-Invalidationskosten.
-- Bessere Scroll- und Search-Performance bei großen Bibliotheken.
-- Klarer Testpunkt für Library-Derived-State.
+- Weniger MainActor-Arbeit bei großen Libraries.
+- Stabileres Scrollen und schnellere Filterwechsel.
+- Bessere Grundlage für spätere Fetch-Limits oder Pagination.
 
-### P0.3: Cover Pipeline vereinheitlichen und persistierende Side Effects aus generischen Cover-Views entfernen
+### P0.2 Challenge Refresh coalescen und Snapshot-Reuse einführen
 
 Ziel:
 
-- Ein gemeinsamer Weg für Decode, Cache, Remote-Fetch, URL-Resolution und synced thumbnail writes.
-- `BookCoverThumbnailView` nicht mehr synchron in `body` dekodieren lassen.
-- Persistierende Aktionen nur über explizite Services ausführen.
+- Mehrere Session-/Statusänderungen in kurzer Zeit zu einem Challenge-Refresh bündeln.
+- Wiederholte Fetch-/Compute-Runden nach Session-Saves vermeiden.
 
 Betroffene Dateien:
 
-- `Shelf Notes/CoverThumbnailer/CoverThumbnailer.swift`
-- `Shelf Notes/CoverThumbnailer/CoverThumbnailer+Backfill.swift`
-- `Shelf Notes/CoverThumbnailer/CoverThumbnailer+RemoteFetch.swift`
-- `Shelf Notes/CoverThumbnailer/CoverThumbnailer+Apply.swift`
-- `Shelf Notes/CoverImageLoader.swift`
-- `Shelf Notes/CachedAsyncImage.swift`
-- `Shelf Notes/LibraryView/LibraryRowCoverView.swift`
-- `Shelf Notes/ImageViews/SyncedThumbnailImage.swift`
-- Neu: `Shelf Notes/Cover/CoverRenderPolicy.swift`
-- Neu: `Shelf Notes/Cover/CoverImageRepository.swift`
-- Neu: `Shelf Notes/Cover/CoverBackfillService.swift`
+- `Shelf Notes/Challenges/ChallengeRefreshCoordinator.swift`
+- `Shelf Notes/Challenges/ChallengeEngine.swift`
+- `Shelf Notes/Challenges/ChallengeEngine+Snapshot.swift`
+- `Shelf Notes/Challenges/ChallengeEngine+Compute.swift`
+- `Shelf Notes/Challenges/ChallengesView.swift`
+- `Shelf Notes/BookDetail/Sessions/SessionsCard.swift`
+- `Shelf Notes/ReadingSessionChangeNotification.swift`
+- `Shelf NotesTests/ChallengeSummarySignatureTests.swift`
+- `Shelf NotesTests/ChallengeTemplateProgressTests.swift`
 
 Risiko:
 
-- Mittel. Cover betreffen Library, Detail, Import und CloudKit-Payload. Regressionen sind sichtbar, aber gut manuell testbar.
+- Mittel.
+- Zu aggressives Debouncing kann sichtbaren Challenge-Fortschritt verzögern.
+- Periodenwechsel und Completion müssen sofort korrekt bleiben.
 
-Erwarteter Nutzen:
+Erwarteter Effekt:
 
-- Weniger MainActor-Arbeit im Renderpfad.
-- Weniger doppelte Netzwerk-/Decode-Arbeit.
-- Kontrolliertere CloudKit-Saves durch Thumbnail-Refresh.
-- Sauberere Multi-Device-Story für Thumbnail vs Full-res Cover.
+- Weniger SwiftData-Fetches nach Session-Mutationen.
+- Weniger MainActor-Contention im Buchdetail.
+- Stabilere Challenge-Hints und weniger doppelte Refresh-Arbeit.
+
+### P0.3 Secrets-, Migration- und Testplan-Guardrails einziehen
+
+Ziel:
+
+- Projekt sicherer und wartbarer machen, bevor weitere Modell-/Sync-Änderungen kommen.
+- Secrets sauber trennen, Migrationen dokumentieren, Testplan eindeutig machen.
+
+Betroffene Dateien:
+
+- `Shelf Notes/config/base.xcconfig`
+- `Shelf Notes/config/secrets.xcconfig`
+- `Shelf Notes/.gitignore`
+- `Shelf Notes/Info.plist`
+- `Shelf Notes/Persistence/ModelContainerFactory.swift`
+- `Shelf Notes.xctestplan`
+- `ShelfNotesAppTests.xctestplan`
+- Neue Datei: `MIGRATIONS.md`
+- Neue Datei: `Shelf Notes/config/secrets.template.xcconfig`
+
+Risiko:
+
+- Niedrig bis mittel.
+- Key-Rotation und lokale Dev-Setups müssen sauber kommuniziert werden.
+- Testplan-Änderungen können Xcode-Scheme-Verhalten berühren.
+
+Erwarteter Effekt:
+
+- Weniger Sicherheitsrisiko durch Klartext-Keys.
+- Schnellere Onboarding- und Debug-Zeit.
+- Geringeres Risiko bei zukünftigen SwiftData/CloudKit-Modelländerungen.

@@ -1,400 +1,383 @@
 # PROJECT_CONTEXT.md
 
+Stand: Analyse des Projekt-ZIPs `sn_context.zip` vom 2026-06-06. Der aktuelle Code ist die Quelle der Wahrheit. Es wurde keine Build- oder Testausführung durchgeführt.
+
 ## TL;DR
 
-Shelf Notes ist eine SwiftUI-App für iPhone und iPad zum Verwalten einer Buchbibliothek mit Lesestatus, Tags, Listen, Notizen, Sessions, Zielen, Challenges, Statistiken, CSV-Import/Export, Google-Books-Import, Cover-Handling und Live-Activity-Lesetimer. Die Persistenz läuft über SwiftData mit CloudKit-Sync und expliziten lokalen Fallback-Stores. Das Projekt enthält außerdem ein WidgetKit/ActivityKit-Extension-Target. Der gescannte Xcode-Build-Stand setzt `IPHONEOS_DEPLOYMENT_TARGET = 26.0` in `Shelf Notes.xcodeproj/project.pbxproj`; ob dieses sehr hohe Minimum absichtlich ist, ist **UNKNOWN**.
-
-Scan-Hinweis: Diese Datei basiert auf statischer Analyse des ZIPs. Es wurde kein `xcodebuild` ausgeführt.
-
----
+Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlichen Buchbibliothek mit Lesestatus, Lesesessions, Zielen, Challenges, Statistiken, Tags, Listen/Sammlungen, CSV-Import/-Export, Google-Books-Import, Cover-Caching und Live-Activity-Unterstützung. Persistenz läuft über SwiftData; die primäre Store-Konfiguration nutzt CloudKit über `ModelConfiguration(cloudKitDatabase: .automatic)`. Das Deployment Target ist laut `Shelf Notes.xcodeproj/project.pbxproj` iOS 26.0.
 
 ## Key Concepts / Domänenbegriffe
 
-- **Book**: Zentrale Entität in `Shelf Notes/BookModel/Book.swift`. Speichert Titel, Autor, Status, Tags, Notizen, Metadaten, Cover-Daten, Bewertungen und Beziehungen.
-- **ReadingStatus**: Stabil persistierter Status in `Shelf Notes/BookModel/Book+Status.swift` mit Raw Values `toRead`, `reading`, `finished`; Legacy-deutsche Strings werden gemappt.
-- **ReadingSession**: Einzelne Lesesession in `Shelf Notes/ReadingSession.swift`, optional einem Book zugeordnet, mit Dauer, Seiten und Notiz.
-- **ReadingGoal**: Jahresziel in `Shelf Notes/ReadingGoal.swift`.
-- **BookCollection**: Manuelle Liste/Sammlung in `Shelf Notes/BookCollection.swift`, many-to-many mit Book.
-- **ChallengeRecord**: Persistierte Wochen-/Monats-Challenge in `Shelf Notes/Challenges/ChallengeModels.swift`; Fortschritt wird aus Sessions und Büchern berechnet.
-- **TagsIndex**: Abgeleiteter Index für Tags, gebaut in `Shelf Notes/TagsView/TagsIndexBuilder.swift`, gehalten in `Shelf Notes/TagsView/TagsIndexStore.swift`.
-- **Synced Thumbnail**: Kleines JPEG in `Book.userCoverData`, mit `@Attribute(.externalStorage)` gespeichert und über CloudKit synchronisiert.
-- **Full-res User Cover**: Lokale Datei in `UserCoverStore`; nur Dateiname wird am Book gehalten, die große Datei selbst ist gerätespezifisch.
-- **CloudKit Store vs. Local-only Store**: Getrennte Stores `ShelfNotesCloud.store` und `ShelfNotesLocal.store`, erzeugt in `Shelf Notes/AppContainerHostView.swift`.
-- **Live Activity Timer**: App-seitiger Timer in `Shelf Notes/Shared/LiveActivity/ReadingTimerManager.swift`; Extension-Kommandos in `ShelfNotesLiveActivity/ReadingSessionLiveActivityIntents.swift`.
-
----
+- `Book`: Zentrale Entität für Bücher, Metadaten, Lesestatus, Tags, Notizen, Cover-Daten, Bewertungen und Beziehungen zu Sessions/Sammlungen. Pfad: `Shelf Notes/BookModel/Book.swift`.
+- `ReadingStatus`: Fachlicher Lesestatus mit stabilen Raw Values `toRead`, `reading`, `finished`. Legacy-Werte auf Deutsch werden in `Shelf Notes/BookModel/Book+Status.swift` gemappt.
+- `ReadingSession`: Einzelne Leseeinheit mit Start, Ende, Dauer, Seiten und optionaler Notiz. Pfad: `Shelf Notes/ReadingSession.swift`.
+- `ReadingGoal`: Jahresziel für gelesene Bücher. Pfad: `Shelf Notes/ReadingGoal.swift`.
+- `BookCollection`: Nutzerdefinierte Liste/Sammlung von Büchern. Pfad: `Shelf Notes/BookCollection.swift`.
+- `ChallengeRecord`: Persistierte Challenge für Wochen-/Monatszeiträume mit Metrik, Zielwert, Completion und Reroll-Status. Pfad: `Shelf Notes/Challenges/ChallengeModels.swift`.
+- Tags: Freie String-Tags am Buch, normalisiert über `TagNormalization` und verarbeitet in `Shelf Notes/TagsView/*`.
+- Synced Thumbnail: Kleines Cover-Bild in SwiftData, gespeichert als `Book.userCoverData` mit `@Attribute(.externalStorage)`. Pfad: `Shelf Notes/BookModel/Book.swift`.
+- Full-Res User Cover: Lokale Originaldatei im App-Group-Container; nur der Dateiname wird am Buch gespeichert. Pfad: `Shelf Notes/ImageCaching/UserCoverStore.swift`.
+- `StorageMode`: Startmodus für CloudKit, lokalen Store oder In-Memory-Store. Pfad: `Shelf Notes/Persistence/StorageMode.swift`.
+- Local-only Mode: Separater lokaler SwiftData-Store ohne CloudKit, sichtbar über Banner in `Shelf Notes/AppContainerHostView.swift`.
+- `saveWithDiagnostics`: Wrapper um `ModelContext.save()` mit lokalen Diagnose-Breadcrumbs. Pfad: `Shelf Notes/ModelContext+Diagnostics.swift`.
+- Pro/StoreKit: `ProManager` und `Shelf Notes/unlimited_collections.storekit` steuern Pro-Funktionalität, unter anderem unbegrenzte Sammlungen.
 
 ## Architecture Map
 
-### Entry / Bootstrap
+### Start und Container
 
 - `Shelf Notes/Shelf_NotesApp.swift`
-  - `@main` Entry Point.
-  - `WindowGroup` startet `AppContainerHostView()`.
+  - `@main` App-Einstieg.
+  - Rendert `AppContainerHostView()`.
 - `Shelf Notes/AppContainerHostView.swift`
-  - Initialisiert `ModelContainer` robust ohne `fatalError`.
-  - Modi: CloudKit, Local-only, In-memory.
-  - Hängt `.modelContainer(container)` an `RootView()`.
-  - Startet nach Container-Ready: `CollectionMembershipRepair.repairIfNeeded` und `ChallengeRefreshCoordinator.prepareCurrentChallenges`.
-- `Shelf Notes/RootView.swift`
-  - Haupt-TabView, globale Appearance, EnvironmentObjects, CSV-Erstimport, Status-Migration, Cover-Backfill und Timer-Completion-Sheet.
+  - Hält `AppBootstrapper` als `@StateObject`.
+  - Zeigt Loading, Ready oder Failure UI.
+  - Injiziert `ModelContainer` über `.modelContainer(container)` in `RootView()`.
+  - Startet nach Container-Ready Reparatur- und Challenge-Vorbereitung.
+- `Shelf Notes/AppBootstrap/AppBootstrapper.swift`
+  - Baut den SwiftData-Container.
+  - Versucht zuerst `.cloudKit`.
+  - Bietet Retry, Local-only und In-Memory-Fallback.
+- `Shelf Notes/Persistence/ModelContainerFactory.swift`
+  - Definiert das SwiftData-Schema und die Store-Konfigurationen.
 
-### Persistenz / Sync Layer
+### UI-Schicht
 
-- SwiftData-Modelle:
-  - `Shelf Notes/BookModel/Book.swift`
-  - `Shelf Notes/ReadingSession.swift`
-  - `Shelf Notes/ReadingGoal.swift`
-  - `Shelf Notes/BookCollection.swift`
-  - `Shelf Notes/Challenges/ChallengeModels.swift`
-- Container/Store-Policy:
-  - `Shelf Notes/AppContainerHostView.swift`
-- Save-Diagnostik:
-  - `Shelf Notes/ModelContext+Diagnostics.swift`
-  - `Shelf Notes/SyncDiagnostics.swift`
-  - `Shelf Notes/SyncDiagnosticsView.swift`
-- Datenreparatur/Migration:
-  - `Shelf Notes/CollectionMembershipRepair.swift`
-  - `Shelf Notes/ReadingStatusMigrator.swift`
+- `RootView` ist der zentrale Tab-Host. Pfad: `Shelf Notes/RootView.swift`.
+- Feature-Screens leben überwiegend in eigenen Ordnern:
+  - Bibliothek: `Shelf Notes/LibraryView/*`
+  - Fortschritt/Ziele/Statistiken/Timeline/Challenges: `Shelf Notes/ProgressHub/*`, `Shelf Notes/Goals/*`, `Shelf Notes/Stats/*`, `Shelf Notes/Timeline/*`, `Shelf Notes/Challenges/*`
+  - Listen/Sammlungen: `Shelf Notes/Collections/*`
+  - Tags: `Shelf Notes/TagsView/*`
+  - Buchdetails: `Shelf Notes/BookDetail/*`
+  - Import: `Shelf Notes/AddBook/*`, `Shelf Notes/BookImport/*`, `Shelf Notes/CSVImportExport/*`
+  - Einstellungen: `Shelf Notes/Settings/*`
 
-### Feature Layer
+### Persistenz und Sync
 
-- Library: `Shelf Notes/LibraryView/*`, `Shelf Notes/BookRowView.swift`, `Shelf Notes/LibraryView/LibraryRowCoverView.swift`
-- Add Book / Import: `Shelf Notes/AddBook/*`, `Shelf Notes/BookImport/*`, `Shelf Notes/GoogleBooksClient.swift`, `Shelf Notes/GoogleVolumeBookMapper.swift`
-- Book Detail / Sessions: `Shelf Notes/BookDetail/*`, `Shelf Notes/TimerSessionCompletionSheet.swift`
-- Collections: `Shelf Notes/CollectionsView.swift`, `Shelf Notes/CollectionDetailView.swift`, `Shelf Notes/Collections/*`
-- Tags: `Shelf Notes/TagsView/*`, `Shelf Notes/TagNormalization.swift`, `Shelf Notes/TagChip.swift`
-- Progress: `Shelf Notes/ProgressHub/*`, `Shelf Notes/Goals/*`, `Shelf Notes/Stats/*`, `Shelf Notes/Timeline/*`, `Shelf Notes/Challenges/*`
-- Settings: `Shelf Notes/Settings/*`, `Shelf Notes/SyncDiagnosticsView.swift`
-- CSV: `Shelf Notes/CSVImportExport/*`
-- Cover/Image: `Shelf Notes/CoverThumbnailer/*`, `Shelf Notes/ImageCaching/*`, `Shelf Notes/ImageViews/*`, `Shelf Notes/CoverImageLoader.swift`, `Shelf Notes/CachedAsyncImage.swift`
-- Monetization: `Shelf Notes/ProManager.swift`, `Shelf Notes/ProPaywallView.swift`
+- SwiftData-Modelle liegen teils im Root und teils unter `BookModel`/`Challenges`.
+- CloudKit wird über SwiftData `.automatic` aktiviert. Pfad: `Shelf Notes/Persistence/ModelContainerFactory.swift`.
+- CloudKit-Voraussetzungen werden im Datenmodell sichtbar berücksichtigt:
+  - keine `@Attribute(.unique)` auf IDs,
+  - optionale Beziehungen,
+  - Default-Werte für nicht-optionale Felder.
+- Diagnostik liegt in `Shelf Notes/SyncDiagnostics.swift`, `Shelf Notes/SyncDiagnosticsView.swift` und `Shelf Notes/ModelContext+Diagnostics.swift`.
 
-### Shared / Extension
+### Derived-State- und Builder-Schicht
 
-- Shared app group/timer types: `Shelf Notes/Shared/LiveActivity/*`
-- Live Activity extension:
-  - `ShelfNotesLiveActivity/ShelfNotesLiveActivityBundle.swift`
-  - `ShelfNotesLiveActivity/ShelfNotesLiveActivityLiveActivity.swift`
-  - `ShelfNotesLiveActivity/ReadingSessionLiveActivityIntents.swift`
-  - `ShelfNotesLiveActivity/LiveActivityCoverLoader.swift`
+- Viele schwere Berechnungen sind in testbare Builder ausgelagert.
+- Beispiele:
+  - Library: `LibraryBooksIndex`, `LibraryDerivedStateBuilder`, `LibraryDisplayStore`
+  - Stats: `StatisticsSourceStore`, `StatisticsComputePipeline`, `StatisticsSnapshotBuilder`
+  - Tags: `TagsIndexBuilder`, `TagsDomainIndex`, `TagSuggestionEngine`, `TagHygieneBuilder`
+  - Challenges: `ChallengeEngine`, `ChallengeEngine+Compute`, `ChallengeEngine+Snapshot`
+  - Collections: `CollectionsDashboardBuilder`, `CollectionsSmartActionBuilder`
 
-### Dependency Direction
+### Cover-/Image-Pipeline
 
-- Views lesen SwiftData über `@Query` oder Environment-`modelContext`.
-- Views delegieren komplexe Berechnungen an Builder, Stores oder ViewModels.
-- Pure Builder erzeugen Value-Modelle für Library, Tags, Stats, Challenges, Collections und Goals.
-- Services kapseln Netzwerk, Cover-Dateien, Caches, CloudKit-Diagnostik und In-App-Purchase.
-- Die Live-Activity-Extension kommuniziert nicht über SwiftData, sondern über App-Group-UserDefaults und ActivityKit.
+- Remote-/Disk-/Memory-Loading: `Shelf Notes/CoverImageLoader.swift`, `Shelf Notes/CachedAsyncImage.swift`, `Shelf Notes/ImageCaching/*`.
+- Disk Cache: `Shelf Notes/ImageCaching/ImageDiskCache.swift` mit Default-Limit 120 MB.
+- Request-Deduping: `Shelf Notes/ImageCaching/CoverImageRequestDeduper.swift`.
+- Temporärer Failure Cache: `Shelf Notes/ImageCaching/RemoteCoverFailureCache.swift`.
+- Thumbnail-Erzeugung und Backfill: `Shelf Notes/CoverThumbnailer/CoverThumbnailer.swift`.
+- Scroll-schonende Anzeige: `Shelf Notes/ImageViews/LibraryRowCoverView.swift` und `Shelf Notes/ImageViews/SyncedThumbnailImage.swift`.
 
----
+### Live Activity
+
+- Shared Live-Activity-Modelle: `Shelf Notes/Shared/LiveActivity/*`.
+- App Extension: `ShelfNotesLiveActivity/*`.
+- App-Group-Entitlement ist in App und Extension vorhanden.
 
 ## Folder Map
 
-| Pfad | Zweck |
-|---|---|
-| `Shelf Notes/` | Haupt-App-Target mit Root, Modellen, Services und Feature-Einstiegspunkten. |
-| `Shelf Notes/BookModel/` | Book-Extensions für Status, Collections, Ratings, Import und Cover-URLs. |
-| `Shelf Notes/LibraryView/` | Bibliothek, Filter, Sortierung, Grid/List, Header, Bulk Actions und Derived State. |
-| `Shelf Notes/BookDetail/` | Detailansicht, Cards, Bindings, Notes, Ratings, Sessions und Cover-Picker. |
-| `Shelf Notes/AddBook/` | Manuelle Anlage, Tag-Drafts, Cards und AddBook-ViewModel. |
-| `Shelf Notes/BookImport/` | Google-Books-Suche, Filter, Pagination, ViewModel-Splits, Import-Mapping. |
-| `Shelf Notes/Collections/` | Collection-Dashboard, Detail-Modelle, Cards, Smart Actions, Membership-Mutation. |
-| `Shelf Notes/TagsView/` | Tag-Dashboard, Index, Hygiene, Suggestions, Detail, Mutation-Sheet. |
-| `Shelf Notes/Challenges/` | Challenge-Modelle, Engine, Templates, Progress, Summary, Refresh-Koordinator. |
-| `Shelf Notes/Stats/` | Statistik-Snapshots, Caches, Heatmap, Charts, SourceStore. |
-| `Shelf Notes/Goals/` | Jahresziele, Metriken, Draft-Policy. |
-| `Shelf Notes/Timeline/` | Lese-Timeline und Jahressektionen. |
-| `Shelf Notes/ProgressHub/` | Fortschritt-Startscreen mit Links zu Stats, Goals, Timeline und Challenges. |
-| `Shelf Notes/CoverThumbnailer/` | Thumbnail-Generierung, Backfill, Remote-Fetch, Apply-Flows, ImageIO. |
-| `Shelf Notes/ImageCaching/` | Memory-, Disk- und Synced-Thumbnail-Caches. |
-| `Shelf Notes/ImageViews/` | Wiederverwendbare Cover-Image-Views und Candidate-Sequenzen. |
-| `Shelf Notes/CSVImportExport/` | CSV-Codec, Export, Import, Duplicate Index, Import/Export-ViewModel. |
-| `Shelf Notes/Settings/` | Settings, Appearance, Library-Appearance, Sync-Diagnose-Verlinkung. |
-| `Shelf Notes/Shared/LiveActivity/` | App-Group-Keys, Activity-Attributes, Timer-Manager. |
-| `Shelf Notes/Persistence/` | Aktuell nur Save-Debouncer; Container-Fabrik liegt noch in `AppContainerHostView.swift`. |
-| `Shelf NotesTests/` | Viele Unit-Tests für Builder, Mutations, CSV, Stats, Tags, Library, Challenges und Goals. |
-| `Shelf NotesUITests/` | Basis-UI- und Launch-Tests. |
-| `ShelfNotesLiveActivity/` | WidgetKit/ActivityKit-Extension. |
-| `Shelf Notes.xcodeproj/` | Xcode-Projekt mit synchronisierten File-System-Gruppen. |
-
----
+- `Shelf Notes/BookModel`: Book-Modell und fachliche Extensions für Status, Ratings, Fortschritt, Collections, Import und Cover-URLs.
+- `Shelf Notes/Persistence`: SwiftData-Container-Fabrik und Storage-Mode-Konzept.
+- `Shelf Notes/AppBootstrap`: Startlogik für Container-Aufbau und Fallbacks.
+- `Shelf Notes/AppLifecycle`: Startup-Maintenance, zum Beispiel Cover-Backfill und einmalige Jobs.
+- `Shelf Notes/LibraryView`: Bibliotheksansicht, Filter, Sortierung, Grid/List, Header, Derived State.
+- `Shelf Notes/BookDetail`: Detailansicht, Karten, Bindings, Sessions, Notizen und Timer-Integration.
+- `Shelf Notes/BookDetail/Sessions`: Session-UI, Session-Formulare, Timer-Manager, Live-Activity-Brücke.
+- `Shelf Notes/AddBook`: Klassischer Buch-Hinzufügen-Flow mit Google-Books-Suche und Formularlogik.
+- `Shelf Notes/BookImport`: Moderner Import-Flow mit Query Builder, Filter Engine, Result Views und Seed Queries.
+- `Shelf Notes/CSVImportExport`: CSV-Import/-Export und Import-Ausführung.
+- `Shelf Notes/ImageCaching`: Memory-/Disk-Caches, Cover-Deduper, Failure Cache und User-Cover-Store.
+- `Shelf Notes/ImageViews`: Wiederverwendbare Cover-/Thumbnail-Views.
+- `Shelf Notes/CoverThumbnailer`: Thumbnail-Erzeugung, Remote-Cover-Anwendung und Backfill.
+- `Shelf Notes/ProgressHub`: Fortschritts-Hub und aggregierte Fortschrittsmetriken.
+- `Shelf Notes/Goals`: Jahresziel-UI und Zielmetriken.
+- `Shelf Notes/Stats`: Statistikquelle, Snapshot Builder, Compute Pipeline, Heatmaps und Präsentationsmodelle.
+- `Shelf Notes/Timeline`: Timeline-UI und Builder.
+- `Shelf Notes/Challenges`: Challenge-Modelle, Engine, Templates, Rewards, Dashboard, Hints und Refresh-Koordination.
+- `Shelf Notes/Collections`: Collections Hub, Detail, Mutationen, Dashboard und Smart Actions.
+- `Shelf Notes/TagsView`: Tags Dashboard, Detail, Index, Suggestions, Hygiene Insights und Cleanup.
+- `Shelf Notes/Settings`: Einstellungen, Sync-Diagnose, Pro-Screen, Appearance und Library Appearance.
+- `Shelf Notes/Analytics`: Leseanalyse-Indizes und Hilfsmodelle.
+- `Shelf Notes/Shared/LiveActivity`: Gemeinsame Typen zwischen App und Live-Activity-Extension.
+- `ShelfNotesLiveActivity`: Live-Activity-Extension Target.
+- `Shelf NotesTests`: Unit Tests für Builder, Mutationen, Caches, Tags, Library, Stats, Challenges und Storage.
+- `Shelf NotesUITests`: UI-Test-Stubs.
 
 ## Data Model Map
 
-### `Book` in `Shelf Notes/BookModel/Book.swift`
+### `Book`
 
-- Identity: `id: UUID`; bewusst ohne `@Attribute(.unique)` wegen CloudKit/SwiftData.
-- Core: `title`, `author`, `createdAt`, `statusRawValue`, `tags`, `notes`.
-- Reading period: `readFrom`, `readTo`.
-- Relationships:
-  - `collections: [BookCollection]?`
-  - `readingSessions: [ReadingSession]?` mit Cascade Delete und inverse `ReadingSession.book`.
-- Import metadata: `googleVolumeID`, `isbn13`, `thumbnailURL`, `publisher`, `publishedDate`, `pageCount`, `language`, `categories`, `bookDescription`, `subtitle`, `previewLink`, `infoLink`, `canonicalVolumeLink`.
-- Ratings and categories: `averageRating`, `ratingsCount`, `mainCategory`, `userRatingPlot`, `userRatingCharacters`, `userRatingWritingStyle`, `userRatingAtmosphere`, `userRatingGenreFit`, `userRatingPresentation`.
-- Access/sale metadata: `viewability`, `isPublicDomain`, `isEmbeddable`, `isEpubAvailable`, `isPdfAvailable`, `epubAcsTokenLink`, `pdfAcsTokenLink`, `saleability`, `isEbook`.
-- Cover: `coverURLCandidates`, `userCoverData`, `userCoverFileName`.
+Pfad: `Shelf Notes/BookModel/Book.swift`
 
-### `BookCollection` in `Shelf Notes/BookCollection.swift`
+Wichtige Felder:
 
-- Fields: `id`, `name`, `createdAt`, `updatedAt`, `books: [Book]?`.
-- Relationship: many-to-many zu `Book.collections`.
-- Mutations sollen über `Shelf Notes/Collections/CollectionMembershipMutation.swift` laufen.
-- `booksSafe` behandelt `nil` als leeres Array.
+- Identität: `id`, `createdAt`
+- Kernmetadaten: `title`, `author`, `subtitle`, `publisher`, `publishedDate`, `language`, `categories`, `mainCategory`, `bookDescription`
+- Status: `statusRawValue`, fachlich gekapselt über `readingStatus`
+- Nutzerinhalt: `tags`, `notes`, `readFrom`, `readTo`
+- Import-IDs: `googleVolumeID`, `isbn13`
+- Cover: `thumbnailURL`, `coverURLCandidates`, `userCoverData`, `userCoverFileName`
+- Google-Books-Links: `previewLink`, `infoLink`, `canonicalVolumeLink`
+- Google-Books-Verfügbarkeit: `viewability`, `isPublicDomain`, `isEmbeddable`, `isEpubAvailable`, `isPdfAvailable`, `epubAcsTokenLink`, `pdfAcsTokenLink`, `saleability`, `isEbook`
+- Ratings: sechs Integer-Felder für Plot, Charaktere, Schreibstil, Atmosphäre, Genre Fit und Präsentation
 
-### `ReadingSession` in `Shelf Notes/ReadingSession.swift`
+Beziehungen:
 
-- Fields: `id`, `book: Book?`, `startedAt`, `endedAt`, `durationSeconds`, `pagesRead`, `note`, `createdAt`.
-- `durationSeconds` ist ein gecachter Wert und wird über Initializer bzw. `recomputeDuration()` gepflegt.
-- `pagesReadNormalized` gibt nur positive Seitenwerte zurück.
+- `collections: [BookCollection]?`
+- `readingSessions: [ReadingSession]?` mit Cascade Delete
 
-### `ReadingGoal` in `Shelf Notes/ReadingGoal.swift`
+### `ReadingSession`
 
-- Fields: `year`, `targetCount`, `updatedAt`.
-- Keine Unique-Constraint; Non-Optional-Felder haben Defaults.
+Pfad: `Shelf Notes/ReadingSession.swift`
 
-### `ChallengeRecord` in `Shelf Notes/Challenges/ChallengeModels.swift`
+- `id`
+- `book: Book?`
+- `startedAt`, `endedAt`, `durationSeconds`
+- `pagesRead`
+- `note`
+- `createdAt`
 
-- Fields: `id`, `periodStart`, `periodEnd`, `kindRawValue`, `metricRawValue`, `title`, `detail`, `targetValue`, `createdAt`, `completedAt`, `acknowledgedAt`, `rerollsUsed`, `rerolledAt`.
-- Metrics: reading minutes, reading days, sessions, pages read, finished books, short sessions, progressed books, session notes, rated finished books, noted finished books.
-- Progress wird berechnet, nicht direkt als Wert gespeichert.
+### `ReadingGoal`
 
----
+Pfad: `Shelf Notes/ReadingGoal.swift`
+
+- `id`
+- `year`
+- `targetCount`
+- `updatedAt`
+
+### `BookCollection`
+
+Pfad: `Shelf Notes/BookCollection.swift`
+
+- `id`
+- `name`
+- `createdAt`, `updatedAt`
+- `books: [Book]?`
+- Helper: `booksSafe`, Add/Remove/Contains
+
+### `ChallengeRecord`
+
+Pfad: `Shelf Notes/Challenges/ChallengeModels.swift`
+
+- `id`
+- `periodStart`, `periodEnd`
+- `kindRawValue`, `metricRawValue`
+- `title`, `detail`
+- `targetValue`
+- `createdAt`, `completedAt`, `acknowledgedAt`
+- `rerollsUsed`, `rerolledAt`
+
+### Model-Schema
+
+Pfad: `Shelf Notes/Persistence/ModelContainerFactory.swift`
+
+Schema enthält:
+
+- `Book`
+- `ReadingSession`
+- `ReadingGoal`
+- `BookCollection`
+- `ChallengeRecord`
 
 ## Sync / Storage
 
-### SwiftData / CloudKit
-
-- `ModelContainerFactory.schema` in `Shelf Notes/AppContainerHostView.swift` enthält `Book`, `ReadingSession`, `ReadingGoal`, `BookCollection`, `ChallengeRecord`.
-- CloudKit-Modus nutzt `ModelConfiguration` mit `cloudKitDatabase: .automatic` und Store-Name `ShelfNotesCloud`.
-- Local-only-Modus nutzt `cloudKitDatabase: .none` und Store-Name `ShelfNotesLocal`.
-- In-memory-Modus nutzt `isStoredInMemoryOnly: true` und `cloudKitDatabase: .none`.
-- Store-Dateien liegen unter Application Support: `ShelfNotes/SwiftData/<StoreName>.store`.
-
-### CloudKit-Modellregeln im Code
-
-- Keine `@Attribute(.unique)` bei Modellen.
-- Beziehungen sind optional, zum Beispiel `Book.collections` und `BookCollection.books`.
-- Nicht-optionale persistierte Felder haben Defaults.
-- Lesen alter Statuswerte wird in `ReadingStatus.fromPersisted` abgefangen; eine einmalige Migration schreibt stabile Raw Values.
-
-### Caches / Cover Storage
-
-- `Book.userCoverData` ist das synchronisierte Thumbnail und nutzt `@Attribute(.externalStorage)`.
-- `UserCoverStore` speichert Full-res User-Cover lokal im Application-Support-Verzeichnis.
-- `ImageDiskCache` speichert Remote-Cover lokal in `Caches/cover-cache`; keine Größen- oder TTL-Grenze gefunden.
-- `ImageMemoryCache` und `SyncedThumbnailMemoryCache` reduzieren Dekodier- und Netzwerkdruck.
-
-### Migrations / Repairs
-
-- `Shelf Notes/ReadingStatusMigrator.swift` migriert Legacy-Statusstrings einmalig.
-- `Shelf Notes/CollectionMembershipRepair.swift` dedupliziert und symmetriert Book-Collection-Beziehungen einmalig pro Store-Scope.
-- Challenge-Records werden beim App-Start und bei relevanten Aktionen über `ChallengeRefreshCoordinator` vorbereitet oder aktualisiert.
-
-### Offline-Verhalten
-
-- CloudKit-Sync wird über SwiftData/CloudKit implizit gehandhabt.
-- `SyncDiagnostics` beobachtet Netzwerk, iCloud-Account und lokale Saves, aber nicht den CloudKit-Upload-Fortschritt.
-- Local-only ist ein separater Datenstand und wird nicht automatisch in den CloudKit-Store gemerged.
-- Exaktes Konfliktverhalten bei Multi-Device-Änderungen ist **UNKNOWN**.
-
----
+- Primärer Store: `ShelfNotesCloud.store` unter Application Support. Pfad: `Shelf Notes/Persistence/ModelContainerFactory.swift`.
+- Local-only Store: `ShelfNotesLocal.store` unter Application Support. Pfad: `Shelf Notes/Persistence/ModelContainerFactory.swift`.
+- In-Memory-Store: Emergency/Fallback-Modus für Startfehler. Pfad: `Shelf Notes/Persistence/ModelContainerFactory.swift`.
+- CloudKit: App-Konfiguration nutzt `cloudKitDatabase: .automatic`.
+- Entitlements:
+  - App: `Shelf Notes/Shelf_Notes.entitlements`
+  - Extension: `ShelfNotesLiveActivityExtension.entitlements`
+  - Container: `iCloud.de.marcfechner.Shelf-Notes`
+  - App Group: `group.de.marcfechner.Shelf-Notes`
+- Offline-Verhalten:
+  - Normale CloudKit-Konfiguration speichert lokal und synchronisiert über SwiftData/CloudKit im Hintergrund.
+  - Detaillierter CloudKit-Fortschritt ist im Code als nicht verfügbar dokumentiert. Pfad: `Shelf Notes/SyncDiagnostics.swift`.
+  - Local-only Mode verwendet absichtlich einen separaten lokalen Store und synchronisiert nicht.
+- Caches:
+  - Cover Disk Cache: Caches-Verzeichnis `cover-cache`, Default 120 MB. Pfad: `Shelf Notes/ImageCaching/ImageDiskCache.swift`.
+  - Cover Memory Cache: `Shelf Notes/ImageCaching/ImageMemoryCache.swift`.
+  - Synced Thumbnail Memory Cache: `Shelf Notes/ImageCaching/SyncedThumbnailMemoryCache.swift`.
+  - Remote Failure Cache: `Shelf Notes/ImageCaching/RemoteCoverFailureCache.swift`.
+  - Search History: `Shelf Notes/SearchHistoryStore.swift`.
+- Migration:
+  - Status-Legacy-Werte werden über `Shelf Notes/BookModel/Book+Status.swift` und `Shelf Notes/Persistence/ReadingStatusMigrator.swift` behandelt.
+  - Eine explizite SwiftData-Versionierung oder umfassende Migration Strategy wurde im Scan nicht als zentrale Policy gefunden: **UNKNOWN**.
 
 ## UI Map
 
 ### Root Navigation
 
-- `RootView` nutzt `TabView(selection:)` mit `@SceneStorage("root_selected_tab_v1")`.
-- Tabs:
-  - `LibraryView()` als Bibliothek.
-  - `ProgressHubView()` als Fortschritt.
-  - `CollectionsView()` als Listen.
-  - `TagsView()` als Tags.
-  - `SettingsView()` als Einstellungen.
+Pfad: `Shelf Notes/RootView.swift`
 
-### Library Flow
+`TabView` mit fünf Tabs:
 
-- `Shelf Notes/LibraryView/LibraryView.swift`
-  - `NavigationStack`.
-  - `@Query(sort: \Book.createdAt, order: .reverse)`.
-  - Suche, Statusfilter, Tagfilter, Sortierung, List/Grid, A-Z-Index, Bulk Actions.
-  - Sheets: `AddBookView`, `BulkAddToCollectionSheet`.
-  - Navigation zu `BookDetailView` über List/Grid/Alpha-Index-Dateien.
+1. Bibliothek: `LibraryView()`
+2. Fortschritt: `ProgressHubView()`
+3. Listen: `CollectionsView()`
+4. Tags: `TagsView()`
+5. Einstellungen: `SettingsView()`
 
-### Add / Import Flow
+Root-Level Environment Objects:
 
-- `Shelf Notes/AddBook/AddBookView.swift`
-  - `NavigationStack` für manuelle Anlage und Import-Aktionen.
-  - Sheets über ViewModel-State: Google-Books-Import, Barcode-Scanner, Inspiration-Seed-Picker, Manual-Add-Sheet.
-- `Shelf Notes/BookImport/BookImportView/BookImportView.swift`
-  - Google-Books-Suche, Filter, Pagination, Quick-Add, Undo.
+- `ProManager`
+- `ReadingTimerManager`
+- `TagsIndexStore`
 
-### Detail / Sessions Flow
+Root-Level AppStorage/SceneStorage:
 
-- `Shelf Notes/BookDetail/BookDetailView.swift`
-  - Detailscreen mit Cards, Notizen, Collections, Rating, Sessions und Cover-Auswahl.
-  - Timer-Integration über `ReadingTimerManager`.
-- `Shelf Notes/BookDetail/Sessions/SessionsCard.swift`
-  - Session-Liste und Quick-Log/Edit-Flows.
-- `Shelf Notes/TimerSessionCompletionSheet.swift`
-  - Wird vom Root präsentiert, wenn eine Live-/Timer-Session abgeschlossen werden muss.
+- Aktiver Tab via `@SceneStorage("root_selected_tab_v1")`
+- Appearance- und Library-Settings via `@AppStorage`
+- CSV-First-Run-State via `@AppStorage`
 
-### Progress Flow
+### Wichtige Flows und Sheets
 
-- `Shelf Notes/ProgressHub/ProgressHubView.swift`
-  - `NavigationStack`.
-  - Links zu `StatisticsView`, `GoalsView`, `ReadingTimelineView`, `ChallengesView`.
-  - Nutzt `@Query` für Books, ChallengeRecords und ReadingGoals.
-
-### Collections Flow
-
-- `Shelf Notes/CollectionsView.swift`
-  - `NavigationStack`.
-  - Collection-Dashboard, Suche/Explorer, New-Collection-Sheet, Paywall für Pro-Limit.
-  - Navigation zu `CollectionDetailView`.
-
-### Tags Flow
-
-- `Shelf Notes/TagsView/TagsView.swift`
-  - `NavigationStack`, Suche, Tag-Dashboard, Hygiene und Suggestions.
-  - Navigation zu `TagDetailView` und gefilterter Library.
-  - Mutationen über `TagLibraryMutation` und `TagMutationEditorSheet`.
-
-### Settings Flow
-
-- `Shelf Notes/Settings/SettingsView.swift`
-  - `NavigationStack(path:)` mit persistiertem Pfad.
-  - Appearance, Buchsuche, CSV Import/Export, Sync-Diagnose, Auto-Stop, Cover-Cache, Pro, Version/Build.
-  - Sheet: `ProPaywallView`.
-
----
+- CSV-Import beim ersten Start ohne Bücher: `CSVImportExportView`
+- Timer-Abschluss: `TimerSessionCompletionSheet`
+- Buch hinzufügen/importieren: `AddBook`, `BookImport`
+- Buchdetail: `BookDetailView` mit Status, Metadaten, Tags, Ratings, Sessions, Notizen und Collections
+- Collections: Hub, Detail, New Collection, Bulk Add
+- Tags: Dashboard, Detail, Suggestions, Hygiene Insights, Cleanup Confirmation
+- Challenges: Dashboard, Reward Sheet, Reroll, Session Action Hints
+- Settings: Appearance, Library Appearance, Sync Diagnostics, Pro
 
 ## Build & Configuration
 
-- Targets in `Shelf Notes.xcodeproj/project.pbxproj`:
-  - `Shelf Notes` App.
-  - `Shelf NotesTests` Unit Tests.
-  - `Shelf NotesUITests` UI Tests.
-  - `ShelfNotesLiveActivityExtension` App Extension.
-- Xcode nutzt `PBXFileSystemSynchronizedRootGroup` für App, Tests, UI Tests und Live-Activity-Extension. Neue Dateien unter diesen Ordnern werden vom Projekt synchronisiert.
+- Xcode-Projekt: `Shelf Notes.xcodeproj`
+- App Target: `Shelf Notes`
+- Unit-Test Target: `Shelf NotesTests`
+- UI-Test Target: `Shelf NotesUITests`
+- Extension Target: `ShelfNotesLiveActivityExtension`
+- Deployment Target: iOS 26.0 laut `Shelf Notes.xcodeproj/project.pbxproj`
+- Swift Version: 5.0 laut `Shelf Notes.xcodeproj/project.pbxproj`
+- Concurrency Settings:
+  - `SWIFT_APPROACHABLE_CONCURRENCY = YES`
+  - `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`
 - Bundle IDs:
-  - App: `de.marcfechner.Shelf-Notes`.
-  - Extension: `de.marcfechner.Shelf-Notes.ShelfNotesLiveActivity`.
-- Versionen:
-  - App `MARKETING_VERSION = 1.08`, `CURRENT_PROJECT_VERSION = 4`.
-  - Extension ebenfalls `MARKETING_VERSION = 1.08`, `CURRENT_PROJECT_VERSION = 4`.
-- Swift:
-  - `SWIFT_VERSION = 5.0`.
-  - `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` im App-Target.
-  - `SWIFT_APPROACHABLE_CONCURRENCY = YES`.
-- Plattform:
-  - `TARGETED_DEVICE_FAMILY = "1,2"` für iPhone und iPad.
-  - `IPHONEOS_DEPLOYMENT_TARGET = 26.0` in Projekt-/Target-Build-Settings.
-- Entitlements:
-  - App: CloudKit-Container `iCloud.de.marcfechner.Shelf-Notes`, iCloud-Service `CloudKit`, App Group `group.de.marcfechner.Shelf-Notes`, Push development.
-  - Extension: App Group `group.de.marcfechner.Shelf-Notes`.
-- Info.plist:
-  - `GOOGLE_BOOKS_API_KEY = $(GOOGLE_BOOKS_API_KEY)`.
-  - Kamera und Photos Usage Strings.
-  - `NSSupportsLiveActivities = true`.
-  - `UIBackgroundModes = remote-notification`.
-- Config:
-  - `Shelf Notes/config/base.xcconfig` inkludiert `secrets.xcconfig`.
-  - `Shelf Notes/config/secrets.xcconfig` war im ZIP enthalten und enthält einen Google-Books-Key. Der Wert wurde hier bewusst nicht dokumentiert.
-  - `.gitignore` in `Shelf Notes/.gitignore` ignoriert `config/secrets.xcconfig`.
+  - App: `de.marcfechner.Shelf-Notes`
+  - Extension: `de.marcfechner.Shelf-Notes.ShelfNotesLiveActivity`
+- Versionierung laut Projektdatei:
+  - `MARKETING_VERSION = 1.08`
+  - `CURRENT_PROJECT_VERSION = 5`
+- Info.plist: `Shelf Notes/Info.plist`
+  - `GOOGLE_BOOKS_API_KEY = $(GOOGLE_BOOKS_API_KEY)`
+  - Kamera- und Foto-Library-Beschreibungen
+  - `NSSupportsLiveActivities = true`
+  - `UIBackgroundModes = remote-notification`
+- xcconfig:
+  - `Shelf Notes/config/base.xcconfig`
+  - `Shelf Notes/config/secrets.xcconfig`
+- Secrets:
+  - `Shelf Notes/config/secrets.xcconfig` liegt im ZIP und enthält einen Google-Books-Key im Klartext.
+  - `.gitignore` unter `Shelf Notes/.gitignore` schließt `config/secrets.xcconfig` aus.
+  - Ob dieser Key historisch committed wurde, ist **UNKNOWN**.
 - SPM:
-  - Keine `XCRemoteSwiftPackageReference` im Projekt gefunden.
-
----
+  - Im Projekt wurden keine Package Product Dependencies gefunden.
+- Privacy Manifest:
+  - `Shelf Notes/PrivacyInfo.xcprivacy`
+- Testpläne:
+  - `ShelfNotesAppTests.xctestplan` enthält Unit- und UI-Testtargets.
+  - `Shelf Notes.xctestplan` enthält keine Testtargets.
 
 ## Conventions
 
-### Persistenz
+### SwiftData / CloudKit
 
-- Für CloudKit-kompatible SwiftData-Modelle keine Unique Constraints verwenden.
-- Beziehungen optional halten und nil-safe Accessors anbieten.
-- Persistierte Enums über stabile Raw Values speichern.
-- Neue nicht-optionale Felder immer mit Defaults versehen.
-- Saves über `modelContext.saveWithDiagnostics()` bevorzugen.
-- Book-Collection-Mutationen über `CollectionMembershipMutation` durchführen.
+- Keine `@Attribute(.unique)` auf Modell-IDs verwenden, solange CloudKit-Kompatibilität Priorität hat.
+- Beziehungen optional halten, wenn CloudKit-Kompatibilität relevant ist.
+- Nicht-optionale Modellfelder mit Defaults versehen.
+- Neue Modelle in `ModelContainerFactory.makeSchema()` aufnehmen.
+- Bei Model-Änderungen immer Migration, Backfill oder Repair-Job mitdenken.
+- Mutationen möglichst über `modelContext.saveWithDiagnostics()` speichern.
 
 ### UI / SwiftUI
 
-- Große Views werden per Extension-Dateien gesplittet, zum Beispiel `LibraryView+Grid.swift`, `BookDetailView+Cards.swift`.
-- Rechenlogik aus Views in pure Builder oder Stores ziehen.
-- Scroll-Zellen sollen side-effect-free sein; `LibraryRowCoverView` ist ein gutes Muster.
-- Keine SwiftData-Saves aus Row-Renderpfaden.
-- `@SceneStorage` wird genutzt, um Tab- und Settings-Navigation stabil zu halten.
+- Große Views werden über Extensions und kleine Subviews gesplittet.
+- Teure Berechnungen in Builder/Stores auslagern, nicht direkt in `body`.
+- Für Listen/Grid-Cover `LibraryRowCoverView` nutzen, weil diese View keine SwiftData-Saves aus dem Scrollpfad triggert.
+- UI-State und fachliche Derived-State-Berechnung trennen.
+- AppStorage-Keys stabil und versioniert benennen.
 
-### Concurrency
+### Builder / Stores / Tests
 
-- ModelContext-Arbeit ist MainActor-gebunden.
-- Teure Value-Berechnungen werden über Snapshots und `Task.detached` ausgelagert, zum Beispiel Stats.
-- Tasks bei View-Disappear oder Filterwechsel canceln, wie in `BookImportViewModel+Tasks.swift`.
-- Bei langen Loops regelmäßig Cancellation prüfen.
+- Fachlogik bevorzugt in pure Builder legen.
+- Für neue Builder Unit Tests im Target `Shelf NotesTests` ergänzen.
+- Bestehende Muster:
+  - `LibraryDerivedStateBuilderTests`
+  - `StatisticsSnapshotBuilderTests`
+  - `Challenge*Tests`
+  - `Tag*Tests`
+  - `Collection*Tests`
 
-### Sync / CloudKit
+### Projektstruktur
 
-- Store-Modi nicht vermischen: CloudKit und Local-only sind bewusst getrennt.
-- Jeder Sync-relevante Model Change braucht Defaults, Migration/Repair-Plan und Tests.
-- Cover-Sync-Policy beachten: Thumbnail sync, Full-res local.
-
----
+- Neue Feature-Dateien klein und modular halten.
+- Neue Dateien innerhalb der bestehenden Feature-Ordner ablegen.
+- Das Projekt nutzt synchronized file groups; neue Dateien werden automatisch vom Target erkannt.
 
 ## How to work on this project
 
 ### Setup Steps
 
-1. `Shelf Notes.xcodeproj` in Xcode öffnen.
-2. Lokale `Shelf Notes/config/secrets.xcconfig` bereitstellen oder aus sicherer Quelle generieren. Den echten Google-Books-Key nicht commiten und nicht in ZIPs teilen.
-3. Signing prüfen: Team, iCloud Container `iCloud.de.marcfechner.Shelf-Notes`, App Group `group.de.marcfechner.Shelf-Notes`.
-4. App-Target `Shelf Notes` wählen und auf Simulator oder Gerät starten.
-5. Für CloudKit-Szenarien mit einem iCloud-Account testen; Local-only-Fallback separat testen.
-6. Unit Tests in `Shelf NotesTests` ausführen, besonders nach Änderungen an Buildern, CSV, Tags, Stats, Challenges oder SwiftData-Mutationen.
+1. Projekt in Xcode 26 öffnen: `Shelf Notes.xcodeproj`.
+2. Signing Team für App und Extension prüfen.
+3. iCloud Container `iCloud.de.marcfechner.Shelf-Notes` und App Group `group.de.marcfechner.Shelf-Notes` im Apple Developer Portal prüfen.
+4. `Shelf Notes/config/secrets.xcconfig` lokal bereitstellen, aber nicht committen.
+5. App Scheme `Shelf Notes` bauen.
+6. Tests vorzugsweise über `ShelfNotesAppTests.xctestplan` laufen lassen.
+7. Bei Sync-Problemen zuerst `Settings` und `SyncDiagnosticsView` prüfen.
 
-### Feature hinzufügen
+### Wo anfangen für neue Entwickler
 
-- Datenmodell zuerst prüfen:
-  - Muss ein neues Feld in `Book`, `ReadingSession`, `BookCollection`, `ReadingGoal` oder `ChallengeRecord`?
-  - Hat es einen Default?
-  - Ist es CloudKit-kompatibel?
-  - Braucht es Migration, Repair oder Dedupe?
-- Danach Flow wählen:
-  - Library/Detail: unter `Shelf Notes/LibraryView/` oder `Shelf Notes/BookDetail/`.
-  - Progress/Stats/Goals/Challenges: unter dem jeweiligen Modul.
-  - Import: `AddBook`, `BookImport`, `GoogleVolumeBookMapper`.
-  - Settings: `Shelf Notes/Settings/`.
-- Rechenlogik als pure Builder schreiben und mit Unit Tests absichern.
-- SwiftData-Saves über `saveWithDiagnostics()` ausführen.
-- Bei Collection-Membership `CollectionMembershipMutation` nutzen.
-- Bei Cover-Änderungen `CoverThumbnailer` und Cache-Invalidation prüfen.
-- Bei Navigation neue Ziele lokal im Feature halten; Root nur erweitern, wenn ein neuer Tab oder globaler Sheet nötig ist.
+- App-Start: `Shelf Notes/Shelf_NotesApp.swift`, `Shelf Notes/AppContainerHostView.swift`, `Shelf Notes/RootView.swift`
+- Persistenz: `Shelf Notes/Persistence/ModelContainerFactory.swift`, `Shelf Notes/BookModel/Book.swift`
+- Library-Hotpath: `Shelf Notes/LibraryView/LibraryView.swift`, `Shelf Notes/LibraryView/LibraryDerivedStateBuilder.swift`
+- Stats-Hotpath: `Shelf Notes/Stats/StatisticsSourceStore.swift`, `Shelf Notes/Stats/StatisticsComputePipeline.swift`
+- Cover-Hotpath: `Shelf Notes/CoverImageLoader.swift`, `Shelf Notes/CoverThumbnailer/CoverThumbnailer.swift`, `Shelf Notes/ImageViews/LibraryRowCoverView.swift`
 
----
+### Feature-Workflow
+
+- Neues Datenfeld:
+  - Modell anpassen.
+  - CloudKit-Kompatibilität prüfen.
+  - Migration/Repair/Default definieren.
+  - Tests ergänzen.
+- Neue UI-Funktion:
+  - Kleinen Feature-Ordner oder bestehendes Feature-Modul nutzen.
+  - View, Builder, Presentation Model und Tests trennen.
+  - Keine schweren Berechnungen in `body`.
+- Neue Persistenzmutation:
+  - Mutation zentralisieren.
+  - `saveWithDiagnostics()` verwenden.
+  - Bei Session-/Challenge-/Stats-Relevanz passende Refresh-Signale prüfen.
+- Neuer Import-/Sync-Flow:
+  - Netzwerk, Parsing, Draft und Save getrennt halten.
+  - Cancellation und Generation Guards einbauen.
 
 ## Quick Wins
 
-1. `ModelContainerFactory` und `AppBootstrapper` aus `Shelf Notes/AppContainerHostView.swift` nach `Shelf Notes/Persistence/` splitten.
-2. `Shelf Notes/config/secrets.xcconfig` nie in Analyse-/Release-ZIPs packen und Key rotieren, falls das ZIP extern geteilt wurde.
-3. `IPHONEOS_DEPLOYMENT_TARGET = 26.0` bestätigen oder korrigieren.
-4. `BookCoverThumbnailView` an die off-main Decode-Strategie von `LibraryRowCoverView` angleichen.
-5. Body-nahe O(n)-Mapps in `LibraryView.swift` durch einen gecachten `booksByID`/Display-Store ersetzen.
-6. Max-Size oder LRU für `ImageDiskCache` einführen.
-7. Template-/Platzhalterdateien in `ShelfNotesLiveActivity/ShelfNotesLiveActivity.swift` und `ShelfNotesLiveActivity/ShelfNotesLiveActivityControl.swift` entfernen oder finalisieren.
-8. CloudKit-/Local-only-Divergenz als sichtbaren Support-Artikel oder In-App-Hinweis dokumentieren.
-9. Migration-Checklist für SwiftData/CloudKit-Felder in `ARCHITECTURE_NOTES.md` oder eigenem Doc pflegen.
-10. Performance-Baseline für große Bibliotheken definieren und mit Library/Stats/Tags testen.
-
----
-
-## Open Questions
-
-- **UNKNOWN**: Ist iOS 26.0 als Deployment Target beabsichtigt?
-- **UNKNOWN**: Welche Zielgröße hat die Bibliothek, zum Beispiel 500, 5.000 oder 50.000 Bücher?
-- **UNKNOWN**: Soll Local-only-Datenbestand jemals in CloudKit migriert oder importiert werden?
-- **UNKNOWN**: Gibt es definierte CloudKit-Konfliktregeln für gleichzeitige Multi-Device-Edits?
-- **UNKNOWN**: Sollen Full-res User-Cover künftig geräteübergreifend synchronisiert werden?
-- **UNKNOWN**: Gibt es produktive SwiftData/CloudKit-Store-Snapshots für Migrationstests?
-- **UNKNOWN**: Ist iPad first-class oder nur über Universal Target mitlaufend?
-- **UNKNOWN**: Welche Observability wird in Release-Builds akzeptiert, besonders für Sync-Probleme?
-- **UNKNOWN**: Sind Share/Collaboration-Flows geplant? Im Scan wurden keine expliziten Collaboration-Modelle gefunden.
+1. Google-Books-Key rotieren und sicherstellen, dass `secrets.xcconfig` nie committed wird. Pfade: `Shelf Notes/config/secrets.xcconfig`, `Shelf Notes/.gitignore`.
+2. Leeren Testplan `Shelf Notes.xctestplan` entweder entfernen oder mit denselben Targets wie `ShelfNotesAppTests.xctestplan` füllen.
+3. `StatisticsSnapshotBuilder.swift` in kleinere Builder splitten, um Review- und Regression-Risiko zu senken.
+4. `ChallengeEngine+Compute.swift` nach Metrikberechnung, Baseline und Auswahlpolitik trennen.
+5. Challenge-Refresh nach Session-Änderungen coalescen, damit mehrere Saves nicht mehrere Fetch-/Compute-Runden auslösen.
+6. Library-Index nur bei Source-Signature-Änderungen neu bauen, nicht bei jeder Root-View-Invalidation.
+7. Cover-Pipeline zusätzlich mit globalem Limit für parallele unterschiedliche Remote-URLs absichern.
+8. Eine kurze `MIGRATIONS.md` ergänzen: Modelländerungen, Repair-Jobs, CloudKit-Risiken.
+9. `os.Logger`-Kategorien für Storage, Sync, Covers, Stats, Challenges und Import einführen.
+10. Local-only Mode in Docs und UI noch klarer erklären: separater Store, keine spätere automatische CloudKit-Merge-Logik.
