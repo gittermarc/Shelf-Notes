@@ -32,6 +32,14 @@ struct ChallengesView: View {
 
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if let todayFocus = dashboard.todayFocus {
+                    ChallengeTodayFocusCard(
+                        focus: todayFocus,
+                        onClaim: claim,
+                        onReroll: reroll
+                    )
+                }
+
                 ChallengeHeroCard(
                     hero: dashboard.hero,
                     completedCount: dashboard.completedCount,
@@ -40,9 +48,9 @@ struct ChallengesView: View {
 
                 ChallengeAchievementsCard(summary: dashboard.rewardSummary)
 
-                if dashboard.activeItems.isEmpty {
+                if dashboard.todayFocus == nil && dashboard.activeItems.isEmpty {
                     ChallengeBoardEmptyState(isPaused: preferences.enabledKinds.isEmpty)
-                } else {
+                } else if !dashboard.activeItems.isEmpty {
                     activeChallengesSection(items: dashboard.activeItems)
                 }
 
@@ -79,9 +87,9 @@ struct ChallengesView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Aktive Missionen")
+                    Text("Laufende Missionen")
                         .font(.headline)
-                    Text("Deine aktuellen Lese-Missionen auf einen Blick")
+                    Text("Woche, Monat und Jahresquest ohne Tagesrauschen")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

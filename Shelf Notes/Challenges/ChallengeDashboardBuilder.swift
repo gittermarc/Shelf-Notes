@@ -51,7 +51,7 @@ enum ChallengeDashboardBuilder {
             )
         }
 
-        let activeItems = items
+        let visibleActiveItems = items
             .filter { item in
                 item.isRewardReady || (item.periodStart <= now && item.periodEnd > now && isActiveItemVisible(item, enabledKindSet: enabledKindSet))
             }
@@ -60,7 +60,13 @@ enum ChallengeDashboardBuilder {
                 if lhs.kind != rhs.kind { return lhs.kind.sortOrder < rhs.kind.sortOrder }
                 return lhs.periodStart < rhs.periodStart
             }
-        let activeIDs = Set(activeItems.map(\.id))
+
+        let todayFocus = makeTodayFocus(from: visibleActiveItems)
+        let activeItems = visibleActiveItems.filter { item in
+            guard let todayFocus else { return true }
+            return item.id != todayFocus.item.id
+        }
+        let activeIDs = Set(visibleActiveItems.map(\.id))
 
         let historyItems = items
             .filter { $0.periodEnd <= now && !activeIDs.contains($0.id) }
@@ -77,6 +83,7 @@ enum ChallengeDashboardBuilder {
         let rewardSummary = ChallengeRewardSummaryBuilder.make(items: items, now: now)
 
         return ChallengeDashboardState(
+            todayFocus: todayFocus,
             hero: hero,
             activeItems: activeItems,
             historyItems: historyItems,
@@ -175,6 +182,77 @@ enum ChallengeDashboardBuilder {
         )
     }
 
+    private static func makeTodayFocus(from activeItems: [ChallengeDashboardItem]) -> ChallengeDashboardTodayFocus? {
+        guard let item = activeItems.first(where: { $0.kind == .daily && $0.status == .active && !$0.isCompleted }) else {
+            return nil
+        }
+
+        return ChallengeDashboardTodayFocus(
+            item: item,
+            headline: "Heute im Fokus",
+            message: makeTodayFocusMessage(item: item),
+            actionText: makeTodayFocusActionText(item: item),
+            footnote: makeTodayFocusFootnote(item: item)
+        )
+    }
+
+    private static func makeTodayFocusMessage(item: ChallengeDashboardItem) -> String {
+        if item.remainingValue <= 0 {
+            return "Tagesmission geschafft. Hol dir deinen kleinen Sieg ab."
+        }
+
+        switch item.metric {
+        case .readingMinutes:
+            return "Noch \(item.remainingValue) Minuten bis zur Tagesmission. Das passt sogar zwischen Kaffee und Alltag."
+        case .readingDays:
+            return "Eine Mini-Session reicht, damit heute als Lesetag zählt."
+        case .sessions:
+            return "Noch \(item.remainingValue) Session(s) und dein Tag hat einen Haken."
+        case .pagesRead:
+            return "Noch \(item.remainingValue) Seiten bis zur Tagesmission. Ein Kapitel kann reichen."
+        case .booksFinished:
+            return "Wenn du heute abschließt, knackt diese Tagesmission."
+        case .shortSessions:
+            return "Noch \(item.remainingValue) kurze Session(s). 5 bis 25 Minuten zählen."
+        case .booksProgressed:
+            return "Noch \(item.remainingValue) Buch/Bücher mit Seitenfortschritt. Ein Eintrag genügt."
+        case .sessionNotes:
+            return "Noch \(item.remainingValue) Session-Notiz(en). Ein Satz reicht."
+        case .finishedBooksRated:
+            return "Noch \(item.remainingValue) Bewertung(en) für beendete Bücher."
+        case .finishedBooksNoted:
+            return "Noch \(item.remainingValue) Buchnotiz(en) für beendete Bücher."
+        }
+    }
+
+    private static func makeTodayFocusActionText(item: ChallengeDashboardItem) -> String {
+        if item.isRewardReady { return "Belohnung abholen" }
+        if item.remainingValue <= 0 { return "Mission sichern" }
+
+        switch item.metric {
+        case .readingMinutes:
+            return "Session starten oder Minuten nachtragen"
+        case .readingDays, .sessions, .shortSessions:
+            return "Kurze Session loggen"
+        case .pagesRead, .booksProgressed:
+            return "Seitenfortschritt eintragen"
+        case .booksFinished:
+            return "Buch abschließen"
+        case .sessionNotes:
+            return "Session mit Notiz speichern"
+        case .finishedBooksRated:
+            return "Beendetes Buch bewerten"
+        case .finishedBooksNoted:
+            return "Buchnotiz ergänzen"
+        }
+    }
+
+    private static func makeTodayFocusFootnote(item: ChallengeDashboardItem) -> String {
+        if item.progressFraction >= 0.85 { return "Fast geschafft" }
+        if item.progressFraction > 0 { return "Heute schon im Flow" }
+        return "Heute noch offen"
+    }
+
     private static func makeTimeRemainingText(record: ChallengeRecord, now: Date, calendar: Calendar) -> String {
         guard record.periodEnd > now else { return "Zeitraum beendet" }
 
@@ -220,6 +298,14 @@ enum ChallengeDashboardBuilder {
         let endDay = calendar.startOfDay(for: record.periodEnd)
         let daysLeft = max(1, calendar.dateComponents([.day], from: startOfToday, to: endDay).day ?? 1)
 
+        if record.kind == .daily {
+            return makeDailyMotivationText(metric: record.metric, remaining: remaining)
+        }
+
+        if record.kind == .yearly {
+            return makeYearlyMotivationText(metric: record.metric, remaining: remaining)
+        }
+
         switch record.metric {
         case .readingMinutes:
             let perDay = Int((Double(remaining) / Double(daysLeft)).rounded(.up))
@@ -242,6 +328,56 @@ enum ChallengeDashboardBuilder {
             return "Noch \(remaining) Bewertung(en) für beendete Bücher."
         case .finishedBooksNoted:
             return "Noch \(remaining) Buchnotiz(en) für beendete Bücher."
+        }
+    }
+
+    private static func makeDailyMotivationText(metric: ChallengeMetric, remaining: Int) -> String {
+        switch metric {
+        case .readingMinutes:
+            return "Noch \(remaining) Minuten bis zur Tagesmission. Kurz lesen zählt."
+        case .readingDays:
+            return "Eine Mini-Session macht heute zum Lesetag."
+        case .sessions:
+            return "Noch \(remaining) Session(s). Der heutige Haken ist nah."
+        case .pagesRead:
+            return "Noch \(remaining) Seiten. Ein kleiner Abschnitt reicht oft."
+        case .booksFinished:
+            return "Heute abschließen und die Tagesmission ist durch."
+        case .shortSessions:
+            return "Noch \(remaining) kurze Session(s). Kein Marathon nötig."
+        case .booksProgressed:
+            return "Noch \(remaining) Buch/Bücher mit Fortschritt. Ein Eintrag genügt."
+        case .sessionNotes:
+            return "Noch \(remaining) Session-Notiz(en). Ein Gedanke reicht."
+        case .finishedBooksRated:
+            return "Noch \(remaining) Bewertung(en). Schnell erledigt, sauber dokumentiert."
+        case .finishedBooksNoted:
+            return "Noch \(remaining) Buchnotiz(en). Kurz festhalten, was bleibt."
+        }
+    }
+
+    private static func makeYearlyMotivationText(metric: ChallengeMetric, remaining: Int) -> String {
+        switch metric {
+        case .readingMinutes:
+            return "Jahresquest läuft. Noch \(remaining) Minuten, aber ohne Stress: jeder Monat zahlt ein."
+        case .readingDays:
+            return "Noch \(remaining) Lesetag(e) für die Jahresquest. Konsistenz gewinnt."
+        case .sessions:
+            return "Noch \(remaining) Session(s) im Jahr. Kleine Einheiten machen hier den Unterschied."
+        case .pagesRead:
+            return "Noch \(remaining) Seiten für die Jahresquest. Das wächst Kapitel für Kapitel."
+        case .booksFinished:
+            return "Noch \(remaining) Abschluss/Abschlüsse. Langstrecke, kein Sprint."
+        case .shortSessions:
+            return "Noch \(remaining) kurze Session(s). Auch kleine Lesefenster zählen fürs Jahr."
+        case .booksProgressed:
+            return "Noch \(remaining) Buch/Bücher mit Fortschritt. Breite Lesespur statt Endspurt."
+        case .sessionNotes:
+            return "Noch \(remaining) Session-Notiz(en). Deine Jahresquest bekommt dadurch Substanz."
+        case .finishedBooksRated:
+            return "Noch \(remaining) Bewertung(en). Dein Lesejahr wird dadurch greifbarer."
+        case .finishedBooksNoted:
+            return "Noch \(remaining) Buchnotiz(en). Ein ruhiger Jahresanker."
         }
     }
 }

@@ -267,6 +267,82 @@ struct ChallengeDashboardBuilderTests {
 
         #expect(state.activeItems.map(\.id) == [weeklyID])
         #expect(!state.activeItems.contains { $0.id == dailyID })
+        #expect(state.todayFocus == nil)
+    }
+
+    @Test @MainActor func dailyChallengeBecomesTodayFocusAndIsNotDuplicatedInActiveItems() {
+        let now = date(2026, 6, 3, 12)
+        let dailyID = UUID(uuidString: "00000000-0000-0000-0000-000000001001") ?? UUID()
+        let weeklyID = UUID(uuidString: "00000000-0000-0000-0000-000000001002") ?? UUID()
+        let monthlyID = UUID(uuidString: "00000000-0000-0000-0000-000000001003") ?? UUID()
+        let yearlyID = UUID(uuidString: "00000000-0000-0000-0000-000000001004") ?? UUID()
+        let daily = makeChallenge(
+            id: dailyID,
+            kind: .daily,
+            periodStart: date(2026, 6, 3, 0),
+            periodEnd: date(2026, 6, 4, 0),
+            targetValue: 30
+        )
+        let weekly = makeChallenge(
+            id: weeklyID,
+            kind: .weekly,
+            periodStart: date(2026, 6, 1, 0),
+            periodEnd: date(2026, 6, 8, 0)
+        )
+        let monthly = makeChallenge(
+            id: monthlyID,
+            kind: .monthly,
+            periodStart: date(2026, 6, 1, 0),
+            periodEnd: date(2026, 7, 1, 0)
+        )
+        let yearly = makeChallenge(
+            id: yearlyID,
+            kind: .yearly,
+            periodStart: date(2026, 1, 1, 0),
+            periodEnd: date(2027, 1, 1, 0)
+        )
+
+        let state = ChallengeDashboardBuilder.make(
+            challenges: [yearly, monthly, weekly, daily],
+            progressByID: [
+                dailyID: ChallengeEngine.ChallengeProgress(value: 18, unitSuffix: "min"),
+                weeklyID: ChallengeEngine.ChallengeProgress(value: 70, unitSuffix: "min"),
+                monthlyID: ChallengeEngine.ChallengeProgress(value: 50, unitSuffix: "min"),
+                yearlyID: ChallengeEngine.ChallengeProgress(value: 20, unitSuffix: "min")
+            ],
+            now: now,
+            calendar: calendar,
+            enabledKinds: [.daily, .weekly, .monthly, .yearly]
+        )
+
+        #expect(state.todayFocus?.item.id == dailyID)
+        #expect(state.todayFocus?.headline == "Heute im Fokus")
+        #expect(state.todayFocus?.message.contains("Tagesmission") == true)
+        #expect(state.activeItems.map(\.id) == [weeklyID, monthlyID, yearlyID])
+        #expect(Array(state.sessionHintItems.map(\.id).prefix(2)) == [dailyID, weeklyID])
+    }
+
+    @Test @MainActor func dailyFocusIsHiddenWhenDailyKindIsDisabled() {
+        let now = date(2026, 6, 3, 12)
+        let dailyID = UUID(uuidString: "00000000-0000-0000-0000-000000001101") ?? UUID()
+        let daily = makeChallenge(
+            id: dailyID,
+            kind: .daily,
+            periodStart: date(2026, 6, 3, 0),
+            periodEnd: date(2026, 6, 4, 0)
+        )
+
+        let state = ChallengeDashboardBuilder.make(
+            challenges: [daily],
+            progressByID: [dailyID: ChallengeEngine.ChallengeProgress(value: 10, unitSuffix: "min")],
+            now: now,
+            calendar: calendar,
+            enabledKinds: [.weekly, .monthly]
+        )
+
+        #expect(state.todayFocus == nil)
+        #expect(state.activeItems.isEmpty)
+        #expect(state.hero == nil)
     }
 
     @Test @MainActor func disabledUnclaimedRewardsRemainVisible() {

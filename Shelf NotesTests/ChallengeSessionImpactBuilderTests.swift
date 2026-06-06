@@ -113,4 +113,76 @@ struct ChallengeSessionImpactBuilderTests {
         #expect(impact?.entries.first?.contributionText == "+1 Abschlüsse")
         #expect(impact?.entries.first?.didComplete == true)
     }
+
+    @Test @MainActor func dailyImpactIsPrioritizedWhenFastToFinish() {
+        let dailyID = UUID(uuidString: "00000000-0000-0000-0000-000000000704") ?? UUID()
+        let weeklyID = UUID(uuidString: "00000000-0000-0000-0000-000000000705") ?? UUID()
+        let daily = makeChallenge(
+            id: dailyID,
+            kind: .daily,
+            metric: .readingMinutes,
+            targetValue: 50,
+            start: date(2026, 6, 3, 0),
+            end: date(2026, 6, 4, 0)
+        )
+        let weekly = makeChallenge(
+            id: weeklyID,
+            kind: .weekly,
+            metric: .readingMinutes,
+            targetValue: 100,
+            start: date(2026, 6, 1, 0),
+            end: date(2026, 6, 8, 0)
+        )
+        let contribution = ChallengeSessionContribution(
+            bookID: UUID(),
+            startedAt: date(2026, 6, 3, 10),
+            endedAt: date(2026, 6, 3, 10).addingTimeInterval(10 * 60),
+            durationSeconds: 10 * 60,
+            pagesRead: nil,
+            didMarkBookFinished: false
+        )
+
+        let impact = ChallengeSessionImpactBuilder.makeSavedSessionImpact(
+            challenges: [weekly, daily],
+            progressAfterByID: [
+                dailyID: ChallengeEngine.ChallengeProgress(value: 45, unitSuffix: "min"),
+                weeklyID: ChallengeEngine.ChallengeProgress(value: 95, unitSuffix: "min")
+            ],
+            contribution: contribution,
+            now: date(2026, 6, 3)
+        )
+
+        #expect(impact?.title == "Zählt auf deine Tagesmission")
+        #expect(impact?.entries.first?.kind == .daily)
+    }
+
+    @Test @MainActor func completedDailyImpactGetsDailyTitle() {
+        let dailyID = UUID(uuidString: "00000000-0000-0000-0000-000000000706") ?? UUID()
+        let daily = makeChallenge(
+            id: dailyID,
+            kind: .daily,
+            metric: .readingMinutes,
+            targetValue: 30,
+            start: date(2026, 6, 3, 0),
+            end: date(2026, 6, 4, 0)
+        )
+        let contribution = ChallengeSessionContribution(
+            bookID: UUID(),
+            startedAt: date(2026, 6, 3, 10),
+            endedAt: date(2026, 6, 3, 10).addingTimeInterval(10 * 60),
+            durationSeconds: 10 * 60,
+            pagesRead: nil,
+            didMarkBookFinished: false
+        )
+
+        let impact = ChallengeSessionImpactBuilder.makeSavedSessionImpact(
+            challenges: [daily],
+            progressAfterByID: [dailyID: ChallengeEngine.ChallengeProgress(value: 35, unitSuffix: "min")],
+            contribution: contribution,
+            now: date(2026, 6, 3)
+        )
+
+        #expect(impact?.title == "Tagesmission geknackt")
+        #expect(impact?.entries.first?.didComplete == true)
+    }
 }

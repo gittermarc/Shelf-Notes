@@ -48,6 +48,20 @@ struct ChallengeActionHintBuilderTests {
         #expect(hints.first?.priority == 0)
     }
 
+    @Test func sessionHintsPrioritizeFastDailyMissionOverWeeklyProgress() {
+        let daily = item(kind: .daily, metric: .readingMinutes, progressValue: 18, targetValue: 30)
+        let weekly = item(kind: .weekly, metric: .readingMinutes, progressValue: 95, targetValue: 100)
+
+        let hints = ChallengeActionHintBuilder.makeSessionHints(
+            from: [weekly, daily],
+            bookTitle: "Dune",
+            remainingPages: 120
+        )
+
+        #expect(hints.first?.kind == .daily)
+        #expect(hints.first?.message.contains("Tagesmission") == true)
+    }
+
     @Test func sessionHintsHidePageChallengeWhenBookHasNoRemainingPages() {
         let pages = item(metric: .pagesRead, progressValue: 40)
 

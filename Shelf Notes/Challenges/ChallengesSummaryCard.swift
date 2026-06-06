@@ -30,7 +30,9 @@ struct ChallengesSummaryCard: View {
         VStack(alignment: .leading, spacing: 13) {
             header(unclaimedCount: dashboard.unclaimedCount)
 
-            if let hero = dashboard.hero {
+            if let todayFocus = dashboard.todayFocus {
+                summaryTodayFocus(todayFocus)
+            } else if let hero = dashboard.hero {
                 summaryHero(hero)
             } else {
                 Text(preferences.enabledKinds.isEmpty ? "Challenges sind pausiert." : "Aktuelle Challenges werden vorbereitet.")
@@ -42,7 +44,7 @@ struct ChallengesSummaryCard: View {
                 ChallengeSummaryMiniRow(item: item)
             }
 
-            if dashboard.activeItems.isEmpty && dashboard.hero == nil {
+            if dashboard.todayFocus == nil && dashboard.activeItems.isEmpty && dashboard.hero == nil {
                 Text(preferences.enabledKinds.isEmpty ? "Aktiviere Missionen in den Einstellungen, wenn du wieder Challenge-Druck willst." : "Logge eine Lesesession, dann wird dein Fortschritt hier sichtbar.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -73,7 +75,7 @@ struct ChallengesSummaryCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Challenges")
                     .font(.headline)
-                Text("Nächster kleiner Lesesieg")
+                Text("Heute und nächster kleiner Lesesieg")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -94,6 +96,36 @@ struct ChallengesSummaryCard: View {
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
         }
+    }
+
+    private func summaryTodayFocus(_ focus: ChallengeDashboardTodayFocus) -> some View {
+        HStack(spacing: 12) {
+            ChallengeProgressRing(
+                fraction: focus.item.progressFraction,
+                lineWidth: 7,
+                size: 54
+            )
+
+            VStack(alignment: .leading, spacing: 4) {
+                ChallengeCadencePill(kind: focus.item.kind, label: focus.headline, isProminent: true)
+
+                Text(focus.actionText)
+                    .font(.subheadline.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(focus.item.progressText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+
+            Spacer(minLength: 8)
+        }
+        .padding(10)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Heute im Fokus: \(focus.item.title), \(focus.item.progressText)")
     }
 
     private func summaryHero(_ hero: ChallengeDashboardHero) -> some View {

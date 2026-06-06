@@ -38,6 +38,8 @@ struct ChallengeSessionImpactBanner: View {
             if showsEntries {
                 ForEach(impact.entries.prefix(2)) { entry in
                     HStack(spacing: 8) {
+                        ChallengeCadencePill(kind: entry.kind, isProminent: entry.didComplete || entry.kind == .daily)
+
                         Label(entry.contributionText, systemImage: entry.systemImage)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(entry.didComplete ? Color.accentColor : Color.secondary)

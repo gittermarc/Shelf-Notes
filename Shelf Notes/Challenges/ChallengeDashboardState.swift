@@ -8,6 +8,7 @@
 import Foundation
 
 nonisolated struct ChallengeDashboardState: Equatable {
+    var todayFocus: ChallengeDashboardTodayFocus?
     var hero: ChallengeDashboardHero?
     var activeItems: [ChallengeDashboardItem]
     var historyItems: [ChallengeDashboardItem]
@@ -16,10 +17,20 @@ nonisolated struct ChallengeDashboardState: Equatable {
     var rewardSummary: ChallengeRewardSummary
 
     var isEmpty: Bool {
-        activeItems.isEmpty && historyItems.isEmpty
+        todayFocus == nil && activeItems.isEmpty && historyItems.isEmpty
+    }
+
+    var sessionHintItems: [ChallengeDashboardItem] {
+        var items: [ChallengeDashboardItem] = []
+        if let todayFocus {
+            items.append(todayFocus.item)
+        }
+        items.append(contentsOf: activeItems)
+        return items
     }
 
     static let empty = ChallengeDashboardState(
+        todayFocus: nil,
         hero: nil,
         activeItems: [],
         historyItems: [],
@@ -27,6 +38,16 @@ nonisolated struct ChallengeDashboardState: Equatable {
         unclaimedCount: 0,
         rewardSummary: .empty
     )
+}
+
+nonisolated struct ChallengeDashboardTodayFocus: Identifiable, Equatable {
+    let item: ChallengeDashboardItem
+    let headline: String
+    let message: String
+    let actionText: String
+    let footnote: String
+
+    var id: UUID { item.id }
 }
 
 nonisolated struct ChallengeDashboardHero: Equatable {
@@ -70,6 +91,10 @@ nonisolated struct ChallengeDashboardItem: Identifiable, Equatable {
 
     var progressFraction: Double {
         progress?.fraction(target: targetValue) ?? 0
+    }
+
+    var remainingValue: Int {
+        max(0, targetValue - (progress?.value ?? 0))
     }
 
     var isRewardReady: Bool {

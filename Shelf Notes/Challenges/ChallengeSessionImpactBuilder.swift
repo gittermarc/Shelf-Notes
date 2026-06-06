@@ -68,12 +68,13 @@ enum ChallengeSessionImpactBuilder {
                 basis: basis
             )
         }
+        .sorted(by: sortEntries)
 
         guard !entries.isEmpty else { return nil }
 
         let didComplete = entries.contains(where: \.didComplete)
         let first = entries[0]
-        let title = didComplete ? "Challenge geknackt" : "Session zählt für Challenges"
+        let title = makeTitle(didComplete: didComplete, first: first)
         let subtitle = didComplete
             ? "\(first.title): \(first.progressText)"
             : "\(first.contributionText) · \(first.title)"
@@ -152,5 +153,49 @@ enum ChallengeSessionImpactBuilder {
             window: record.periodStart..<record.periodEnd,
             snapshot: snapshot
         ).value
+    }
+
+    private static func sortEntries(_ lhs: ChallengeSessionImpactEntry, _ rhs: ChallengeSessionImpactEntry) -> Bool {
+        let lhsPriority = priority(for: lhs)
+        let rhsPriority = priority(for: rhs)
+        if lhsPriority != rhsPriority { return lhsPriority < rhsPriority }
+        if lhs.kind != rhs.kind { return lhs.kind.sortOrder < rhs.kind.sortOrder }
+        if lhs.progressFraction != rhs.progressFraction { return lhs.progressFraction > rhs.progressFraction }
+        return lhs.title < rhs.title
+    }
+
+    private static func priority(for entry: ChallengeSessionImpactEntry) -> Int {
+        if entry.didComplete { return 0 }
+        if entry.kind == .daily && entry.progressFraction >= 0.60 { return 1 }
+        if entry.kind == .weekly && entry.progressFraction >= 0.75 { return 2 }
+        switch entry.kind {
+        case .daily:
+            return 3
+        case .weekly:
+            return 4
+        case .monthly:
+            return 5
+        case .yearly:
+            return 6
+        case .unknown:
+            return 7
+        }
+    }
+
+    private static func makeTitle(didComplete: Bool, first: ChallengeSessionImpactEntry) -> String {
+        if didComplete {
+            if first.kind == .daily { return "Tagesmission geknackt" }
+            if first.kind == .yearly { return "Jahresquest geknackt" }
+            return "Challenge geknackt"
+        }
+
+        switch first.kind {
+        case .daily:
+            return "Zählt auf deine Tagesmission"
+        case .yearly:
+            return "Zahlt auf deine Jahresquest ein"
+        case .weekly, .monthly, .unknown:
+            return "Session zählt für Challenges"
+        }
     }
 }

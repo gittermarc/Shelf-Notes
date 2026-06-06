@@ -10,6 +10,10 @@ import SwiftUI
 struct ChallengeActionHintPanel: View {
     let hints: [ChallengeActionHint]
 
+    private var hasDailyHint: Bool {
+        hints.contains { $0.kind == .daily }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
@@ -18,9 +22,9 @@ struct ChallengeActionHintPanel: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Zahlt auf Challenges ein")
+                    Text(hasDailyHint ? "Tagesmission im Blick" : "Zahlt auf Challenges ein")
                         .font(.subheadline.weight(.semibold))
-                    Text("Diese Session kann direkt Fortschritt bringen")
+                    Text(hasDailyHint ? "Diese Session kann den heutigen Haken näherbringen" : "Diese Session kann direkt Fortschritt bringen")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -59,9 +63,7 @@ private struct ChallengeActionHintRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(hint.kind.displayName)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                    ChallengeCadencePill(kind: hint.kind, isProminent: hint.kind == .daily)
 
                     Text(hint.progressText)
                         .font(.caption2)

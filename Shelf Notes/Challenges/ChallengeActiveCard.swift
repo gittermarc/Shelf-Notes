@@ -68,9 +68,7 @@ struct ChallengeActiveCard: View {
                     .font(.headline)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text("\(item.kind.displayName) • \(item.difficultyText) • \(item.periodLabel)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                metadataPills
             }
 
             Spacer(minLength: 8)
@@ -81,6 +79,29 @@ struct ChallengeActiveCard: View {
                 .foregroundStyle(item.isRewardReady ? Color.accentColor : Color.secondary)
                 .accessibilityLabel(item.statusText)
         }
+    }
+
+    private var metadataPills: some View {
+        HStack(spacing: 6) {
+            ChallengeCadencePill(kind: item.kind)
+
+            Text(item.difficultyText)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(Color.secondary.opacity(0.10))
+                .clipShape(Capsule())
+
+            Text(item.periodLabel)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(item.kind.displayName), \(item.difficultyText), Zeitraum \(item.periodLabel)")
     }
 
     private var footer: some View {

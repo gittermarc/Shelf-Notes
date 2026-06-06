@@ -81,7 +81,7 @@ struct SessionsCard: View {
             enabledKinds: preferences.enabledKinds
         )
         let actionHints = ChallengeActionHintBuilder.makeSessionHints(
-            from: dashboard.activeItems,
+            from: dashboard.sessionHintItems,
             bookTitle: safeTitle(book),
             remainingPages: remainingPagesForBook
         )
