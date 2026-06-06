@@ -10,7 +10,7 @@ struct ChallengeSummarySignature: Hashable, Sendable {
 
     @MainActor
     init(challenges: [ChallengeRecord]) {
-        self.entries = challenges
+        self.entries = ChallengeDuplicateResolver.deduplicatedRecords(challenges)
             .map { Entry(record: $0) }
             .sorted()
     }

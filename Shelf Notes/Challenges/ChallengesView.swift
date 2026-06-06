@@ -154,6 +154,7 @@ struct ChallengesView: View {
         Task { await refresh() }
     }
 
+    @MainActor
     private func interestingChallenges() -> [ChallengeRecord] {
         let now = Date()
         let active = allChallenges
@@ -171,7 +172,7 @@ struct ChallengesView: View {
             }
             .prefix(12)
 
-        return active + history
+        return ChallengeDuplicateResolver.deduplicatedRecords(active + history)
     }
 }
 

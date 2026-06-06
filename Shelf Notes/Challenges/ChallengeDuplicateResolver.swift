@@ -89,6 +89,14 @@ enum ChallengeDuplicateResolver {
     }
 
     @MainActor
+    static func deduplicatedRecords(_ records: [ChallengeRecord]) -> [ChallengeRecord] {
+        let ids = idsToDelete(from: records.map { RecordSnapshot(record: $0) })
+        guard !ids.isEmpty else { return records }
+
+        return records.filter { !ids.contains($0.id) }
+    }
+
+    @MainActor
     @discardableResult
     static func deleteDuplicates(in records: [ChallengeRecord], modelContext: ModelContext) -> Int {
         let ids = idsToDelete(from: records.map { RecordSnapshot(record: $0) })

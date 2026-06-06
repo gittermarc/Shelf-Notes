@@ -20,7 +20,8 @@ struct ChallengeSummarySignatureTests {
         metric: ChallengeMetric = .readingMinutes,
         periodStart: Date? = nil,
         periodEnd: Date? = nil,
-        targetValue: Int = 30
+        targetValue: Int = 30,
+        createdAt: Date? = nil
     ) -> ChallengeRecord {
         let record = ChallengeRecord(
             kind: kind,
@@ -32,6 +33,9 @@ struct ChallengeSummarySignatureTests {
             targetValue: targetValue
         )
         record.id = id
+        if let createdAt {
+            record.createdAt = createdAt
+        }
         return record
     }
 
@@ -107,5 +111,31 @@ struct ChallengeSummarySignatureTests {
         let reordered = ChallengeSummarySignature(challenges: [second, first])
 
         #expect(ordered == reordered)
+    }
+
+    @Test @MainActor func signatureIgnoresInvisibleDuplicateForSamePeriod() {
+        let retained = makeChallenge(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000101") ?? UUID(),
+            kind: .weekly,
+            metric: .readingMinutes,
+            periodStart: date(2026, 6, 1),
+            periodEnd: date(2026, 6, 8),
+            targetValue: 30,
+            createdAt: date(2026, 5, 20)
+        )
+        let invisibleDuplicate = makeChallenge(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000102") ?? UUID(),
+            kind: .weekly,
+            metric: .pagesRead,
+            periodStart: date(2026, 6, 1),
+            periodEnd: date(2026, 6, 8),
+            targetValue: 80,
+            createdAt: date(2026, 5, 21)
+        )
+
+        let withoutDuplicate = ChallengeSummarySignature(challenges: [retained])
+        let withInvisibleDuplicate = ChallengeSummarySignature(challenges: [retained, invisibleDuplicate])
+
+        #expect(withoutDuplicate == withInvisibleDuplicate)
     }
 }

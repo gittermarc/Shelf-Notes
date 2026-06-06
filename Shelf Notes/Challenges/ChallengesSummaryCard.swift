@@ -123,7 +123,8 @@ struct ChallengesSummaryCard: View {
         }
 
         let now = Date()
-        let active = challenges.filter { $0.periodStart <= now && $0.periodEnd > now }
+        let active = ChallengeDuplicateResolver.deduplicatedRecords(challenges)
+            .filter { $0.periodStart <= now && $0.periodEnd > now }
         let map = await ChallengeRefreshCoordinator.computeProgressMap(for: active, modelContext: modelContext)
         progressByID = map
     }

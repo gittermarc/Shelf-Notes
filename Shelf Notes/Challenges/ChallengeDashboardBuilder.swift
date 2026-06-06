@@ -18,7 +18,10 @@ enum ChallengeDashboardBuilder {
     ) -> ChallengeDashboardState {
         guard !challenges.isEmpty else { return .empty }
 
-        let items = challenges.map { record in
+        let visibleChallenges = ChallengeDuplicateResolver.deduplicatedRecords(challenges)
+        guard !visibleChallenges.isEmpty else { return .empty }
+
+        let items = visibleChallenges.map { record in
             makeItem(
                 record: record,
                 progress: progressByID[record.id],

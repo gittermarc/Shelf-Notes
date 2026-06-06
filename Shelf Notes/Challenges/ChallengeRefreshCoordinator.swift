@@ -87,6 +87,7 @@ enum ChallengeRefreshCoordinator {
                 SortDescriptor(\ChallengeRecord.kindRawValue, order: .forward)
             ]
         )
-        return (try? modelContext.fetch(descriptor)) ?? []
+        let records = (try? modelContext.fetch(descriptor)) ?? []
+        return ChallengeDuplicateResolver.deduplicatedRecords(records)
     }
 }

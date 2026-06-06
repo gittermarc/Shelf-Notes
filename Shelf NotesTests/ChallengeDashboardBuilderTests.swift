@@ -21,6 +21,7 @@ struct ChallengeDashboardBuilderTests {
         periodStart: Date,
         periodEnd: Date,
         targetValue: Int = 100,
+        createdAt: Date? = nil,
         completed: Bool = false,
         claimed: Bool = false
     ) -> ChallengeRecord {
@@ -34,6 +35,9 @@ struct ChallengeDashboardBuilderTests {
             targetValue: targetValue
         )
         record.id = id
+        if let createdAt {
+            record.createdAt = createdAt
+        }
         if completed {
             record.completedAt = periodStart.addingTimeInterval(60 * 60)
         }
@@ -138,5 +142,101 @@ struct ChallengeDashboardBuilderTests {
         #expect(state.activeItems.map(\.id) == [activeID])
         #expect(state.historyItems.count == 12)
         #expect(!state.historyItems.contains { $0.id == activeID })
+    }
+
+    @Test @MainActor func duplicateActiveWeeklyChallengesProduceOneVisibleItem() {
+        let now = date(2026, 6, 3)
+        let retainedID = UUID(uuidString: "00000000-0000-0000-0000-000000000501") ?? UUID()
+        let duplicateID = UUID(uuidString: "00000000-0000-0000-0000-000000000502") ?? UUID()
+        let retained = makeChallenge(
+            id: retainedID,
+            kind: .weekly,
+            periodStart: date(2026, 6, 1),
+            periodEnd: date(2026, 6, 8),
+            createdAt: date(2026, 5, 20)
+        )
+        let duplicate = makeChallenge(
+            id: duplicateID,
+            kind: .weekly,
+            periodStart: date(2026, 6, 1),
+            periodEnd: date(2026, 6, 8),
+            createdAt: date(2026, 5, 21)
+        )
+
+        let state = ChallengeDashboardBuilder.make(
+            challenges: [duplicate, retained],
+            progressByID: [
+                retainedID: ChallengeEngine.ChallengeProgress(value: 20, unitSuffix: "min"),
+                duplicateID: ChallengeEngine.ChallengeProgress(value: 80, unitSuffix: "min")
+            ],
+            now: now,
+            calendar: calendar
+        )
+
+        #expect(state.activeItems.map(\.id) == [retainedID])
+        #expect(state.activeItems.first?.progress?.value == 20)
+    }
+
+    @Test @MainActor func weeklyAndMonthlyChallengesForSameCalendarStartStayVisibleSeparately() {
+        let now = date(2026, 6, 3)
+        let weeklyID = UUID(uuidString: "00000000-0000-0000-0000-000000000601") ?? UUID()
+        let monthlyID = UUID(uuidString: "00000000-0000-0000-0000-000000000602") ?? UUID()
+        let weekly = makeChallenge(
+            id: weeklyID,
+            kind: .weekly,
+            periodStart: date(2026, 6, 1),
+            periodEnd: date(2026, 6, 8),
+            createdAt: date(2026, 5, 20)
+        )
+        let monthly = makeChallenge(
+            id: monthlyID,
+            kind: .monthly,
+            periodStart: date(2026, 6, 1),
+            periodEnd: date(2026, 7, 1),
+            createdAt: date(2026, 5, 20)
+        )
+
+        let state = ChallengeDashboardBuilder.make(
+            challenges: [monthly, weekly],
+            progressByID: [:],
+            now: now,
+            calendar: calendar
+        )
+
+        #expect(state.activeItems.map(\.id) == [weeklyID, monthlyID])
+    }
+
+    @Test @MainActor func claimedDuplicateIsPreferredOverFreshDuplicate() {
+        let now = date(2026, 6, 3)
+        let freshID = UUID(uuidString: "00000000-0000-0000-0000-000000000701") ?? UUID()
+        let claimedID = UUID(uuidString: "00000000-0000-0000-0000-000000000702") ?? UUID()
+        let fresh = makeChallenge(
+            id: freshID,
+            kind: .weekly,
+            periodStart: date(2026, 6, 1),
+            periodEnd: date(2026, 6, 8),
+            createdAt: date(2026, 5, 20)
+        )
+        let claimed = makeChallenge(
+            id: claimedID,
+            kind: .weekly,
+            periodStart: date(2026, 6, 1),
+            periodEnd: date(2026, 6, 8),
+            createdAt: date(2026, 5, 22),
+            completed: true,
+            claimed: true
+        )
+
+        let state = ChallengeDashboardBuilder.make(
+            challenges: [fresh, claimed],
+            progressByID: [claimedID: ChallengeEngine.ChallengeProgress(value: 100, unitSuffix: "min")],
+            now: now,
+            calendar: calendar
+        )
+
+        #expect(state.activeItems.map(\.id) == [claimedID])
+        #expect(state.activeItems.first?.status == .claimed)
+        #expect(state.completedCount == 1)
+        #expect(state.unclaimedCount == 0)
     }
 }
