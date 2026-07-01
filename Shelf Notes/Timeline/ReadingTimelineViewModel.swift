@@ -21,9 +21,10 @@ final class ReadingTimelineViewModel: ObservableObject {
     /// The view should reset this to `nil` after it scrolls, so selecting the same year again still jumps.
     @Published var jumpToYear: Int?
 
-    // Mini-map auto highlight support
-    @Published var timelineViewportWidth: CGFloat = 0
-    @Published var yearMarkerMidXByYear: [Int: CGFloat] = [:]
+    // Mini-map auto highlight support. These values change frequently while scrolling,
+    // so they deliberately stay private and non-published.
+    private var timelineViewportWidth: CGFloat = 0
+    private var yearMarkerMidXByYear: [Int: CGFloat] = [:]
 
     // MARK: - Derived data
 
@@ -141,30 +142,26 @@ final class ReadingTimelineViewModel: ObservableObject {
     // MARK: - Auto highlight
 
     func updateViewportWidth(_ width: CGFloat) {
+        guard abs(timelineViewportWidth - width) > ReadingTimelineYearSelection.defaultPositionTolerance else { return }
         timelineViewportWidth = width
         updateAutoHighlightedYearIfNeeded()
     }
 
     func updateYearMarkerPositions(_ positions: [Int: CGFloat]) {
+        guard !ReadingTimelineYearSelection.markerPositionsAreEquivalent(
+            yearMarkerMidXByYear,
+            positions
+        ) else { return }
         yearMarkerMidXByYear = positions
         updateAutoHighlightedYearIfNeeded()
     }
 
     private func updateAutoHighlightedYearIfNeeded() {
-        guard timelineViewportWidth > 0 else { return }
-        let centerX = timelineViewportWidth / 2
-
-        var bestYear: Int?
-        var bestDistance: CGFloat = .greatestFiniteMagnitude
-
-        for (year, midX) in yearMarkerMidXByYear {
-            let dist = abs(midX - centerX)
-            if dist < bestDistance {
-                bestDistance = dist
-                bestYear = year
-            }
-        }
-
+        let bestYear = ReadingTimelineYearSelection.nearestYear(
+            viewportWidth: timelineViewportWidth,
+            markerMidXByYear: yearMarkerMidXByYear,
+            selectedYear: selectedYear
+        )
         guard let bestYear else { return }
 
         if selectedYear != bestYear {

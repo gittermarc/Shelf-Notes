@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import SwiftData
 
 // MARK: - Position tracking (for Mini-Map auto highlight)
 
@@ -135,7 +134,7 @@ private struct ReadingTimelineYearSummaryCard: View {
             if !stats.previewBooks.isEmpty {
                 HStack(spacing: -10) {
                     ForEach(Array(stats.previewBooks.prefix(4).enumerated()), id: \.offset) { _, b in
-                        BookCoverThumbnailView(
+                        TimelineCoverView(
                             book: b,
                             size: previewCoverSize,
                             cornerRadius: 10,

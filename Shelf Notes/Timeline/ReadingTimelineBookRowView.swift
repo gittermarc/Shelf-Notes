@@ -6,10 +6,9 @@
 //
 
 import SwiftUI
-import SwiftData
 
 struct ReadingTimelineBookRowView: View {
-    @Bindable var book: Book
+    let book: Book
     let date: Date
     let attemptLabel: String?
     let coverSize: CGSize
@@ -29,7 +28,7 @@ struct ReadingTimelineBookRowView: View {
                 BookDetailView(book: book)
             } label: {
                 VStack(spacing: 10) {
-                    BookCoverThumbnailView(
+                    TimelineCoverView(
                         book: book,
                         size: coverSize,
                         cornerRadius: 18,
