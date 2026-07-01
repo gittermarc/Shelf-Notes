@@ -9,7 +9,7 @@
 import Foundation
 import SwiftData
 
-extension ChallengeEngine {
+nonisolated extension ChallengeEngine {
 
     struct SessionSnapshot: Sendable {
         let bookID: UUID?
@@ -132,6 +132,7 @@ extension ChallengeEngine {
             self.detail = detail
         }
 
+        @MainActor
         init(from record: ChallengeRecord) {
             self.init(
                 id: record.id,

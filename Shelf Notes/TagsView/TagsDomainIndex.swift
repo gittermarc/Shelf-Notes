@@ -1,6 +1,6 @@
 import Foundation
 
-struct TagsSourceSnapshot: Identifiable, Hashable {
+nonisolated struct TagsSourceSnapshot: Identifiable, Hashable {
     let id: UUID
     let title: String
     let author: String
@@ -91,7 +91,7 @@ struct TagsSourceSnapshot: Identifiable, Hashable {
     }
 }
 
-struct TagsSourceSignature: Hashable {
+nonisolated struct TagsSourceSignature: Hashable {
     let rawValue: UInt64
 
     init(rawValue: UInt64) {
@@ -130,7 +130,7 @@ struct TagsSourceSignature: Hashable {
     static let empty = TagsSourceSignature(rawValue: 0xA24B_AED4_963E_E407)
 }
 
-struct TagsDomainIndex {
+nonisolated struct TagsDomainIndex {
     struct TagOccurrence: Hashable {
         let rawTag: String
         let trimmedRawTag: String

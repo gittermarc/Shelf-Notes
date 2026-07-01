@@ -61,8 +61,13 @@ final class StatisticsSourceStore: ObservableObject {
         }
     }
 
-    func refreshSessionSourceAndTrack(books: [Book]) {
+    func refreshSessionSourceAndTrack(
+        books: [Book],
+        now: Date? = nil,
+        calendar: Calendar = .current
+    ) {
         PerformanceSignposter.measure("Statistics Session Source Refresh") {
+            let resolvedNow = now ?? Date()
             observedBooks = books
             sessionTrackingGeneration += 1
             let generation = sessionTrackingGeneration
@@ -92,7 +97,11 @@ final class StatisticsSourceStore: ObservableObject {
             } onChange: { [weak self] in
                 Task { @MainActor [weak self] in
                     guard let self, self.sessionTrackingGeneration == generation else { return }
-                    self.refreshSessionSourceAndTrack(books: self.observedBooks)
+                    self.refreshSessionSourceAndTrack(
+                        books: self.observedBooks,
+                        now: now,
+                        calendar: calendar
+                    )
                 }
             }
 
@@ -100,7 +109,9 @@ final class StatisticsSourceStore: ObservableObject {
                 booksSignature: booksSignature,
                 scopeSignature: identity.scopeSignature,
                 sessionsSignature: identity.sessionsSignature,
-                books: observedBooks
+                books: observedBooks,
+                now: resolvedNow,
+                calendar: calendar
             )
         }
     }
@@ -319,7 +330,9 @@ final class StatisticsSourceStore: ObservableObject {
         booksSignature: Int,
         scopeSignature: Int,
         sessionsSignature: Int,
-        books: [Book]
+        books: [Book],
+        now: Date = Date(),
+        calendar: Calendar = .current
     ) -> StatisticsSessionSourceSnapshot {
         if let sessionSourceSnapshot,
            sessionSourceSnapshot.scopeSignature == scopeSignature,
@@ -338,7 +351,9 @@ final class StatisticsSourceStore: ObservableObject {
             booksSignature: booksSignature,
             scopeSignature: scopeSignature,
             sessionsSignature: sessionsSignature,
-            books: books
+            books: books,
+            now: now,
+            calendar: calendar
         )
         completedSessionSourceBuildCount += 1
         sessionSourceSnapshot = snapshot

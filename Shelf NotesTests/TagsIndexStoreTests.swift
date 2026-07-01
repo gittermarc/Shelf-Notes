@@ -172,7 +172,7 @@ struct TagsIndexStoreTests {
     @Test func largeFixtureBuildsReusableDomainIndexOnce() {
         let store = TagsIndexStore()
         let fixture = LargeReadingDatasetBuilder.make1000BookMixedDataset()
-        var books = fixture.books
+        let books = fixture.books
 
         books[0].tags = [" #tag-0 ", "mood-0"]
         books[1].tags = ["tag-0", "mood-1"]

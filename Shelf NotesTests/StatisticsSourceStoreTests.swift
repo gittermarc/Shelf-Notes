@@ -438,7 +438,11 @@ struct StatisticsSourceStoreTests {
         let store = StatisticsSourceStore()
 
         store.refreshSourceAndTrack(books: fixture.books)
-        store.refreshSessionSourceAndTrack(books: fixture.books)
+        store.refreshSessionSourceAndTrack(
+            books: fixture.books,
+            now: fixture.now,
+            calendar: fixture.calendar
+        )
 
         let sessionSource = try #require(store.sessionSourceSnapshot)
         #expect(store.completedSessionSourceBuildCount == 1)
