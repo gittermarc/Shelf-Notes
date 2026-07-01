@@ -52,8 +52,33 @@ enum ChallengeRefreshCoordinator {
     @discardableResult
     static func refreshAfterReadingSessionSave(
         modelContext: ModelContext,
+        mutation: SavedReadingSessionMutationResult
+    ) async -> ChallengeSessionImpact? {
+        await refreshAfterReadingSessionSave(
+            modelContext: modelContext,
+            sessionSnapshot: mutation.sessionSnapshot,
+            didMarkBookFinished: mutation.didMarkBookFinished
+        )
+    }
+
+    @discardableResult
+    static func refreshAfterReadingSessionSave(
+        modelContext: ModelContext,
         bookID: UUID,
         session: ReadingSession,
+        didMarkBookFinished: Bool
+    ) async -> ChallengeSessionImpact? {
+        await refreshAfterReadingSessionSave(
+            modelContext: modelContext,
+            sessionSnapshot: SavedReadingSessionSnapshot(bookID: bookID, session: session),
+            didMarkBookFinished: didMarkBookFinished
+        )
+    }
+
+    @discardableResult
+    static func refreshAfterReadingSessionSave(
+        modelContext: ModelContext,
+        sessionSnapshot: SavedReadingSessionSnapshot,
         didMarkBookFinished: Bool
     ) async -> ChallengeSessionImpact? {
         await PerformanceSignposter.measureAsync("Challenge Session Save Refresh") {
@@ -66,13 +91,13 @@ enum ChallengeRefreshCoordinator {
             )
             let progress = await computeProgressMap(for: active, modelContext: modelContext)
             let contribution = ChallengeSessionContribution(
-                bookID: bookID,
-                startedAt: session.startedAt,
-                endedAt: session.endedAt,
-                durationSeconds: session.durationSeconds,
-                pagesRead: session.pagesRead,
+                bookID: sessionSnapshot.bookID,
+                startedAt: sessionSnapshot.startedAt,
+                endedAt: sessionSnapshot.endedAt,
+                durationSeconds: sessionSnapshot.durationSeconds,
+                pagesRead: sessionSnapshot.pagesRead,
                 didMarkBookFinished: didMarkBookFinished,
-                hasNote: !(session.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                hasNote: sessionSnapshot.hasNote
             )
             let impact = ChallengeSessionImpactBuilder.makeSavedSessionImpact(
                 challenges: active,

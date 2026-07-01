@@ -177,28 +177,21 @@ struct TimerSessionCompletionSheet: View {
 
         let pages = parsePositiveInt(pagesText)
         let timing = ReadingSessionLogging.Timing(endedAt: pending.endedAt, durationSeconds: pending.durationSeconds)
-        let state = ReadingSessionLogging.BookState(book: book)
-        let activeAttempt = book.activeReadingAttempt
-        let scopedSessions = activeAttempt.map { attempt in
-            ReadingAttemptSessionCoordinator.sessions(for: attempt, allSessions: book.readingSessionsSafe)
-        } ?? book.readingSessionsSafe
-        let isLegacySupplement = book.status == .finished && activeAttempt == nil
         let didMarkBookFinished: Bool
 
-        let planResult = ReadingSessionLogging.plan(
-            bookState: state,
-            existingSessions: scopedSessions,
+        let planResult = ReadingSessionMutationService.makePlan(
+            book: book,
+            allSessions: book.readingSessionsSafe,
             timing: timing,
             pages: pages,
-            note: nil,
-            allowsFinishedBookSupplement: isLegacySupplement
+            note: nil
         )
 
         switch planResult {
         case .failure:
             didMarkBookFinished = false
-        case .success(let plan):
-            didMarkBookFinished = plan.didMarkFinished
+        case .success(let mutationPlan):
+            didMarkBookFinished = mutationPlan.plan.didMarkFinished
         }
 
         let contribution = ChallengeSessionContribution(
@@ -242,82 +235,40 @@ struct TimerSessionCompletionSheet: View {
         lastError = nil
 
         let pages = parsePositiveInt(pagesText)
-        let trimmedNote = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let note: String? = trimmedNote.isEmpty ? nil : trimmedNote
-
         let timing = ReadingSessionLogging.Timing(endedAt: pending.endedAt, durationSeconds: pending.durationSeconds)
-        let activeAttempt = ReadingAttemptSessionCoordinator.ensureActiveAttemptForSessionIfNeeded(
+        let saveResult = ReadingSessionMutationService.saveSession(
             book: book,
-            startedAt: timing.startedAt,
-            now: pending.endedAt,
-            insertAttempt: { modelContext.insert($0) }
-        )
-        let state = ReadingSessionLogging.BookState(book: book)
-        let scopedSessions = activeAttempt.map { attempt in
-            ReadingAttemptSessionCoordinator.sessions(for: attempt, allSessions: book.readingSessionsSafe)
-        } ?? book.readingSessionsSafe
-        let isLegacySupplement = book.status == .finished && activeAttempt == nil
-
-        let planResult = ReadingSessionLogging.plan(
-            bookState: state,
-            existingSessions: scopedSessions,
+            modelContext: modelContext,
             timing: timing,
             pages: pages,
-            note: note,
-            allowsFinishedBookSupplement: isLegacySupplement
+            note: noteText,
+            allSessions: book.readingSessionsSafe,
+            now: pending.endedAt
         )
 
-        var session: ReadingSession? = nil
-        var sessionPlan: ReadingSessionLogging.Plan? = nil
-        var didMarkBookFinished = false
-
-        switch planResult {
-        case .failure(let err):
-            lastError = err.message
-            return
-        case .success(let plan):
-            plan.apply(to: book)
-            session = plan.makeSession(book: book)
-            sessionPlan = plan
-            didMarkBookFinished = plan.didMarkFinished
-        }
-
-        guard let session else {
-            lastError = "Konnte Session nicht vorbereiten."
-            return
-        }
-
-        modelContext.insert(session)
-        if let sessionPlan {
-            ReadingAttemptSessionCoordinator.attach(
-                session: session,
-                to: activeAttempt,
-                plan: sessionPlan,
-                book: book,
-                now: pending.endedAt
-            )
-        }
-
-        if let error = modelContext.saveWithDiagnostics() {
-            lastError = "Konnte Session nicht speichern: " + error.localizedDescription
-        } else {
+        switch saveResult {
+        case .failure(let error):
+            lastError = error.message
+        case .success(let mutation):
             lastError = nil
-            await ChallengeRefreshCoordinator.refreshAfterReadingSessionSave(
-                modelContext: modelContext,
-                bookID: book.id,
-                session: session,
-                didMarkBookFinished: didMarkBookFinished
-            )
-
             timer.discardPendingCompletion()
             dismiss()
+
+            let sessionSnapshot = mutation.sessionSnapshot
+            let didMarkBookFinished = mutation.didMarkBookFinished
+            Task { @MainActor in
+                await ChallengeRefreshCoordinator.refreshAfterReadingSessionSave(
+                    modelContext: modelContext,
+                    sessionSnapshot: sessionSnapshot,
+                    didMarkBookFinished: didMarkBookFinished
+                )
+            }
         }
     }
 
     private func parsePositiveInt(_ s: String) -> Int? {
         let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        guard let val = Int(trimmed), val > 0 else { return nil }
+        guard !trimmed.isEmpty, let val = Int(trimmed), val > 0 else { return nil }
         return val
     }
 

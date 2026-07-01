@@ -442,69 +442,28 @@ struct SessionsCard: View {
 
         let seconds = m * 60
         let end = Date()
-
         let timing = ReadingSessionLogging.Timing(endedAt: end, durationSeconds: seconds)
-        let activeAttempt = ReadingAttemptSessionCoordinator.ensureActiveAttemptForSessionIfNeeded(
+        let saveResult = ReadingSessionMutationService.saveSession(
             book: book,
-            startedAt: timing.startedAt,
-            now: end,
-            insertAttempt: { modelContext.insert($0) }
-        )
-        let state = ReadingSessionLogging.BookState(book: book)
-        let scopedSessions = activeAttempt.map { attempt in
-            ReadingAttemptSessionCoordinator.sessions(for: attempt, allSessions: sessions)
-        } ?? sessions
-        let isLegacySupplement = book.status == .finished && activeAttempt == nil
-
-        let planResult = ReadingSessionLogging.plan(
-            bookState: state,
-            existingSessions: scopedSessions,
+            modelContext: modelContext,
             timing: timing,
             pages: pages,
             note: note,
-            allowsFinishedBookSupplement: isLegacySupplement
+            allSessions: sessions,
+            now: end
         )
 
-        var session: ReadingSession? = nil
-        var sessionPlan: ReadingSessionLogging.Plan? = nil
-        var didMarkBookFinished = false
-
-        switch planResult {
-        case .failure(let err):
-            lastError = err.message
-            return
-        case .success(let plan):
-            plan.apply(to: book)
-            session = plan.makeSession(book: book)
-            sessionPlan = plan
-            didMarkBookFinished = plan.didMarkFinished
-        }
-
-        guard let session else {
-            lastError = "Konnte Session nicht vorbereiten."
-            return
-        }
-
-        modelContext.insert(session)
-        if let sessionPlan {
-            ReadingAttemptSessionCoordinator.attach(
-                session: session,
-                to: activeAttempt,
-                plan: sessionPlan,
-                book: book,
-                now: end
-            )
-        }
-
-        if let error = modelContext.saveWithDiagnostics() {
-            lastError = "Konnte Session nicht speichern: " + error.localizedDescription
-        } else {
+        switch saveResult {
+        case .failure(let error):
+            lastError = error.message
+        case .success(let mutation):
             lastError = nil
+            let sessionSnapshot = mutation.sessionSnapshot
+            let didMarkBookFinished = mutation.didMarkBookFinished
             Task { @MainActor in
                 await ChallengeRefreshCoordinator.refreshAfterReadingSessionSave(
                     modelContext: modelContext,
-                    bookID: book.id,
-                    session: session,
+                    sessionSnapshot: sessionSnapshot,
                     didMarkBookFinished: didMarkBookFinished
                 )
             }
