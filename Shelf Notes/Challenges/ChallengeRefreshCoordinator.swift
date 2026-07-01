@@ -24,17 +24,21 @@ enum ChallengeRefreshCoordinator {
         modelContext: ModelContext,
         enabledKinds: [ChallengeKind] = ChallengePreferencesStore.load().enabledKinds
     ) async {
-        await ChallengeEngine.ensureCurrentChallengesAndRefreshCompletion(
-            modelContext: modelContext,
-            kinds: enabledKinds
-        )
+        await PerformanceSignposter.measureAsync("Challenge Refresh") {
+            await ChallengeEngine.ensureCurrentChallengesAndRefreshCompletion(
+                modelContext: modelContext,
+                kinds: enabledKinds
+            )
+        }
     }
 
     static func computeProgressMap(
         for challenges: [ChallengeRecord],
         modelContext: ModelContext
     ) async -> [UUID: ChallengeEngine.ChallengeProgress] {
-        await ChallengeEngine.computeProgressMap(for: challenges, modelContext: modelContext)
+        await PerformanceSignposter.measureAsync("Challenge Progress Map") {
+            await ChallengeEngine.computeProgressMap(for: challenges, modelContext: modelContext)
+        }
     }
 
     static func refreshActiveProgress(modelContext: ModelContext) async -> [UUID: ChallengeEngine.ChallengeProgress] {
@@ -52,39 +56,43 @@ enum ChallengeRefreshCoordinator {
         session: ReadingSession,
         didMarkBookFinished: Bool
     ) async -> ChallengeSessionImpact? {
-        let enabledKinds = ChallengePreferencesStore.load().enabledKinds
-        await prepareCurrentChallenges(modelContext: modelContext, enabledKinds: enabledKinds)
+        await PerformanceSignposter.measureAsync("Challenge Session Save Refresh") {
+            let enabledKinds = ChallengePreferencesStore.load().enabledKinds
+            await prepareCurrentChallenges(modelContext: modelContext, enabledKinds: enabledKinds)
 
-        let active = ChallengeSourceStore.fetchVisibleActiveRecords(
-            modelContext: modelContext,
-            enabledKinds: enabledKinds
-        )
-        let progress = await computeProgressMap(for: active, modelContext: modelContext)
-        let contribution = ChallengeSessionContribution(
-            bookID: bookID,
-            startedAt: session.startedAt,
-            endedAt: session.endedAt,
-            durationSeconds: session.durationSeconds,
-            pagesRead: session.pagesRead,
-            didMarkBookFinished: didMarkBookFinished,
-            hasNote: !(session.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        )
-        let impact = ChallengeSessionImpactBuilder.makeSavedSessionImpact(
-            challenges: active,
-            progressAfterByID: progress,
-            contribution: contribution
-        )
+            let active = ChallengeSourceStore.fetchVisibleActiveRecords(
+                modelContext: modelContext,
+                enabledKinds: enabledKinds
+            )
+            let progress = await computeProgressMap(for: active, modelContext: modelContext)
+            let contribution = ChallengeSessionContribution(
+                bookID: bookID,
+                startedAt: session.startedAt,
+                endedAt: session.endedAt,
+                durationSeconds: session.durationSeconds,
+                pagesRead: session.pagesRead,
+                didMarkBookFinished: didMarkBookFinished,
+                hasNote: !(session.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            )
+            let impact = ChallengeSessionImpactBuilder.makeSavedSessionImpact(
+                challenges: active,
+                progressAfterByID: progress,
+                contribution: contribution
+            )
 
-        ReadingSessionChangeNotifier.post()
-        if let impact {
-            ChallengeSessionImpactNotifier.post(impact)
+            ReadingSessionChangeNotifier.post()
+            if let impact {
+                ChallengeSessionImpactNotifier.post(impact)
+            }
+
+            return impact
         }
-
-        return impact
     }
 
     static func refreshAfterReadingSessionMutation(modelContext: ModelContext) async {
-        await prepareCurrentChallenges(modelContext: modelContext)
-        ReadingSessionChangeNotifier.post()
+        await PerformanceSignposter.measureAsync("Challenge Session Mutation Refresh") {
+            await prepareCurrentChallenges(modelContext: modelContext)
+            ReadingSessionChangeNotifier.post()
+        }
     }
 }

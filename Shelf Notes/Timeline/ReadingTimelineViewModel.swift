@@ -92,26 +92,28 @@ final class ReadingTimelineViewModel: ObservableObject {
     }
 
     func setBooks(_ books: [Book]) {
-        cachedEntries = books
-            .flatMap { book in
-                ReadingCompletionRecordBuilder.records(from: book).map { completion in
-                    ReadingTimelineEntry(book: book, completion: completion)
+        PerformanceSignposter.measure("Timeline Build") {
+            cachedEntries = books
+                .flatMap { book in
+                    ReadingCompletionRecordBuilder.records(from: book).map { completion in
+                        ReadingTimelineEntry(book: book, completion: completion)
+                    }
                 }
+                .sorted { left, right in
+                    ReadingCompletionRecordBuilder.compare(left.completion, right.completion)
+                }
+
+            years = Array(Set(cachedEntries.map { Calendar.current.component(.year, from: $0.date) })).sorted()
+
+            let yearStats = buildYearStats(entries: cachedEntries)
+            items = buildItems(entries: cachedEntries, yearStatsByYear: yearStats)
+            hasBuiltTimeline = true
+
+            if selectedYear == nil {
+                selectedYear = years.first
+            } else if let selectedYear, !years.contains(selectedYear) {
+                self.selectedYear = years.first
             }
-            .sorted { left, right in
-                ReadingCompletionRecordBuilder.compare(left.completion, right.completion)
-            }
-
-        years = Array(Set(cachedEntries.map { Calendar.current.component(.year, from: $0.date) })).sorted()
-
-        let yearStats = buildYearStats(entries: cachedEntries)
-        items = buildItems(entries: cachedEntries, yearStatsByYear: yearStats)
-        hasBuiltTimeline = true
-
-        if selectedYear == nil {
-            selectedYear = years.first
-        } else if let selectedYear, !years.contains(selectedYear) {
-            self.selectedYear = years.first
         }
     }
 

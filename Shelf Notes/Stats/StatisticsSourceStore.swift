@@ -43,46 +43,50 @@ final class StatisticsSourceStore: ObservableObject {
     }
 
     func refreshSourceAndTrack(books: [Book]) {
-        observedBooks = books
-        refreshObservedBooksAndTrack()
+        PerformanceSignposter.measure("Statistics Source Refresh") {
+            observedBooks = books
+            refreshObservedBooksAndTrack()
+        }
     }
 
     func refreshSessionSourceAndTrack(books: [Book]) {
-        observedBooks = books
-        sessionTrackingGeneration += 1
-        let generation = sessionTrackingGeneration
+        PerformanceSignposter.measure("Statistics Session Source Refresh") {
+            observedBooks = books
+            sessionTrackingGeneration += 1
+            let generation = sessionTrackingGeneration
 
-        guard !observedBooks.isEmpty else {
-            invalidateSessionSource()
-            return
-        }
-
-        if sourceSnapshot == nil {
-            refreshObservedBooksAndTrack()
-        }
-
-        guard let booksSignature = sourceSnapshot?.booksSignature else {
-            invalidateSessionSource()
-            return
-        }
-
-        isUpdatingSessionSource = true
-        defer { isUpdatingSessionSource = false }
-
-        let sessionsSignature = withObservationTracking {
-            Self.sessionsSignature(observedBooks)
-        } onChange: { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self, self.sessionTrackingGeneration == generation else { return }
-                self.refreshSessionSourceAndTrack(books: self.observedBooks)
+            guard !observedBooks.isEmpty else {
+                invalidateSessionSource()
+                return
             }
-        }
 
-        updateSessionSource(
-            booksSignature: booksSignature,
-            sessionsSignature: sessionsSignature,
-            books: observedBooks
-        )
+            if sourceSnapshot == nil {
+                refreshObservedBooksAndTrack()
+            }
+
+            guard let booksSignature = sourceSnapshot?.booksSignature else {
+                invalidateSessionSource()
+                return
+            }
+
+            isUpdatingSessionSource = true
+            defer { isUpdatingSessionSource = false }
+
+            let sessionsSignature = withObservationTracking {
+                Self.sessionsSignature(observedBooks)
+            } onChange: { [weak self] in
+                Task { @MainActor [weak self] in
+                    guard let self, self.sessionTrackingGeneration == generation else { return }
+                    self.refreshSessionSourceAndTrack(books: self.observedBooks)
+                }
+            }
+
+            updateSessionSource(
+                booksSignature: booksSignature,
+                sessionsSignature: sessionsSignature,
+                books: observedBooks
+            )
+        }
     }
 
     func invalidateSessionSource() {
@@ -212,7 +216,9 @@ final class StatisticsSourceStore: ObservableObject {
         defer { isUpdatingStatsCache = false }
 
         let pipeline = StatisticsComputePipeline(source: sourceSnapshot, now: now, calendar: calendar)
-        let cache = await pipeline.makeStatsCache(for: key)
+        let cache = await PerformanceSignposter.measureAsync("Statistics Stats Cache Refresh") {
+            await pipeline.makeStatsCache(for: key)
+        }
         guard !Task.isCancelled else { return }
         guard self.sourceSnapshot?.booksSignature == key.booksSignature else { return }
         statsCache = cache
@@ -240,7 +246,9 @@ final class StatisticsSourceStore: ObservableObject {
             now: now,
             calendar: calendar
         )
-        let cache = await pipeline.makeHeatmapCache(for: key)
+        let cache = await PerformanceSignposter.measureAsync("Statistics Heatmap Cache Refresh") {
+            await pipeline.makeHeatmapCache(for: key)
+        }
         guard !Task.isCancelled else { return }
         guard self.sourceSnapshot?.booksSignature == key.booksSignature else { return }
         if key.activityMetric == .readingMinutes {

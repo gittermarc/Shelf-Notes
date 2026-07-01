@@ -76,27 +76,29 @@ final class ProgressHubMetricsModel: ObservableObject {
         goals: [ReadingGoal],
         modelContext: ModelContext
     ) {
-        let sessionSnapshot = ProgressHubSessionMetricsProvider.makeSnapshot(
-            modelContext: modelContext
-        )
-        let token = InputToken(
-            year: year,
-            booksSignature: Self.computeBooksSignature(books: books),
-            goalsSignature: Self.computeGoalsSignature(goals: goals),
-            sessionsSignature: sessionSnapshot.signature
-        )
-        guard token != lastToken else { return }
-        lastToken = token
+        PerformanceSignposter.measure("ProgressHub Metrics Refresh") {
+            let sessionSnapshot = ProgressHubSessionMetricsProvider.makeSnapshot(
+                modelContext: modelContext
+            )
+            let token = InputToken(
+                year: year,
+                booksSignature: Self.computeBooksSignature(books: books),
+                goalsSignature: Self.computeGoalsSignature(goals: goals),
+                sessionsSignature: sessionSnapshot.signature
+            )
+            guard token != lastToken else { return }
+            lastToken = token
 
-        let newMetrics = Self.makeMetrics(
-            year: year,
-            books: books,
-            goals: goals,
-            recentActivity: sessionSnapshot.recentActivity
-        )
+            let newMetrics = Self.makeMetrics(
+                year: year,
+                books: books,
+                goals: goals,
+                recentActivity: sessionSnapshot.recentActivity
+            )
 
-        if newMetrics != metrics {
-            metrics = newMetrics
+            if newMetrics != metrics {
+                metrics = newMetrics
+            }
         }
     }
 
