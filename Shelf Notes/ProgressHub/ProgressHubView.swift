@@ -29,15 +29,13 @@ struct ProgressHubView: View {
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     @StateObject private var metricsModel = ProgressHubMetricsModel()
-    @State private var sessionRefreshSeed = 0
 
     var body: some View {
         let currentYear = Calendar.current.component(.year, from: Date())
-        let token = ProgressHubMetricsModel.makeInputToken(
+        let refreshToken = ProgressHubMetricsModel.makeRefreshToken(
             year: currentYear,
             books: books,
-            goals: goals,
-            sessionRefreshSeed: sessionRefreshSeed
+            goals: goals
         )
 
         NavigationStack {
@@ -64,8 +62,8 @@ struct ProgressHubView: View {
             .navigationTitle("Fortschritt")
             .navigationBarTitleDisplayMode(.large)
         }
-        .task(id: token) {
-            metricsModel.recompute(
+        .task(id: refreshToken) {
+            metricsModel.refreshSourceAndTrack(
                 year: currentYear,
                 books: books,
                 goals: goals,
@@ -83,7 +81,7 @@ struct ProgressHubView: View {
     }
 
     private func requestSessionMetricsRefresh() {
-        sessionRefreshSeed &+= 1
+        metricsModel.requestSessionMetricsRefresh(modelContext: modelContext)
     }
 
     private var emptyHintCard: some View {

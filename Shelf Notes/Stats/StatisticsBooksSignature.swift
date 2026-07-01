@@ -59,7 +59,7 @@ extension StatisticsSourceStore {
 
     static func sessionsSignature(_ books: [Book]) -> Int {
         var hasher = StableStatisticsHasher()
-        hasher.combine("statistics-sessions-v1")
+        hasher.combine("statistics-sessions-v2")
         hasher.combine(books.count)
 
         for book in books.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
@@ -76,9 +76,25 @@ extension StatisticsSourceStore {
                 hasher.combineDate(session.startedAt)
                 hasher.combineDate(session.endedAt)
                 hasher.combine(session.durationSeconds)
+                hasher.combine(session.pagesReadNormalized)
             }
 
             hasher.combine("session-book-end")
+        }
+
+        return hasher.finalizeInt()
+    }
+
+    static func sessionScopeSignature(_ books: [Book]) -> Int {
+        var hasher = StableStatisticsHasher()
+        hasher.combine("statistics-session-scope-v1")
+        hasher.combine(books.count)
+
+        for book in books.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
+            hasher.combine(book.id.uuidString)
+            hasher.combine(book.statusRawValue)
+            hasher.combine(book.completedReadingAttemptCount)
+            hasher.combine("session-scope-book-end")
         }
 
         return hasher.finalizeInt()

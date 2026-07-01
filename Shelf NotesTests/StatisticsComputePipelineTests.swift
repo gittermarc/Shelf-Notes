@@ -102,6 +102,66 @@ struct StatisticsComputePipelineTests {
         #expect(cache.stats.maxCount == 30)
     }
 
+    @Test func sessionAggregatesProduceSameReadingMinutesHeatmapAsSessionBooks() {
+        let builder = StatisticsHeatmapBuilder(now: date(2026, 4, 15), calendar: calendar)
+        let sessionBooks = [
+            StatisticsSessionBookSnapshot(
+                bookID: UUID(uuidString: "00000000-0000-0000-0000-000000000101"),
+                statusRawValue: ReadingStatus.finished.rawValue,
+                hasCompletedReading: true,
+                readingSessions: [
+                    .init(
+                        id: UUID(uuidString: "00000000-0000-0000-0000-000000000001") ?? UUID(),
+                        startedAt: date(2026, 1, 1, 23, 30),
+                        endedAt: date(2026, 1, 2, 0, 30),
+                        durationSeconds: 3_600,
+                        pagesRead: 24,
+                        createdAt: date(2026, 1, 1, 23, 30)
+                    )
+                ]
+            )
+        ]
+        let books = [
+            StatisticsBookSnapshot(
+                id: UUID(uuidString: "00000000-0000-0000-0000-000000000101") ?? UUID(),
+                title: "Night Read",
+                author: "Ada",
+                statusRawValue: ReadingStatus.finished.rawValue,
+                readingSessions: []
+            )
+        ]
+        let key = StatisticsHeatmapCacheKey(
+            selectedYear: 2026,
+            scope: .finished,
+            activityMetric: .readingMinutes,
+            booksSignature: 11,
+            activitySignature: 12
+        )
+        let aggregates = StatisticsSessionSourceSnapshot.makeAggregates(
+            sessionBooks: sessionBooks,
+            now: date(2026, 4, 15),
+            calendar: calendar
+        )
+
+        let legacy = builder.makeHeatmapCache(
+            for: key,
+            books: books,
+            sessionBooks: sessionBooks
+        )
+        let cached = builder.makeHeatmapCache(
+            for: key,
+            books: books,
+            sessionBooks: sessionBooks,
+            sessionAggregates: aggregates
+        )
+
+        #expect(cached.counts == legacy.counts)
+        #expect(cached.stats.activeDays == legacy.stats.activeDays)
+        #expect(cached.stats.currentStreak == legacy.stats.currentStreak)
+        #expect(aggregates.roundedMinutesByDay(for: .finished)[date(2026, 1, 1)] == 30)
+        #expect(aggregates.roundedMinutesByDay(for: .finished)[date(2026, 1, 2)] == 30)
+    }
+
     @Test func detachedPipelineKeepsStatsAndHeatmapStableForSameSource() async {
         let books = [
             StatisticsBookSnapshot(

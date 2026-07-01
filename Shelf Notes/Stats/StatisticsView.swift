@@ -13,12 +13,15 @@ import Charts
 #endif
 
 struct StatisticsView: View {
+    @Environment(\.scenePhase) private var scenePhase
+
     @Query var books: [Book]
 
     @State var selectedYear: Int = Calendar.current.component(.year, from: Date())
     @State var scope: StatisticsScope = .all
     @State var activityMetric: StatisticsActivityMetric = .readingDays
     @StateObject var sourceStore = StatisticsSourceStore()
+    @State private var isVisible = false
 
     var body: some View {
         let sourceState = sourceStore.makeViewState(
@@ -79,10 +82,22 @@ struct StatisticsView: View {
             await sourceStore.refreshHeatmapCache(for: heatmapKey)
         }
         .onReceive(NotificationCenter.default.publisher(for: .readingSessionsDidChange)) { _ in
-            sourceStore.invalidateSessionSource()
-            if activityMetric == .readingMinutes {
-                sourceStore.refreshSessionSourceAndTrack(books: books)
+            guard isVisible, scenePhase == .active, activityMetric.needsSessionSource else {
+                sourceStore.markSessionSourceStale()
+                return
             }
+            sourceStore.invalidateSessionSource()
+            sourceStore.requestSessionSourceRefresh(books: books)
+        }
+        .onAppear {
+            isVisible = true
+        }
+        .onDisappear {
+            isVisible = false
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active, isVisible, activityMetric.needsSessionSource else { return }
+            sourceStore.requestSessionSourceRefresh(books: books)
         }
     }
 }

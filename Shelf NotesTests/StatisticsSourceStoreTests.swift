@@ -106,6 +106,25 @@ struct StatisticsSourceStoreTests {
     }
 
     @MainActor
+    @Test func sessionSignatureChangesWhenPagesChange() {
+        let book = makeFinishedBook()
+        let session = ReadingSession(
+            book: book,
+            startedAt: date(2026, 1, 2, 20, 0),
+            endedAt: date(2026, 1, 2, 21, 0),
+            pagesRead: 40
+        )
+        book.readingSessionsSafe = [session]
+
+        let initial = StatisticsSourceStore.sessionsSignature([book])
+
+        session.pagesRead = 70
+        let changed = StatisticsSourceStore.sessionsSignature([book])
+
+        #expect(changed != initial)
+    }
+
+    @MainActor
     @Test func bookSignatureStaysStableForSameBooksInDifferentOrder() {
         let first = makeFinishedBook(title: "Alpha", author: "Ada")
         let second = makeFinishedBook(title: "Beta", author: "Bea", readTo: date(2026, 2, 8), pageCount: 210)
@@ -303,6 +322,141 @@ struct StatisticsSourceStoreTests {
         #expect(changedState.statsKey == readyStatsKey)
         #expect(changedHeatmapKey.booksSignature == readyHeatmapKey.booksSignature)
         #expect(changedHeatmapKey.activitySignature != readyHeatmapKey.activitySignature)
+    }
+
+    @MainActor
+    @Test func bookOnlyChangeRebasesSessionSourceWithoutAggregateRebuild() throws {
+        let book = makeFinishedBook()
+        let session = ReadingSession(
+            book: book,
+            startedAt: date(2026, 1, 2, 20, 0),
+            endedAt: date(2026, 1, 2, 21, 0),
+            pagesRead: 40
+        )
+        book.readingSessionsSafe = [session]
+
+        let store = StatisticsSourceStore()
+        store.refreshSourceAndTrack(books: [book])
+        store.refreshSessionSourceAndTrack(books: [book])
+        let firstSnapshot = try #require(store.sessionSourceSnapshot)
+        let firstBuildCount = store.completedSessionSourceBuildCount
+
+        book.title = "Only Display Title Changed"
+        store.refreshSourceAndTrack(books: [book])
+        let changedState = store.makeViewState(
+            selectedYear: 2026,
+            scope: .all,
+            activityMetric: .readingMinutes
+        )
+
+        #expect(changedState.sessionSourceRequestToken != nil)
+
+        store.refreshSessionSourceAndTrack(books: [book])
+        let rebasedSnapshot = try #require(store.sessionSourceSnapshot)
+
+        #expect(store.completedSessionSourceBuildCount == firstBuildCount)
+        #expect(rebasedSnapshot.booksSignature != firstSnapshot.booksSignature)
+        #expect(rebasedSnapshot.scopeSignature == firstSnapshot.scopeSignature)
+        #expect(rebasedSnapshot.sessionsSignature == firstSnapshot.sessionsSignature)
+        #expect(rebasedSnapshot.aggregates == firstSnapshot.aggregates)
+    }
+
+    @MainActor
+    @Test func sessionChangeInvalidatesOnlySessionRelevantCaches() async throws {
+        let book = makeFinishedBook()
+        let session = ReadingSession(
+            book: book,
+            startedAt: date(2026, 1, 2, 20, 0),
+            endedAt: date(2026, 1, 2, 21, 0),
+            pagesRead: 40
+        )
+        book.readingSessionsSafe = [session]
+
+        let store = StatisticsSourceStore()
+        store.refreshSourceAndTrack(books: [book])
+        let baseState = store.makeViewState(
+            selectedYear: 2026,
+            scope: .all,
+            activityMetric: .readingDays
+        )
+        let statsKey = try #require(baseState.statsKey)
+        await store.refreshStatsCache(for: statsKey, now: date(2026, 4, 15), calendar: calendar)
+
+        let cachedStatsKey = store.statsCache?.key
+        store.invalidateSessionSource()
+
+        #expect(store.statsCache?.key == cachedStatsKey)
+        #expect(store.sessionSourceSnapshot == nil)
+
+        let afterInvalidation = store.makeViewState(
+            selectedYear: 2026,
+            scope: .all,
+            activityMetric: .readingDays
+        )
+        #expect(afterInvalidation.statsDecision == .reusable)
+        #expect(afterInvalidation.sessionSourceRequestToken == nil)
+    }
+
+    @MainActor
+    @Test func markedStaleSessionSourceRefreshesOnlyWhenMetricNeedsSessions() throws {
+        let book = makeFinishedBook()
+        let session = ReadingSession(
+            book: book,
+            startedAt: date(2026, 1, 2, 20, 0),
+            endedAt: date(2026, 1, 2, 21, 0),
+            pagesRead: 40
+        )
+        book.readingSessionsSafe = [session]
+
+        let store = StatisticsSourceStore()
+        store.refreshSourceAndTrack(books: [book])
+        store.refreshSessionSourceAndTrack(books: [book])
+        let existingSource = try #require(store.sessionSourceSnapshot)
+
+        store.markSessionSourceStale()
+
+        let readingDaysState = store.makeViewState(
+            selectedYear: 2026,
+            scope: .all,
+            activityMetric: .readingDays
+        )
+        let readingMinutesState = store.makeViewState(
+            selectedYear: 2026,
+            scope: .all,
+            activityMetric: .readingMinutes
+        )
+
+        #expect(store.sessionSourceSnapshot?.sessionsSignature == existingSource.sessionsSignature)
+        #expect(readingDaysState.sessionSourceRequestToken == nil)
+        #expect(readingMinutesState.sessionSourceRequestToken != nil)
+        #expect(readingMinutesState.heatmapKey == nil)
+    }
+
+    @MainActor
+    @Test func largeFixtureBuildsSessionAggregatesForStatsAndProgress() async throws {
+        let fixture = LargeReadingDatasetBuilder.make1000BookMixedDataset()
+        let store = StatisticsSourceStore()
+
+        store.refreshSourceAndTrack(books: fixture.books)
+        store.refreshSessionSourceAndTrack(books: fixture.books)
+
+        let sessionSource = try #require(store.sessionSourceSnapshot)
+        #expect(store.completedSessionSourceBuildCount == 1)
+        #expect(sessionSource.aggregates.totalSessionCount == fixture.sessions.count)
+        #expect(sessionSource.aggregates.recentActivity.minutesLast7 > 0)
+        #expect(sessionSource.aggregates.booksByID.isEmpty == false)
+        #expect(sessionSource.aggregates.yearsByYear.isEmpty == false)
+
+        let state = store.makeViewState(
+            selectedYear: 2026,
+            scope: .all,
+            activityMetric: .readingMinutes
+        )
+        let heatmapKey = try #require(state.heatmapKey)
+        await store.refreshHeatmapCache(for: heatmapKey, now: fixture.now, calendar: fixture.calendar)
+
+        #expect(store.heatmapCache?.key == heatmapKey)
+        #expect(store.heatmapCache?.counts.isEmpty == false)
     }
 
 }

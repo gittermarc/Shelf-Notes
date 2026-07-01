@@ -1,23 +1,36 @@
 import Foundation
 
 nonisolated struct StatisticsReadingSessionSnapshot: Sendable {
+    let id: UUID
     let startedAt: Date
     let endedAt: Date
     let durationSeconds: Int
     let pagesRead: Int?
+    let createdAt: Date
 
-    init(startedAt: Date, endedAt: Date, durationSeconds: Int, pagesRead: Int?) {
+    init(
+        id: UUID = UUID(),
+        startedAt: Date,
+        endedAt: Date,
+        durationSeconds: Int,
+        pagesRead: Int?,
+        createdAt: Date? = nil
+    ) {
+        self.id = id
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.durationSeconds = durationSeconds
         self.pagesRead = pagesRead
+        self.createdAt = createdAt ?? startedAt
     }
 
     @MainActor init(session: ReadingSession) {
+        self.id = session.id
         self.startedAt = session.startedAt
         self.endedAt = session.endedAt
         self.durationSeconds = session.durationSeconds
         self.pagesRead = session.pagesReadNormalized
+        self.createdAt = session.createdAt
     }
 }
 
@@ -156,27 +169,32 @@ nonisolated struct StatisticsBookSnapshot: Sendable {
 }
 
 nonisolated struct StatisticsSessionBookSnapshot: Sendable {
+    let bookID: UUID?
     let statusRawValue: String
     let hasCompletedReading: Bool
     let readingSessions: [StatisticsReadingSessionSnapshot]
 
     init(
+        bookID: UUID? = nil,
         statusRawValue: String,
         hasCompletedReading: Bool = false,
         readingSessions: [StatisticsReadingSessionSnapshot]
     ) {
+        self.bookID = bookID
         self.statusRawValue = statusRawValue
         self.hasCompletedReading = hasCompletedReading
         self.readingSessions = readingSessions
     }
 
     init(bookSnapshot: StatisticsBookSnapshot) {
+        self.bookID = bookSnapshot.id
         self.statusRawValue = bookSnapshot.statusRawValue
         self.hasCompletedReading = bookSnapshot.hasCompletedReading
         self.readingSessions = bookSnapshot.readingSessions
     }
 
     @MainActor init(book: Book) {
+        self.bookID = book.id
         self.statusRawValue = book.statusRawValue
         self.hasCompletedReading = book.completedReadingAttemptCount > 0
         self.readingSessions = book.readingSessionsSafe.map { StatisticsReadingSessionSnapshot(session: $0) }

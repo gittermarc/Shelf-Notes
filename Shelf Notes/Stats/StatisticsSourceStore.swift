@@ -25,6 +25,11 @@ final class StatisticsSourceStore: ObservableObject {
         let sessionSourceRequestToken: Int?
     }
 
+    private nonisolated struct SessionSourceIdentity: Equatable, Sendable {
+        let sessionsSignature: Int
+        let scopeSignature: Int
+    }
+
     @Published private(set) var sourceSnapshot: StatisticsSourceSnapshot?
     @Published private(set) var sessionSourceSnapshot: StatisticsSessionSourceSnapshot?
     @Published private(set) var statsCache: StatisticsStatsCache?
@@ -32,11 +37,18 @@ final class StatisticsSourceStore: ObservableObject {
     @Published private(set) var isUpdatingStatsCache = false
     @Published private(set) var isUpdatingHeatmapCache = false
     @Published private(set) var isUpdatingSessionSource = false
+    private(set) var completedSessionSourceBuildCount = 0
 
     private var trackingGeneration = 0
     private var sessionTrackingGeneration = 0
     private var sessionInvalidationGeneration = 0
     private var observedBooks: [Book] = []
+    private var sessionSourceRefreshTask: Task<Void, Never>?
+    private var sessionSourceNeedsRefresh = false
+
+    deinit {
+        sessionSourceRefreshTask?.cancel()
+    }
 
     var currentBooksSignature: Int? {
         sourceSnapshot?.booksSignature
@@ -72,8 +84,11 @@ final class StatisticsSourceStore: ObservableObject {
             isUpdatingSessionSource = true
             defer { isUpdatingSessionSource = false }
 
-            let sessionsSignature = withObservationTracking {
-                Self.sessionsSignature(observedBooks)
+            let identity = withObservationTracking {
+                SessionSourceIdentity(
+                    sessionsSignature: Self.sessionsSignature(observedBooks),
+                    scopeSignature: Self.sessionScopeSignature(observedBooks)
+                )
             } onChange: { [weak self] in
                 Task { @MainActor [weak self] in
                     guard let self, self.sessionTrackingGeneration == generation else { return }
@@ -83,17 +98,35 @@ final class StatisticsSourceStore: ObservableObject {
 
             updateSessionSource(
                 booksSignature: booksSignature,
-                sessionsSignature: sessionsSignature,
+                scopeSignature: identity.scopeSignature,
+                sessionsSignature: identity.sessionsSignature,
                 books: observedBooks
             )
+        }
+    }
+
+    func requestSessionSourceRefresh(books: [Book]) {
+        observedBooks = books
+        sessionSourceRefreshTask?.cancel()
+        sessionSourceRefreshTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 220_000_000)
+            guard !Task.isCancelled else { return }
+            guard let self else { return }
+            self.refreshSessionSourceAndTrack(books: self.observedBooks)
         }
     }
 
     func invalidateSessionSource() {
         sessionTrackingGeneration += 1
         sessionInvalidationGeneration &+= 1
+        sessionSourceNeedsRefresh = true
         sessionSourceSnapshot = nil
         isUpdatingSessionSource = false
+    }
+
+    func markSessionSourceStale() {
+        sessionInvalidationGeneration &+= 1
+        sessionSourceNeedsRefresh = true
     }
 
     private func refreshObservedBooksAndTrack() {
@@ -266,6 +299,7 @@ final class StatisticsSourceStore: ObservableObject {
         isUpdatingStatsCache = false
         isUpdatingHeatmapCache = false
         isUpdatingSessionSource = false
+        sessionSourceNeedsRefresh = false
     }
 
     @discardableResult
@@ -277,32 +311,38 @@ final class StatisticsSourceStore: ObservableObject {
         let snapshot = StatisticsSourceSnapshot(signature: signature, books: books)
         sourceSnapshot = snapshot
 
-        if let sessionSourceSnapshot, sessionSourceSnapshot.booksSignature != signature {
-            self.sessionSourceSnapshot = nil
-            sessionInvalidationGeneration &+= 1
-        }
-
         return snapshot
     }
 
     @discardableResult
     private func updateSessionSource(
         booksSignature: Int,
+        scopeSignature: Int,
         sessionsSignature: Int,
         books: [Book]
     ) -> StatisticsSessionSourceSnapshot {
         if let sessionSourceSnapshot,
-           sessionSourceSnapshot.booksSignature == booksSignature,
+           sessionSourceSnapshot.scopeSignature == scopeSignature,
            sessionSourceSnapshot.sessionsSignature == sessionsSignature {
-            return sessionSourceSnapshot
+            if sessionSourceSnapshot.booksSignature == booksSignature {
+                sessionSourceNeedsRefresh = false
+                return sessionSourceSnapshot
+            }
+            let rebased = sessionSourceSnapshot.rebased(booksSignature: booksSignature)
+            self.sessionSourceSnapshot = rebased
+            sessionSourceNeedsRefresh = false
+            return rebased
         }
 
         let snapshot = StatisticsSessionSourceSnapshot(
             booksSignature: booksSignature,
+            scopeSignature: scopeSignature,
             sessionsSignature: sessionsSignature,
             books: books
         )
+        completedSessionSourceBuildCount += 1
         sessionSourceSnapshot = snapshot
+        sessionSourceNeedsRefresh = false
         return snapshot
     }
 
@@ -325,6 +365,9 @@ final class StatisticsSourceStore: ObservableObject {
         guard activityMetric == .readingMinutes else {
             return booksSignature
         }
+        guard sessionSourceNeedsRefresh == false else {
+            return nil
+        }
         guard let sessionSourceSnapshot,
               sessionSourceSnapshot.booksSignature == booksSignature else {
             return nil
@@ -337,7 +380,10 @@ final class StatisticsSourceStore: ObservableObject {
         booksSignature: Int
     ) -> Int? {
         guard activityMetric == .readingMinutes else { return nil }
-        guard sessionSourceSnapshot?.booksSignature != booksSignature else { return nil }
+        if sessionSourceNeedsRefresh == false,
+           sessionSourceSnapshot?.booksSignature == booksSignature {
+            return nil
+        }
 
         return booksSignature &* 31 &+ sessionInvalidationGeneration
     }
@@ -349,6 +395,7 @@ final class StatisticsSourceStore: ObservableObject {
             return nil
         }
         guard let sessionSourceSnapshot,
+              sessionSourceNeedsRefresh == false,
               sessionSourceSnapshot.booksSignature == key.booksSignature,
               sessionSourceSnapshot.sessionsSignature == key.activitySignature else {
             return nil

@@ -9,8 +9,8 @@ struct ProgressHubMetricsModelTests {
         return calendar
     }
 
-    private func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 12) -> Date {
-        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour)) ?? .distantPast
+    private func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 12, _ minute: Int = 0) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute)) ?? .distantPast
     }
 
     @MainActor
@@ -148,5 +148,47 @@ struct ProgressHubMetricsModelTests {
         #expect(metrics.minutesLast7 == 45)
         #expect(metrics.activeDaysLast7 == 3)
         #expect(metrics.currentStreak == 1)
+    }
+
+    @Test func sessionAggregatesMatchRecentActivityBuilderForProgressHub() {
+        let records = [
+            ReadingSessionAggregateRecord(
+                id: UUID(uuidString: "00000000-0000-0000-0000-000000000001") ?? UUID(),
+                bookID: UUID(uuidString: "00000000-0000-0000-0000-000000000101"),
+                statusRawValue: ReadingStatus.reading.rawValue,
+                startedAt: date(2026, 4, 15, 8),
+                endedAt: date(2026, 4, 15, 8, 20),
+                durationSeconds: 1_200,
+                pagesRead: 12,
+                createdAt: date(2026, 4, 15, 8)
+            ),
+            ReadingSessionAggregateRecord(
+                id: UUID(uuidString: "00000000-0000-0000-0000-000000000002") ?? UUID(),
+                bookID: UUID(uuidString: "00000000-0000-0000-0000-000000000101"),
+                statusRawValue: ReadingStatus.reading.rawValue,
+                startedAt: date(2026, 4, 14, 8),
+                endedAt: date(2026, 4, 14, 8, 30),
+                durationSeconds: 1_800,
+                pagesRead: 18,
+                createdAt: date(2026, 4, 14, 8)
+            )
+        ]
+
+        let aggregate = ReadingSessionAggregateBuilder.make(
+            records: records,
+            now: date(2026, 4, 15, 9),
+            calendar: calendar
+        )
+        let recent = ReadingAnalyticsRecentActivityBuilder.make(
+            sessions: records.map(\.sessionRecord),
+            now: date(2026, 4, 15, 9),
+            calendar: calendar
+        )
+
+        #expect(aggregate.recentActivity == recent)
+        #expect(aggregate.recentActivity.minutesLast7 == 50)
+        #expect(aggregate.recentActivity.activeDaysLast7 == 2)
+        #expect(aggregate.booksByID.values.first?.totalPages == 30)
+        #expect(aggregate.yearsByYear[2026]?.activeDays == 2)
     }
 }

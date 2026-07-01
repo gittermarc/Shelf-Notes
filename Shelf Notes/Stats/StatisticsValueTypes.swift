@@ -26,6 +26,27 @@ nonisolated enum StatisticsActivityMetric: String, CaseIterable, Identifiable, S
     }
 }
 
+nonisolated extension StatisticsActivityMetric {
+    var needsSessionSource: Bool {
+        self == .readingMinutes
+    }
+}
+
+nonisolated extension ReadingSessionAggregateScope {
+    init(statisticsScope: StatisticsScope) {
+        switch statisticsScope {
+        case .all:
+            self = .all
+        case .finished:
+            self = .finished
+        case .reading:
+            self = .reading
+        case .toRead:
+            self = .toRead
+        }
+    }
+}
+
 nonisolated struct StatisticsStatsCacheKey: Hashable, Sendable {
     let selectedYear: Int
     let scope: StatisticsScope

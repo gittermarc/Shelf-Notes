@@ -12,7 +12,8 @@ nonisolated struct StatisticsHeatmapBuilder {
     func makeHeatmapCache(
         for key: StatisticsHeatmapCacheKey,
         books: [StatisticsBookSnapshot],
-        sessionBooks: [StatisticsSessionBookSnapshot] = []
+        sessionBooks: [StatisticsSessionBookSnapshot] = [],
+        sessionAggregates: ReadingSessionAggregateSnapshot? = nil
     ) -> StatisticsHeatmapCache {
         let scoped = scopedBooks(for: key.scope, in: books)
         let scopedSessionBooks: [StatisticsSessionBookSnapshot]
@@ -26,12 +27,20 @@ nonisolated struct StatisticsHeatmapBuilder {
             scopedSessionBooks = []
         }
         let range = heatmapRange(for: key.selectedYear)
-        let counts = activityDailyCounts(
-            metric: key.activityMetric,
-            range: range,
-            books: scoped,
-            sessionBooks: scopedSessionBooks
-        )
+        let counts: [Date: Int]
+        if key.activityMetric == .readingMinutes, let sessionAggregates {
+            counts = sessionAggregates.roundedMinutesByDay(
+                for: ReadingSessionAggregateScope(statisticsScope: key.scope),
+                range: range.start...range.end
+            )
+        } else {
+            counts = activityDailyCounts(
+                metric: key.activityMetric,
+                range: range,
+                books: scoped,
+                sessionBooks: scopedSessionBooks
+            )
+        }
         let stats = heatmapStats(
             counts: counts,
             range: range,

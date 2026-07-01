@@ -8,6 +8,7 @@
 
 import Foundation
 import Combine
+import Observation
 import SwiftData
 
 @MainActor
@@ -35,7 +36,13 @@ final class ProgressHubMetricsModel: ObservableObject {
         }
     }
 
-    /// Small, Hashable input token used by `.task(id:)` to run recomputation only when needed.
+    struct SourceRefreshToken: Hashable {
+        let year: Int
+        let bookCount: Int
+        let goalCount: Int
+    }
+
+    /// Small, Hashable input token retained for tests and compatibility. The SwiftUI view no longer builds it.
     struct InputToken: Hashable {
         let year: Int
         let booksSignature: UInt64
@@ -43,18 +50,60 @@ final class ProgressHubMetricsModel: ObservableObject {
         let sessionsSignature: UInt64
     }
 
+    nonisolated struct GoalSnapshot: Hashable, Sendable {
+        let year: Int
+        let targetCount: Int
+        let updatedAt: Date
+
+        @MainActor init(goal: ReadingGoal) {
+            self.year = goal.year
+            self.targetCount = goal.targetCount
+            self.updatedAt = goal.updatedAt
+        }
+    }
+
+    nonisolated struct SourceSnapshot: Sendable {
+        let year: Int
+        let booksSignature: UInt64
+        let goalsSignature: UInt64
+        let bookRecords: [ReadingAnalyticsBookRecord]
+        let goals: [GoalSnapshot]
+    }
+
     // MARK: - State
 
     @Published private(set) var metrics: Metrics
 
     private var lastToken: InputToken?
+    private var sourceSnapshot: SourceSnapshot?
+    private var observedBooks: [Book] = []
+    private var observedGoals: [ReadingGoal] = []
+    private var observedModelContext: ModelContext?
+    private var trackingGeneration = 0
+    private var sessionRefreshTask: Task<Void, Never>?
 
     init() {
         let year = Calendar.current.component(.year, from: Date())
         self.metrics = Metrics.placeholder(year: year)
     }
 
+    deinit {
+        sessionRefreshTask?.cancel()
+    }
+
     // MARK: - Public API
+
+    static func makeRefreshToken(
+        year: Int,
+        books: [Book],
+        goals: [ReadingGoal]
+    ) -> SourceRefreshToken {
+        SourceRefreshToken(
+            year: year,
+            bookCount: books.count,
+            goalCount: goals.count
+        )
+    }
 
     static func makeInputToken(
         year: Int,
@@ -70,36 +119,65 @@ final class ProgressHubMetricsModel: ObservableObject {
         )
     }
 
+    func refreshSourceAndTrack(
+        year: Int,
+        books: [Book],
+        goals: [ReadingGoal],
+        modelContext: ModelContext
+    ) {
+        observedBooks = books
+        observedGoals = goals
+        observedModelContext = modelContext
+        trackingGeneration += 1
+        let generation = trackingGeneration
+
+        let snapshot = withObservationTracking {
+            Self.makeSourceSnapshot(year: year, books: observedBooks, goals: observedGoals)
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.trackingGeneration == generation else { return }
+                guard let modelContext = self.observedModelContext else { return }
+                self.refreshSourceAndTrack(
+                    year: year,
+                    books: self.observedBooks,
+                    goals: self.observedGoals,
+                    modelContext: modelContext
+                )
+            }
+        }
+
+        let oldSnapshot = sourceSnapshot
+        sourceSnapshot = snapshot
+
+        let sourceChanged = oldSnapshot?.year != snapshot.year
+            || oldSnapshot?.booksSignature != snapshot.booksSignature
+            || oldSnapshot?.goalsSignature != snapshot.goalsSignature
+
+        if sourceChanged || lastToken == nil {
+            refreshSessionMetrics(modelContext: modelContext)
+        }
+    }
+
+    func requestSessionMetricsRefresh(modelContext: ModelContext) {
+        observedModelContext = modelContext
+        sessionRefreshTask?.cancel()
+        sessionRefreshTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 220_000_000)
+            guard !Task.isCancelled else { return }
+            guard let self, let modelContext = self.observedModelContext else { return }
+            self.refreshSessionMetrics(modelContext: modelContext)
+        }
+    }
+
     func recompute(
         year: Int,
         books: [Book],
         goals: [ReadingGoal],
         modelContext: ModelContext
     ) {
-        PerformanceSignposter.measure("ProgressHub Metrics Refresh") {
-            let sessionSnapshot = ProgressHubSessionMetricsProvider.makeSnapshot(
-                modelContext: modelContext
-            )
-            let token = InputToken(
-                year: year,
-                booksSignature: Self.computeBooksSignature(books: books),
-                goalsSignature: Self.computeGoalsSignature(goals: goals),
-                sessionsSignature: sessionSnapshot.signature
-            )
-            guard token != lastToken else { return }
-            lastToken = token
-
-            let newMetrics = Self.makeMetrics(
-                year: year,
-                books: books,
-                goals: goals,
-                recentActivity: sessionSnapshot.recentActivity
-            )
-
-            if newMetrics != metrics {
-                metrics = newMetrics
-            }
-        }
+        let source = Self.makeSourceSnapshot(year: year, books: books, goals: goals)
+        sourceSnapshot = source
+        refreshSessionMetrics(modelContext: modelContext)
     }
 
     static func makeMetrics(
@@ -110,8 +188,26 @@ final class ProgressHubMetricsModel: ObservableObject {
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> Metrics {
+        makeMetrics(
+            year: year,
+            bookRecords: ReadingAnalyticsInputMapper.bookRecords(from: books),
+            goals: goals.map { GoalSnapshot(goal: $0) },
+            recentActivity: recentActivity,
+            now: now,
+            calendar: calendar
+        )
+    }
+
+    nonisolated static func makeMetrics(
+        year: Int,
+        bookRecords: [ReadingAnalyticsBookRecord],
+        goals: [GoalSnapshot],
+        recentActivity: ReadingAnalyticsRecentActivity,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Metrics {
         let analyticsIndex = ReadingAnalyticsIndexBuilder.make(
-            books: ReadingAnalyticsInputMapper.bookRecords(from: books),
+            books: bookRecords,
             sessions: [],
             now: now,
             calendar: calendar
@@ -129,27 +225,86 @@ final class ProgressHubMetricsModel: ObservableObject {
         )
     }
 
+    // MARK: - Refresh pipeline
+
+    private func refreshSessionMetrics(modelContext: ModelContext) {
+        guard let sourceSnapshot else {
+            let year = Calendar.current.component(.year, from: Date())
+            metrics = .placeholder(year: year)
+            return
+        }
+
+        PerformanceSignposter.measure("ProgressHub Metrics Refresh") {
+            let sessionSnapshot = ProgressHubSessionMetricsProvider.makeSnapshot(
+                modelContext: modelContext
+            )
+            let token = InputToken(
+                year: sourceSnapshot.year,
+                booksSignature: sourceSnapshot.booksSignature,
+                goalsSignature: sourceSnapshot.goalsSignature,
+                sessionsSignature: sessionSnapshot.signature
+            )
+            guard token != lastToken else { return }
+            lastToken = token
+
+            let newMetrics = Self.makeMetrics(
+                year: sourceSnapshot.year,
+                bookRecords: sourceSnapshot.bookRecords,
+                goals: sourceSnapshot.goals,
+                recentActivity: sessionSnapshot.recentActivity
+            )
+
+            if newMetrics != metrics {
+                metrics = newMetrics
+            }
+        }
+    }
+
+    private static func makeSourceSnapshot(
+        year: Int,
+        books: [Book],
+        goals: [ReadingGoal]
+    ) -> SourceSnapshot {
+        let bookRecords = ReadingAnalyticsInputMapper.bookRecords(from: books)
+        let goalSnapshots = goals.map { GoalSnapshot(goal: $0) }
+        return SourceSnapshot(
+            year: year,
+            booksSignature: computeBookRecordSignature(bookRecords),
+            goalsSignature: computeGoalSnapshotSignature(goalSnapshots),
+            bookRecords: bookRecords,
+            goals: goalSnapshots
+        )
+    }
+
     // MARK: - Signatures
 
     private static func computeBooksSignature(books: [Book]) -> UInt64 {
+        computeBookRecordSignature(ReadingAnalyticsInputMapper.bookRecords(from: books))
+    }
+
+    private static func computeGoalsSignature(goals: [ReadingGoal]) -> UInt64 {
+        computeGoalSnapshotSignature(goals.map { GoalSnapshot(goal: $0) })
+    }
+
+    private nonisolated static func computeBookRecordSignature(_ records: [ReadingAnalyticsBookRecord]) -> UInt64 {
         var aggregate: UInt64 = 0xD6E8_FEB8_6659_FD93
-        aggregate &+= UInt64(books.count) &* 0xBF58_476D_1CE4_E5B9
+        aggregate &+= UInt64(records.count) &* 0xBF58_476D_1CE4_E5B9
 
-        for book in books {
+        for record in records.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
             var hasher = Hasher()
-            hasher.combine(book.id)
-            hasher.combine(book.statusRawValue)
-            hasher.combine(book.readFrom?.timeIntervalSinceReferenceDate)
-            hasher.combine(book.readTo?.timeIntervalSinceReferenceDate)
+            hasher.combine(record.id)
+            hasher.combine(record.statusRawValue)
+            hasher.combine(record.createdAt.timeIntervalSinceReferenceDate)
+            hasher.combine(record.readFrom?.timeIntervalSinceReferenceDate)
+            hasher.combine(record.readTo?.timeIntervalSinceReferenceDate)
+            hasher.combine(record.pageCount)
 
-            for attempt in book.orderedReadingAttempts {
-                hasher.combine(attempt.id)
-                hasher.combine(attempt.sequenceNumber)
-                hasher.combine(attempt.statusRawValue)
-                hasher.combine(attempt.startedAt?.timeIntervalSinceReferenceDate)
-                hasher.combine(attempt.finishedAt?.timeIntervalSinceReferenceDate)
-                hasher.combine(attempt.pageCountSnapshot)
-                hasher.combine(attempt.updatedAt.timeIntervalSinceReferenceDate)
+            for completion in record.readingCompletions {
+                hasher.combine(completion.id)
+                hasher.combine(completion.bookID)
+                hasher.combine(completion.finishedAt.timeIntervalSinceReferenceDate)
+                hasher.combine(completion.pageCount)
+                hasher.combine(completion.isReread)
             }
 
             let hash = UInt64(bitPattern: Int64(hasher.finalize()))
@@ -158,11 +313,11 @@ final class ProgressHubMetricsModel: ObservableObject {
         return aggregate
     }
 
-    private static func computeGoalsSignature(goals: [ReadingGoal]) -> UInt64 {
+    private nonisolated static func computeGoalSnapshotSignature(_ goals: [GoalSnapshot]) -> UInt64 {
         var aggregate: UInt64 = 0xA5A3_56D7_6F7A_19D3
         aggregate &+= UInt64(goals.count) &* 0x94D0_49BB_1331_11EB
 
-        for goal in goals {
+        for goal in goals.sorted(by: { $0.year < $1.year }) {
             var hasher = Hasher()
             hasher.combine(goal.year)
             hasher.combine(goal.targetCount)

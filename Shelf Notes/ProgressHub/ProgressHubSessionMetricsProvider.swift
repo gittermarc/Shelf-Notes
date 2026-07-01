@@ -3,10 +3,12 @@ import SwiftData
 
 nonisolated struct ProgressHubSessionMetricsSnapshot: Equatable, Sendable {
     let recentActivity: ReadingAnalyticsRecentActivity
+    let aggregates: ReadingSessionAggregateSnapshot
     let signature: UInt64
 
     static let empty = ProgressHubSessionMetricsSnapshot(
         recentActivity: .empty,
+        aggregates: .empty,
         signature: 0x7F4A_7C15_1D3D_0A2C
     )
 }
@@ -20,10 +22,26 @@ enum ProgressHubSessionMetricsProvider {
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> ProgressHubSessionMetricsSnapshot {
+        PerformanceSignposter.measure("ProgressHub Session Snapshot") {
+            makeSnapshotWithoutSignpost(
+                modelContext: modelContext,
+                now: now,
+                calendar: calendar
+            )
+        }
+    }
+
+    private static func makeSnapshotWithoutSignpost(
+        modelContext: ModelContext,
+        now: Date,
+        calendar: Calendar
+    ) -> ProgressHubSessionMetricsSnapshot {
         var accumulator = ReadingAnalyticsRecentActivityBuilder.Accumulator(
             now: now,
             calendar: calendar
         )
+        var aggregateRecords: [ReadingSessionAggregateRecord] = []
+        aggregateRecords.reserveCapacity(batchSize)
         var signature = ProgressHubSessionMetricsSnapshot.empty.signature
         var consumedCount = 0
         var offset = 0
@@ -44,6 +62,7 @@ enum ProgressHubSessionMetricsProvider {
                 consumedCount += 1
                 combine(record: record, into: &signature)
                 accumulator.consume(record)
+                aggregateRecords.append(ReadingSessionAggregateRecord(session: session))
 
                 if accumulator.shouldStop {
                     break
@@ -58,9 +77,15 @@ enum ProgressHubSessionMetricsProvider {
         }
 
         signature &+= UInt64(consumedCount) &* 0xBF58_476D_1CE4_E5B9
+        let aggregates = ReadingSessionAggregateBuilder.make(
+            records: aggregateRecords,
+            now: now,
+            calendar: calendar
+        )
 
         return ProgressHubSessionMetricsSnapshot(
             recentActivity: accumulator.makeRecentActivity(),
+            aggregates: aggregates,
             signature: signature
         )
     }

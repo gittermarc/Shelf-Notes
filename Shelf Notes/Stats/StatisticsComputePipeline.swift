@@ -17,23 +17,86 @@ nonisolated struct StatisticsSourceSnapshot: Sendable {
 
 nonisolated struct StatisticsSessionSourceSnapshot: Sendable {
     let booksSignature: Int
+    let scopeSignature: Int
     let sessionsSignature: Int
     let sessionBooks: [StatisticsSessionBookSnapshot]
+    let aggregates: ReadingSessionAggregateSnapshot
 
-    @MainActor init(booksSignature: Int, sessionsSignature: Int, books: [Book]) {
+    @MainActor init(
+        booksSignature: Int,
+        scopeSignature: Int? = nil,
+        sessionsSignature: Int,
+        books: [Book],
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) {
         self.booksSignature = booksSignature
+        self.scopeSignature = scopeSignature ?? StatisticsSourceStore.sessionScopeSignature(books)
         self.sessionsSignature = sessionsSignature
-        self.sessionBooks = books.map { StatisticsSessionBookSnapshot(book: $0) }
+        let sessionBooks = books.map { StatisticsSessionBookSnapshot(book: $0) }
+        self.sessionBooks = sessionBooks
+        self.aggregates = Self.makeAggregates(
+            sessionBooks: sessionBooks,
+            now: now,
+            calendar: calendar
+        )
     }
 
     init(
         booksSignature: Int,
+        scopeSignature: Int? = nil,
         sessionsSignature: Int,
-        sessionBooks: [StatisticsSessionBookSnapshot]
+        sessionBooks: [StatisticsSessionBookSnapshot],
+        aggregates: ReadingSessionAggregateSnapshot? = nil,
+        now: Date = Date(),
+        calendar: Calendar = .current
     ) {
         self.booksSignature = booksSignature
+        self.scopeSignature = scopeSignature ?? booksSignature
         self.sessionsSignature = sessionsSignature
         self.sessionBooks = sessionBooks
+        self.aggregates = aggregates ?? Self.makeAggregates(
+            sessionBooks: sessionBooks,
+            now: now,
+            calendar: calendar
+        )
+    }
+
+    func rebased(booksSignature: Int) -> StatisticsSessionSourceSnapshot {
+        StatisticsSessionSourceSnapshot(
+            booksSignature: booksSignature,
+            scopeSignature: scopeSignature,
+            sessionsSignature: sessionsSignature,
+            sessionBooks: sessionBooks,
+            aggregates: aggregates
+        )
+    }
+
+    static func makeAggregates(
+        sessionBooks: [StatisticsSessionBookSnapshot],
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> ReadingSessionAggregateSnapshot {
+        let records = sessionBooks.flatMap { book in
+            book.readingSessions.map { session in
+                ReadingSessionAggregateRecord(
+                    id: session.id,
+                    bookID: book.bookID,
+                    statusRawValue: book.statusRawValue,
+                    hasCompletedReading: book.hasCompletedReading,
+                    startedAt: session.startedAt,
+                    endedAt: session.endedAt,
+                    durationSeconds: session.durationSeconds,
+                    pagesRead: session.pagesRead,
+                    createdAt: session.createdAt
+                )
+            }
+        }
+        return ReadingSessionAggregateBuilder.make(
+            records: records,
+            now: now,
+            calendar: calendar
+        )
     }
 }
 
@@ -87,7 +150,8 @@ nonisolated struct StatisticsComputePipeline {
             return builder.makeHeatmapCache(
                 for: key,
                 books: source.books,
-                sessionBooks: sessionSource?.sessionBooks ?? []
+                sessionBooks: sessionSource?.sessionBooks ?? [],
+                sessionAggregates: sessionSource?.aggregates
             )
         }
 
