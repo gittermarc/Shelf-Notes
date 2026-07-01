@@ -237,6 +237,7 @@ nonisolated enum ChallengeEngine {
                 detail: p.detail,
                 targetValue: p.targetValue
             )
+            record.id = p.id
 
             modelContext.insert(record)
             changed = true
@@ -322,6 +323,22 @@ nonisolated enum ChallengeEngine {
         }
 
         return ChallengeDuplicateResolver.deduplicatedRecords(active)
+    }
+
+    @MainActor
+    static func fetchDeduplicatedActiveChallengeSnapshots(now: Date, modelContext: ModelContext) -> [ChallengeRecordSnapshot] {
+        fetchDeduplicatedActiveChallenges(now: now, modelContext: modelContext)
+            .map { ChallengeRecordSnapshot(from: $0) }
+    }
+
+    @MainActor
+    static func applyRefreshPlans(
+        ensurePlans: [EnsurePlan],
+        completionPlans: [CompletionPlan],
+        modelContext: ModelContext
+    ) {
+        applyEnsurePlans(ensurePlans, modelContext: modelContext)
+        applyCompletionPlans(completionPlans, modelContext: modelContext)
     }
 
     // MARK: - Period helpers

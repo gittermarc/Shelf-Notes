@@ -7,16 +7,30 @@
 
 import Foundation
 
-@MainActor
 enum ChallengeSessionImpactBuilder {
+    @MainActor
     static func makeSavedSessionImpact(
         challenges: [ChallengeRecord],
         progressAfterByID: [UUID: ChallengeEngine.ChallengeProgress],
         contribution: ChallengeSessionContribution,
         now: Date = Date()
     ) -> ChallengeSessionImpact? {
+        makeSavedSessionImpact(
+            challengeSnapshots: challenges.map { ChallengeEngine.ChallengeRecordSnapshot(from: $0) },
+            progressAfterByID: progressAfterByID,
+            contribution: contribution,
+            now: now
+        )
+    }
+
+    nonisolated static func makeSavedSessionImpact(
+        challengeSnapshots: [ChallengeEngine.ChallengeRecordSnapshot],
+        progressAfterByID: [UUID: ChallengeEngine.ChallengeProgress],
+        contribution: ChallengeSessionContribution,
+        now: Date = Date()
+    ) -> ChallengeSessionImpact? {
         makeImpact(
-            challenges: challenges,
+            challengeSnapshots: challengeSnapshots,
             progressByID: progressAfterByID,
             contribution: contribution,
             basis: .progressIncludesContribution,
@@ -24,14 +38,29 @@ enum ChallengeSessionImpactBuilder {
         )
     }
 
+    @MainActor
     static func makePendingSessionImpact(
         challenges: [ChallengeRecord],
         progressBeforeByID: [UUID: ChallengeEngine.ChallengeProgress],
         contribution: ChallengeSessionContribution,
         now: Date = Date()
     ) -> ChallengeSessionImpact? {
+        makePendingSessionImpact(
+            challengeSnapshots: challenges.map { ChallengeEngine.ChallengeRecordSnapshot(from: $0) },
+            progressBeforeByID: progressBeforeByID,
+            contribution: contribution,
+            now: now
+        )
+    }
+
+    nonisolated static func makePendingSessionImpact(
+        challengeSnapshots: [ChallengeEngine.ChallengeRecordSnapshot],
+        progressBeforeByID: [UUID: ChallengeEngine.ChallengeProgress],
+        contribution: ChallengeSessionContribution,
+        now: Date = Date()
+    ) -> ChallengeSessionImpact? {
         makeImpact(
-            challenges: challenges,
+            challengeSnapshots: challengeSnapshots,
             progressByID: progressBeforeByID,
             contribution: contribution,
             basis: .progressExcludesContribution,
@@ -39,19 +68,19 @@ enum ChallengeSessionImpactBuilder {
         )
     }
 
-    private enum ProgressBasis {
+    private enum ProgressBasis: Sendable {
         case progressIncludesContribution
         case progressExcludesContribution
     }
 
-    private static func makeImpact(
-        challenges: [ChallengeRecord],
+    private nonisolated static func makeImpact(
+        challengeSnapshots: [ChallengeEngine.ChallengeRecordSnapshot],
         progressByID: [UUID: ChallengeEngine.ChallengeProgress],
         contribution: ChallengeSessionContribution,
         basis: ProgressBasis,
         now: Date
     ) -> ChallengeSessionImpact? {
-        let active = challenges
+        let active = challengeSnapshots
             .filter { $0.periodStart <= now && $0.periodEnd > now }
             .sorted { lhs, rhs in
                 if lhs.kind != rhs.kind { return lhs.kind.sortOrder < rhs.kind.sortOrder }
@@ -89,8 +118,8 @@ enum ChallengeSessionImpactBuilder {
         )
     }
 
-    private static func makeEntry(
-        record: ChallengeRecord,
+    private nonisolated static func makeEntry(
+        record: ChallengeEngine.ChallengeRecordSnapshot,
         progress: ChallengeEngine.ChallengeProgress?,
         contribution: ChallengeSessionContribution,
         basis: ProgressBasis
@@ -114,12 +143,13 @@ enum ChallengeSessionImpactBuilder {
 
         let didComplete = beforeValue < record.targetValue && afterValue >= record.targetValue
         let projected = ChallengeEngine.ChallengeProgress(value: afterValue, unitSuffix: record.metric.unitSuffix)
+        let title = record.title.isEmpty ? record.kind.displayName : record.title
 
         return ChallengeSessionImpactEntry(
             id: record.id,
             kind: record.kind,
             metric: record.metric,
-            title: record.title,
+            title: title,
             contributionText: "+\(delta) \(record.metric.unitSuffix)",
             progressText: projected.valueText(target: record.targetValue),
             didComplete: didComplete,
@@ -128,8 +158,8 @@ enum ChallengeSessionImpactBuilder {
         )
     }
 
-    private static func contributionValue(
-        record: ChallengeRecord,
+    private nonisolated static func contributionValue(
+        record: ChallengeEngine.ChallengeRecordSnapshot,
         contribution: ChallengeSessionContribution
     ) -> Int {
         let session = ChallengeEngine.SessionSnapshot(
@@ -155,7 +185,7 @@ enum ChallengeSessionImpactBuilder {
         ).value
     }
 
-    private static func sortEntries(_ lhs: ChallengeSessionImpactEntry, _ rhs: ChallengeSessionImpactEntry) -> Bool {
+    private nonisolated static func sortEntries(_ lhs: ChallengeSessionImpactEntry, _ rhs: ChallengeSessionImpactEntry) -> Bool {
         let lhsPriority = priority(for: lhs)
         let rhsPriority = priority(for: rhs)
         if lhsPriority != rhsPriority { return lhsPriority < rhsPriority }
@@ -164,7 +194,7 @@ enum ChallengeSessionImpactBuilder {
         return lhs.title < rhs.title
     }
 
-    private static func priority(for entry: ChallengeSessionImpactEntry) -> Int {
+    private nonisolated static func priority(for entry: ChallengeSessionImpactEntry) -> Int {
         if entry.didComplete { return 0 }
         if entry.kind == .daily && entry.progressFraction >= 0.60 { return 1 }
         if entry.kind == .weekly && entry.progressFraction >= 0.75 { return 2 }
@@ -182,7 +212,7 @@ enum ChallengeSessionImpactBuilder {
         }
     }
 
-    private static func makeTitle(didComplete: Bool, first: ChallengeSessionImpactEntry) -> String {
+    private nonisolated static func makeTitle(didComplete: Bool, first: ChallengeSessionImpactEntry) -> String {
         if didComplete {
             if first.kind == .daily { return "Tagesmission geknackt" }
             if first.kind == .yearly { return "Jahresquest geknackt" }

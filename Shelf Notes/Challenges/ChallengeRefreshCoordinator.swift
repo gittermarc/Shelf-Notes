@@ -173,37 +173,24 @@ enum ChallengeRefreshCoordinator {
             guard !batch.isEmpty else { return [] }
 
             let enabledKinds = ChallengePreferencesStore.load().enabledKinds
-            if batch.requiresChallengePreparation {
-                await prepareCurrentChallenges(modelContext: modelContext, enabledKinds: enabledKinds)
-            }
+            let now = Date()
+            let input = ChallengeRefreshPipeline.makeInput(
+                modelContext: modelContext,
+                enabledKinds: enabledKinds,
+                now: now,
+                savedSessionPayloads: batch.savedSessionPayloads
+            )
+            let output = await Task.detached(priority: .utility) {
+                ChallengeRefreshPipeline.makeOutput(input: input)
+            }.value
 
-            let impacts: [ChallengeSessionImpact]
-            if batch.savedSessionPayloads.isEmpty {
-                impacts = []
-            } else {
-                let active = ChallengeSourceStore.fetchVisibleActiveRecords(
-                    modelContext: modelContext,
-                    enabledKinds: enabledKinds
-                )
-                let progress = await computeProgressMap(for: active, modelContext: modelContext)
-                impacts = batch.savedSessionPayloads.compactMap { payload in
-                    guard let sessionSnapshot = payload.sessionSnapshot else { return nil }
-                    let contribution = ChallengeSessionContribution(
-                        bookID: sessionSnapshot.bookID,
-                        startedAt: sessionSnapshot.startedAt,
-                        endedAt: sessionSnapshot.endedAt,
-                        durationSeconds: sessionSnapshot.durationSeconds,
-                        pagesRead: sessionSnapshot.pagesRead,
-                        didMarkBookFinished: payload.didMarkBookFinished,
-                        hasNote: sessionSnapshot.hasNote
-                    )
-                    return ChallengeSessionImpactBuilder.makeSavedSessionImpact(
-                        challenges: active,
-                        progressAfterByID: progress,
-                        contribution: contribution
-                    )
-                }
-            }
+            ChallengeEngine.applyRefreshPlans(
+                ensurePlans: batch.requiresChallengePreparation ? output.ensurePlans : [],
+                completionPlans: batch.requiresChallengePreparation ? output.completionPlans : [],
+                modelContext: modelContext
+            )
+
+            let impacts = output.savedSessionImpacts
 
             if batch.postsReadingSessionChange {
                 ReadingSessionChangeNotifier.post()

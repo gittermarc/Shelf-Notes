@@ -107,6 +107,8 @@ extension ChallengeEngine {
         let periodEnd: Date
         let targetValue: Int
         let completedAt: Date?
+        let title: String
+        let detail: String
 
         init(
             id: UUID,
@@ -115,7 +117,9 @@ extension ChallengeEngine {
             periodStart: Date,
             periodEnd: Date,
             targetValue: Int,
-            completedAt: Date?
+            completedAt: Date?,
+            title: String = "",
+            detail: String = ""
         ) {
             self.id = id
             self.kind = kind
@@ -124,6 +128,8 @@ extension ChallengeEngine {
             self.periodEnd = periodEnd
             self.targetValue = targetValue
             self.completedAt = completedAt
+            self.title = title
+            self.detail = detail
         }
 
         init(from record: ChallengeRecord) {
@@ -134,7 +140,23 @@ extension ChallengeEngine {
                 periodStart: record.periodStart,
                 periodEnd: record.periodEnd,
                 targetValue: record.targetValue,
-                completedAt: record.completedAt
+                completedAt: record.completedAt,
+                title: record.title,
+                detail: record.detail
+            )
+        }
+
+        init(from plan: EnsurePlan) {
+            self.init(
+                id: plan.id,
+                kind: plan.kind,
+                metric: plan.metric,
+                periodStart: plan.periodStart,
+                periodEnd: plan.periodEnd,
+                targetValue: plan.targetValue,
+                completedAt: nil,
+                title: plan.title,
+                detail: plan.detail
             )
         }
     }

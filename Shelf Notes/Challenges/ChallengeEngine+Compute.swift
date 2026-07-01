@@ -21,6 +21,7 @@ nonisolated extension ChallengeEngine {
     }
 
     struct EnsurePlan: Sendable {
+        let id: UUID
         let kind: ChallengeKind
         let metric: ChallengeMetric
         let periodStart: Date
@@ -128,6 +129,7 @@ nonisolated extension ChallengeEngine {
             )
             plans.append(
                 EnsurePlan(
+                    id: UUID(),
                     kind: cadence.kind,
                     metric: generated.metric,
                     periodStart: cadence.period.start,
