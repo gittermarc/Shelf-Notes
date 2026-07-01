@@ -19,7 +19,7 @@ nonisolated enum TagsDashboardSortMode: String, CaseIterable, Identifiable {
     }
 }
 
-struct TagsDashboardBookSnapshot: Identifiable, Hashable {
+nonisolated struct TagsDashboardBookSnapshot: Identifiable, Hashable {
     let id: UUID
     let title: String
     let author: String
@@ -27,7 +27,7 @@ struct TagsDashboardBookSnapshot: Identifiable, Hashable {
     let tags: [String]
 }
 
-struct TagsDashboardStatusCounts: Hashable {
+nonisolated struct TagsDashboardStatusCounts: Hashable {
     var toRead: Int = 0
     var reading: Int = 0
     var finished: Int = 0
@@ -72,7 +72,7 @@ struct TagsDashboardStatusCounts: Hashable {
     }
 }
 
-struct TagsDashboardEntry: Identifiable, Hashable {
+nonisolated struct TagsDashboardEntry: Identifiable, Hashable {
     let tag: String
     let bookCount: Int
     let statusCounts: TagsDashboardStatusCounts
@@ -87,7 +87,7 @@ nonisolated struct TagsDashboardTopTag: Hashable {
     let count: Int
 }
 
-struct TagsDashboardSummary: Hashable {
+nonisolated struct TagsDashboardSummary: Hashable {
     let totalBooks: Int
     let totalTags: Int
     let taggedBooksCount: Int
@@ -95,7 +95,7 @@ struct TagsDashboardSummary: Hashable {
     let topTag: TagsDashboardTopTag?
 }
 
-struct TagsDashboardRelatedTag: Identifiable, Hashable {
+nonisolated struct TagsDashboardRelatedTag: Identifiable, Hashable {
     let tag: String
     let sharedBookCount: Int
 
@@ -104,7 +104,7 @@ struct TagsDashboardRelatedTag: Identifiable, Hashable {
     }
 }
 
-struct TagsDashboard: Hashable {
+nonisolated struct TagsDashboard: Hashable {
     let summary: TagsDashboardSummary
     let entries: [TagsDashboardEntry]
     let untaggedBookIDs: [UUID]

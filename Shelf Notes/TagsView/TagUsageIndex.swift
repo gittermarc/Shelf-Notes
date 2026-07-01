@@ -1,7 +1,7 @@
 import Foundation
 
-struct TagUsageIndex {
-    struct Entry: Identifiable, Hashable {
+nonisolated struct TagUsageIndex {
+    nonisolated struct Entry: Identifiable, Hashable {
         let key: String
         let tag: String
         let bookIDs: [UUID]

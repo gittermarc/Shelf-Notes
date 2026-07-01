@@ -171,7 +171,7 @@ nonisolated enum ChallengeRefreshPipeline {
     }
 }
 
-private extension ChallengeRefreshPipeline {
+private nonisolated extension ChallengeRefreshPipeline {
     @MainActor
     static func makeCadenceInputs(
         enabledKinds: [ChallengeKind],

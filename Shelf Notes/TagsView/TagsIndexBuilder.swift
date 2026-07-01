@@ -1,6 +1,6 @@
 import Foundation
 
-enum TagsIndexBuilder {
+nonisolated enum TagsIndexBuilder {
 
     struct TagCount: Identifiable, Hashable {
         let tag: String
@@ -14,10 +14,12 @@ enum TagsIndexBuilder {
         let tags: [String]
     }
 
+    @MainActor
     static func makeSnapshot(books: [Book]) -> [BookTagsSnapshot] {
         books.map { BookTagsSnapshot(id: $0.id, tags: $0.tags) }
     }
 
+    @MainActor
     static func makeSuggestionSnapshot(books: [Book]) -> [TagSuggestionBookSnapshot] {
         TagSuggestionEngine.makeSnapshots(books: books)
     }
@@ -119,10 +121,12 @@ enum TagsIndexBuilder {
         return Array((prefixMatches + fuzzyMatches).prefix(limit)).map(\.tag)
     }
 
+    @MainActor
     static func taskSignature(books: [Book]) -> UInt64 {
         computeSignature(snapshot: makeSnapshot(books: books))
     }
 
+    @MainActor
     static func suggestionTaskSignature(books: [Book]) -> UInt64 {
         computeSuggestionSignature(snapshot: makeSuggestionSnapshot(books: books))
     }

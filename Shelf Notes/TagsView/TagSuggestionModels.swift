@@ -22,7 +22,7 @@ nonisolated enum TagSuggestionReason: String, CaseIterable, Identifiable, Hashab
     }
 }
 
-struct TagSuggestion: Identifiable, Hashable {
+nonisolated struct TagSuggestion: Identifiable, Hashable {
     let tag: String
     let score: Int
     let reasons: [TagSuggestionReason]
@@ -38,7 +38,7 @@ struct TagSuggestion: Identifiable, Hashable {
     }
 }
 
-struct TagSuggestionBookSnapshot: Identifiable, Hashable {
+nonisolated struct TagSuggestionBookSnapshot: Identifiable, Hashable {
     let id: UUID
     let title: String
     let author: String

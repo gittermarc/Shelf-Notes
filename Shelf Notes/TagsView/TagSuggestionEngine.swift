@@ -1,6 +1,6 @@
 import Foundation
 
-enum TagSuggestionEngine {
+nonisolated enum TagSuggestionEngine {
 
     private struct ExistingTagAggregate {
         var tag: String
@@ -24,10 +24,12 @@ enum TagSuggestionEngine {
         static let frequentMaximum = 54
     }
 
+    @MainActor
     static func makeSnapshots(books: [Book]) -> [TagSuggestionBookSnapshot] {
         books.map { makeSnapshot(book: $0) }
     }
 
+    @MainActor
     static func makeSnapshot(book: Book) -> TagSuggestionBookSnapshot {
         TagSuggestionBookSnapshot(
             id: book.id,

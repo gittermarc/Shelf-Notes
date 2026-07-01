@@ -11,7 +11,7 @@ import SwiftUI
 
 @MainActor
 enum AppStartupMaintenanceService {
-    struct CoverBackfillConfiguration {
+    nonisolated struct CoverBackfillConfiguration {
         let initialDelayNanoseconds: UInt64
         let batchSize: Int
         let interBatchDelayNanoseconds: UInt64

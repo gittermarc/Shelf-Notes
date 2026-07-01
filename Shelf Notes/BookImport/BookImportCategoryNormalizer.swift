@@ -13,7 +13,7 @@
 
 import Foundation
 
-enum BookImportCategoryNormalizer {
+nonisolated enum BookImportCategoryNormalizer {
 
     // MARK: - Profile
 

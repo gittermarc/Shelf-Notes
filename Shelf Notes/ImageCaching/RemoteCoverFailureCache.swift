@@ -8,7 +8,7 @@ import Foundation
 /// Short-lived cache for failing remote cover URLs.
 ///
 /// It prevents repeated immediate retries for broken cover candidates while scrolling.
-final class RemoteCoverFailureCache: @unchecked Sendable {
+nonisolated final class RemoteCoverFailureCache: @unchecked Sendable {
     static let shared = RemoteCoverFailureCache()
 
     static let defaultTTL: TimeInterval = 10 * 60
