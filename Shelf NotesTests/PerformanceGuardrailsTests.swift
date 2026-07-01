@@ -3,7 +3,7 @@ import Testing
 @testable import Shelf_Notes
 
 struct PerformanceGuardrailsTests {
-    @Test @MainActor func largeTimelineFixtureKeepsRereadsAndYearsDeterministic() {
+    @Test @MainActor func largeTimelineFixtureKeepsRereadsAndYearsDeterministic() async {
         let fixture = LargeReadingDatasetBuilder.make300BookTimelineDataset()
 
         #expect(fixture.books.count == 300)
@@ -13,7 +13,7 @@ struct PerformanceGuardrailsTests {
         #expect(fixture.expectedTimelineYears == [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026])
 
         let viewModel = ReadingTimelineViewModel()
-        viewModel.setBooks(fixture.books)
+        await viewModel.setBooks(fixture.books)
 
         let completionEntries = viewModel.items.compactMap { item -> ReadingTimelineEntry? in
             if case .completion(let entry) = item.kind {
@@ -31,6 +31,8 @@ struct PerformanceGuardrailsTests {
         #expect(viewModel.years == [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026])
         #expect(completionEntries.count == 280)
         #expect(completionEntries.filter { $0.completion.isReread }.count == 60)
+        #expect(viewModel.displayState.completionCount == 280)
+        #expect(viewModel.displayState.rereadCompletionCount == 60)
         #expect(statsByYear[2017]?.count == 60)
         #expect(statsByYear[2017]?.uniqueBookCount == 30)
         #expect(statsByYear[2017]?.rereadCount == 30)

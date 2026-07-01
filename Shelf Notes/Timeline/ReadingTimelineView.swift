@@ -87,7 +87,7 @@ struct ReadingTimelineView: View {
         }
         .task(id: signature) {
             // Keep view model derived data in sync with SwiftData changes.
-            vm.setBooks(books)
+            await vm.setBooks(books)
         }
     }
 

@@ -13,7 +13,7 @@ struct ReadingTimelineRereadTests {
         calendar.date(from: DateComponents(year: year, month: month, day: day)) ?? .distantPast
     }
 
-    @Test @MainActor func timelineShowsMultipleCompletedAttemptsForTheSameBook() {
+    @Test @MainActor func timelineShowsMultipleCompletedAttemptsForTheSameBook() async {
         let book = Book(title: "Repeat", author: "Ada", status: .reading)
         book.createdAt = date(2025, 1, 1)
         book.pageCount = 300
@@ -46,7 +46,7 @@ struct ReadingTimelineRereadTests {
         book.readingAttempts = [first, second, active]
 
         let viewModel = ReadingTimelineViewModel()
-        viewModel.setBooks([book])
+        await viewModel.setBooks([book])
 
         let completionEntries = viewModel.items.compactMap { item -> ReadingTimelineEntry? in
             if case .completion(let entry) = item.kind {
@@ -68,5 +68,7 @@ struct ReadingTimelineRereadTests {
         #expect(yearStats?.count == 2)
         #expect(yearStats?.uniqueBookCount == 1)
         #expect(yearStats?.rereadCount == 1)
+        #expect(viewModel.displayState.completionCount == 2)
+        #expect(viewModel.displayState.rereadCompletionCount == 1)
     }
 }

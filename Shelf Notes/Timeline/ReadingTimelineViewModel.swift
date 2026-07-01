@@ -30,91 +30,60 @@ final class ReadingTimelineViewModel: ObservableObject {
 
     @Published private(set) var years: [Int] = []
     @Published private(set) var items: [ReadingTimelineItem] = []
+    @Published private(set) var displayState: ReadingTimelineDisplayState = .empty
     @Published private(set) var hasBuiltTimeline = false
 
     // MARK: - Inputs
 
-    private var cachedEntries: [ReadingTimelineEntry] = []
+    private var lastAppliedSourceSignature: ReadingTimelineSourceSignature?
+    private var buildGeneration = 0
 
     /// Task-friendly signature for `.task(id:)`.
     ///
-    /// ReadingAttempts are included because an active reread can make the book status `.reading`
-    /// while previous completed attempts still belong on the timeline.
-    static func taskSignature(books: [Book]) -> Int {
-        func dayStamp(_ d: Date) -> Int {
-            Int(d.timeIntervalSince1970 / 86_400)
-        }
-
-        func dayStamp(_ d: Date?) -> Int {
-            guard let d else { return -1 }
-            return Int(d.timeIntervalSince1970 / 86_400)
-        }
-
-        var xorAgg: Int = 0
-        var sumAgg: Int = 0
-
-        for b in books {
-            var h = Hasher()
-            h.combine(b.id)
-
-            h.combine(dayStamp(b.createdAt))
-            h.combine(dayStamp(b.readFrom))
-            h.combine(dayStamp(b.readTo))
-            h.combine(b.statusRawValue)
-
-            for attempt in b.orderedReadingAttempts {
-                h.combine(attempt.id)
-                h.combine(attempt.sequenceNumber)
-                h.combine(attempt.statusRawValue)
-                h.combine(dayStamp(attempt.startedAt))
-                h.combine(dayStamp(attempt.finishedAt))
-                h.combine(attempt.pageCountSnapshot)
-                h.combine(dayStamp(attempt.updatedAt))
-            }
-
-            // Year summary cards depend on these.
-            h.combine(b.userRatingPlot)
-            h.combine(b.userRatingCharacters)
-            h.combine(b.userRatingWritingStyle)
-            h.combine(b.userRatingAtmosphere)
-            h.combine(b.userRatingGenreFit)
-            h.combine(b.userRatingPresentation)
-
-            let bookHash = h.finalize()
-            xorAgg ^= bookHash
-            sumAgg &+= bookHash
-        }
-
-        var finalHasher = Hasher()
-        finalHasher.combine(books.count)
-        finalHasher.combine(xorAgg)
-        finalHasher.combine(sumAgg)
-        return finalHasher.finalize()
+    /// Uses the same MainActor snapshot input as the value-only builder, so status,
+    /// legacy fallback completions, completed attempts and ratings stay in sync.
+    static func taskSignature(books: [Book]) -> ReadingTimelineSourceSignature {
+        ReadingTimelineSourceSignature(bookSnapshots: ReadingTimelineBookSnapshot.snapshots(from: books))
     }
 
-    func setBooks(_ books: [Book]) {
-        PerformanceSignposter.measure("Timeline Build") {
-            cachedEntries = books
-                .flatMap { book in
-                    ReadingCompletionRecordBuilder.records(from: book).map { completion in
-                        ReadingTimelineEntry(book: book, completion: completion)
-                    }
-                }
-                .sorted { left, right in
-                    ReadingCompletionRecordBuilder.compare(left.completion, right.completion)
-                }
+    func setBooks(_ books: [Book]) async {
+        let snapshots = ReadingTimelineBookSnapshot.snapshots(from: books)
+        let sourceSignature = ReadingTimelineSourceSignature(bookSnapshots: snapshots)
 
-            years = Array(Set(cachedEntries.map { Calendar.current.component(.year, from: $0.date) })).sorted()
+        if hasBuiltTimeline, lastAppliedSourceSignature == sourceSignature {
+            return
+        }
 
-            let yearStats = buildYearStats(entries: cachedEntries)
-            items = buildItems(entries: cachedEntries, yearStatsByYear: yearStats)
-            hasBuiltTimeline = true
+        buildGeneration += 1
+        let generation = buildGeneration
+        let calendar = Calendar.current
 
-            if selectedYear == nil {
-                selectedYear = years.first
-            } else if let selectedYear, !years.contains(selectedYear) {
-                self.selectedYear = years.first
-            }
+        let nextDisplayState = await PerformanceSignposter.measureAsync("Timeline Build") {
+            await Task.detached(priority: .userInitiated) {
+                ReadingTimelineBuilder.build(bookSnapshots: snapshots, calendar: calendar)
+            }.value
+        }
+
+        guard !Task.isCancelled else { return }
+        guard generation == buildGeneration else { return }
+
+        var bookByID: [UUID: Book] = [:]
+        for book in books {
+            bookByID[book.id] = book
+        }
+        displayState = nextDisplayState
+        years = nextDisplayState.years
+        items = ReadingTimelineViewModel.makeItems(
+            from: nextDisplayState,
+            bookByID: bookByID
+        )
+        lastAppliedSourceSignature = sourceSignature
+        hasBuiltTimeline = true
+
+        if selectedYear == nil {
+            selectedYear = years.first
+        } else if let selectedYear, !years.contains(selectedYear) {
+            self.selectedYear = years.first
         }
     }
 
@@ -169,81 +138,31 @@ final class ReadingTimelineViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Building blocks
+    // MARK: - Display bridge
 
-    private func buildYearStats(entries: [ReadingTimelineEntry]) -> [Int: ReadingTimelineYearStats] {
-        var dict: [Int: [ReadingTimelineEntry]] = [:]
-
-        for entry in entries {
-            let year = Calendar.current.component(.year, from: entry.date)
-            dict[year, default: []].append(entry)
-        }
-
-        var out: [Int: ReadingTimelineYearStats] = [:]
-        for (year, entriesForYear) in dict {
-            let count = entriesForYear.count
-
-            let ratedAverages: [Double] = entriesForYear.compactMap { $0.book.userRatingAverage }
-            let ratedCount = ratedAverages.count
-            let avgRating: Double? = ratedAverages.isEmpty
-                ? nil
-                : (ratedAverages.reduce(0, +) / Double(ratedAverages.count))
-
-            let sorted = entriesForYear.sorted { $0.date < $1.date }
-            let firstDate = sorted.first?.date
-            let lastDate = sorted.last?.date
-            let previewBooks = Array(sorted.prefix(4).map { $0.book })
-            let uniqueBookCount = Set(sorted.map { $0.book.id }).count
-            let rereadCount = sorted.filter { $0.completion.isReread }.count
-
-            out[year] = ReadingTimelineYearStats(
-                year: year,
-                count: count,
-                uniqueBookCount: uniqueBookCount,
-                rereadCount: rereadCount,
-                ratedCount: ratedCount,
-                averageRating: avgRating,
-                firstDate: firstDate,
-                lastDate: lastDate,
-                previewBooks: previewBooks
-            )
-        }
-
-        return out
-    }
-
-    private func buildItems(
-        entries: [ReadingTimelineEntry],
-        yearStatsByYear: [Int: ReadingTimelineYearStats]
+    private static func makeItems(
+        from displayState: ReadingTimelineDisplayState,
+        bookByID: [UUID: Book]
     ) -> [ReadingTimelineItem] {
-        guard !entries.isEmpty else { return [] }
-
-        var out: [ReadingTimelineItem] = []
-        var lastYear: Int?
-
-        for entry in entries {
-            let year = Calendar.current.component(.year, from: entry.date)
-
-            if lastYear != year {
-                let stats = yearStatsByYear[year] ?? ReadingTimelineYearStats(
-                    year: year,
-                    count: 0,
-                    uniqueBookCount: 0,
-                    rereadCount: 0,
-                    ratedCount: 0,
-                    averageRating: nil,
-                    firstDate: nil,
-                    lastDate: nil,
-                    previewBooks: []
+        displayState.items.compactMap { item in
+            switch item.kind {
+            case .year(let year, let displayStats):
+                let previewBooks = displayStats.previewBookIDs.compactMap { bookByID[$0] }
+                let stats = ReadingTimelineYearStats(
+                    displayStats: displayStats,
+                    previewBooks: previewBooks
                 )
-                out.append(ReadingTimelineItem(kind: .year(year, stats)))
-                lastYear = year
+                return ReadingTimelineItem(kind: .year(year, stats))
+
+            case .completion(let displayItem):
+                guard let book = bookByID[displayItem.bookID] else { return nil }
+                let entry = ReadingTimelineEntry(
+                    book: book,
+                    completion: displayItem.completion.asCompletionRecord
+                )
+                return ReadingTimelineItem(kind: .completion(entry))
             }
-
-            out.append(ReadingTimelineItem(kind: .completion(entry)))
         }
-
-        return out
     }
 }
 
@@ -290,6 +209,45 @@ struct ReadingTimelineYearStats {
     let firstDate: Date?
     let lastDate: Date?
     let previewBooks: [Book]
+
+    init(
+        year: Int,
+        count: Int,
+        uniqueBookCount: Int,
+        rereadCount: Int,
+        ratedCount: Int,
+        averageRating: Double?,
+        firstDate: Date?,
+        lastDate: Date?,
+        previewBooks: [Book]
+    ) {
+        self.year = year
+        self.count = count
+        self.uniqueBookCount = uniqueBookCount
+        self.rereadCount = rereadCount
+        self.ratedCount = ratedCount
+        self.averageRating = averageRating
+        self.firstDate = firstDate
+        self.lastDate = lastDate
+        self.previewBooks = previewBooks
+    }
+
+    init(
+        displayStats: ReadingTimelineYearDisplayStats,
+        previewBooks: [Book]
+    ) {
+        self.init(
+            year: displayStats.year,
+            count: displayStats.count,
+            uniqueBookCount: displayStats.uniqueBookCount,
+            rereadCount: displayStats.rereadCount,
+            ratedCount: displayStats.ratedCount,
+            averageRating: displayStats.averageRating,
+            firstDate: displayStats.firstDate,
+            lastDate: displayStats.lastDate,
+            previewBooks: previewBooks
+        )
+    }
 
     var dateRangeText: String? {
         guard let firstDate, let lastDate else { return nil }
