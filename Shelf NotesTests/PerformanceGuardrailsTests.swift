@@ -12,27 +12,27 @@ struct PerformanceGuardrailsTests {
         #expect(fixture.expectedRereadCompletionCount == 60)
         #expect(fixture.expectedTimelineYears == [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026])
 
-        let viewModel = ReadingTimelineViewModel()
-        await viewModel.setBooks(fixture.books)
+        let displayStore = ReadingTimelineDisplayStore()
+        await displayStore.refreshSnapshots(ReadingTimelineBookSnapshot.snapshots(from: fixture.books))
 
-        let completionEntries = viewModel.items.compactMap { item -> ReadingTimelineEntry? in
+        let completionEntries = displayStore.displayState.items.compactMap { item -> ReadingTimelineEntryDisplayItem? in
             if case .completion(let entry) = item.kind {
                 return entry
             }
             return nil
         }
-        let statsByYear = Dictionary(uniqueKeysWithValues: viewModel.items.compactMap { item -> (Int, ReadingTimelineYearStats)? in
+        let statsByYear = Dictionary(uniqueKeysWithValues: displayStore.displayState.items.compactMap { item -> (Int, ReadingTimelineYearDisplayStats)? in
             if case .year(let year, let stats) = item.kind {
                 return (year, stats)
             }
             return nil
         })
 
-        #expect(viewModel.years == [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026])
+        #expect(displayStore.years == [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026])
         #expect(completionEntries.count == 280)
         #expect(completionEntries.filter { $0.completion.isReread }.count == 60)
-        #expect(viewModel.displayState.completionCount == 280)
-        #expect(viewModel.displayState.rereadCompletionCount == 60)
+        #expect(displayStore.displayState.completionCount == 280)
+        #expect(displayStore.displayState.rereadCompletionCount == 60)
         #expect(statsByYear[2017]?.count == 60)
         #expect(statsByYear[2017]?.uniqueBookCount == 30)
         #expect(statsByYear[2017]?.rereadCount == 30)

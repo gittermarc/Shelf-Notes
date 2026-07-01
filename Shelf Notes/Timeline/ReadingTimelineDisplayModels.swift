@@ -16,6 +16,18 @@ nonisolated struct ReadingTimelineEntryDisplayItem: Hashable, Sendable, Identifi
         completion.finishedAt
     }
 
+    var dateText: String {
+        date.formatted(.dateTime.day().month(.twoDigits))
+    }
+
+    var yearText: String {
+        date.formatted(.dateTime.year())
+    }
+
+    var accessibilityDateText: String {
+        date.formatted(date: .long, time: .omitted)
+    }
+
     var title: String {
         completion.title
     }

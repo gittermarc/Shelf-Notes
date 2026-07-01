@@ -28,7 +28,6 @@ struct ReadingTimelineYearMarkerMidXPreferenceKey: PreferenceKey {
     static var defaultValue: [Int: CGFloat] = [:]
 
     static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
-        // Merge dictionaries; newest wins.
         value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
@@ -38,7 +37,8 @@ struct ReadingTimelineYearMarkerMidXPreferenceKey: PreferenceKey {
 /// A year “marker” on the timeline: summary card + line + dot.
 struct ReadingTimelineYearSectionView: View {
     let year: Int
-    let stats: ReadingTimelineYearStats
+    let stats: ReadingTimelineYearDisplayStats
+    let previewBooks: [Book]
     let cardWidth: CGFloat
     let previewCoverSize: CGSize
     let coordinateSpaceName: String
@@ -48,6 +48,7 @@ struct ReadingTimelineYearSectionView: View {
             ReadingTimelineYearSummaryCard(
                 year: year,
                 stats: stats,
+                previewBooks: previewBooks,
                 previewCoverSize: previewCoverSize
             )
 
@@ -59,21 +60,16 @@ struct ReadingTimelineYearSectionView: View {
         }
         .padding(.bottom, 2)
         .frame(width: cardWidth)
-        .scrollTransition(.interactive, axis: .horizontal) { content, phase in
-            content
-                .scaleEffect(phase.isIdentity ? 1.0 : 0.97)
-                .opacity(phase.isIdentity ? 1.0 : 0.9)
-        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Jahr \(year), \(stats.count) Abschlüsse")
-        // Report marker positions so the mini-map can highlight the year closest to the viewport center.
         .background(ReadingTimelineYearMarkerPositionReporter(year: year, coordinateSpaceName: coordinateSpaceName))
     }
 }
 
 private struct ReadingTimelineYearSummaryCard: View {
     let year: Int
-    let stats: ReadingTimelineYearStats
+    let stats: ReadingTimelineYearDisplayStats
+    let previewBooks: [Book]
     let previewCoverSize: CGSize
 
     var body: some View {
@@ -131,16 +127,16 @@ private struct ReadingTimelineYearSummaryCard: View {
                     .monospacedDigit()
             }
 
-            if !stats.previewBooks.isEmpty {
+            if !previewBooks.isEmpty {
                 HStack(spacing: -10) {
-                    ForEach(Array(stats.previewBooks.prefix(4).enumerated()), id: \.offset) { _, b in
+                    ForEach(Array(previewBooks.prefix(4).enumerated()), id: \.offset) { _, book in
                         TimelineCoverView(
-                            book: b,
+                            book: book,
                             size: previewCoverSize,
                             cornerRadius: 10,
                             contentMode: .fill
                         )
-                        .shadow(radius: 6, y: 4)
+                        .shadow(radius: 5, y: 3)
                         .overlay {
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .stroke(.background.opacity(0.9), lineWidth: 2)

@@ -19,6 +19,7 @@ struct ReadingTimelineView: View {
     private var books: [Book]
 
     @StateObject private var vm = ReadingTimelineViewModel()
+    @StateObject private var displayStore = ReadingTimelineDisplayStore()
 
     private let coordinateSpaceName = "timelineScroll"
 
@@ -48,12 +49,10 @@ struct ReadingTimelineView: View {
     }
 
     var body: some View {
-        let signature = ReadingTimelineViewModel.taskSignature(books: books)
-
         Group {
-            if !vm.hasBuiltTimeline {
+            if !displayStore.hasBuiltTimeline {
                 loadingState
-            } else if vm.items.isEmpty {
+            } else if displayStore.displayState.items.isEmpty {
                 emptyState
             } else {
                 content
@@ -63,17 +62,21 @@ struct ReadingTimelineView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                if !vm.years.isEmpty {
+                if !displayStore.years.isEmpty {
                     Menu {
                         Button("Zum Anfang") {
-                            vm.requestJumpToStart()
+                            if let firstYear = displayStore.years.first {
+                                vm.requestJump(to: firstYear)
+                            }
                         }
                         Button("Zum Ende") {
-                            vm.requestJumpToEnd()
+                            if let lastYear = displayStore.years.last {
+                                vm.requestJump(to: lastYear)
+                            }
                         }
                         Divider()
 
-                        ForEach(vm.years, id: \.self) { y in
+                        ForEach(displayStore.years, id: \.self) { y in
                             Button(String(y)) {
                                 vm.requestJump(to: y)
                             }
@@ -85,9 +88,12 @@ struct ReadingTimelineView: View {
                 }
             }
         }
-        .task(id: signature) {
-            // Keep view model derived data in sync with SwiftData changes.
-            await vm.setBooks(books)
+        .task(id: books.map { $0.id }) {
+            await displayStore.refreshSourceAndTrack(books: books)
+            vm.ensureSelectedYear(in: displayStore.years)
+        }
+        .onChange(of: displayStore.years) { _, years in
+            vm.ensureSelectedYear(in: years)
         }
     }
 
@@ -99,9 +105,9 @@ struct ReadingTimelineView: View {
                 header
 
                 // ✅ Mini-Map (thin year bar) with auto-highlight while scrolling
-                if !vm.years.isEmpty {
+                if !displayStore.years.isEmpty {
                     ReadingTimelineMiniMapBar(
-                        years: vm.years,
+                        years: displayStore.years,
                         selectedYear: $vm.selectedYear
                     ) { year in
                         vm.requestJump(to: year)
@@ -114,12 +120,13 @@ struct ReadingTimelineView: View {
                 GeometryReader { geo in
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(alignment: .bottom, spacing: isPad ? 26 : 22) {
-                            ForEach(vm.items) { item in
+                            ForEach(displayStore.displayState.items) { item in
                                 switch item.kind {
                                 case .year(let y, let stats):
                                     ReadingTimelineYearSectionView(
                                         year: y,
                                         stats: stats,
+                                        previewBooks: displayStore.previewBooks(for: stats.previewBookIDs),
                                         cardWidth: yearCardWidth,
                                         previewCoverSize: yearPreviewCoverSize,
                                         coordinateSpaceName: coordinateSpaceName
@@ -127,13 +134,14 @@ struct ReadingTimelineView: View {
                                     .id(vm.scrollID(forYear: y))
 
                                 case .completion(let entry):
-                                    ReadingTimelineBookRowView(
-                                        book: entry.book,
-                                        date: entry.date,
-                                        attemptLabel: entry.attemptLabel,
-                                        coverSize: coverSize,
-                                        tileWidth: coverTileWidth
-                                    )
+                                    if let book = displayStore.book(for: entry.bookID) {
+                                        ReadingTimelineBookRowView(
+                                            item: entry,
+                                            book: book,
+                                            coverSize: coverSize,
+                                            tileWidth: coverTileWidth
+                                        )
+                                    }
                                 }
                             }
                         }

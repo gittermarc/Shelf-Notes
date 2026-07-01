@@ -8,19 +8,10 @@
 import SwiftUI
 
 struct ReadingTimelineBookRowView: View {
+    let item: ReadingTimelineEntryDisplayItem
     let book: Book
-    let date: Date
-    let attemptLabel: String?
     let coverSize: CGSize
     let tileWidth: CGFloat
-
-    private var dateText: String {
-        date.formatted(.dateTime.day().month(.twoDigits))
-    }
-
-    private var yearText: String {
-        date.formatted(.dateTime.year())
-    }
 
     var body: some View {
         VStack(spacing: 10) {
@@ -34,7 +25,7 @@ struct ReadingTimelineBookRowView: View {
                         cornerRadius: 18,
                         contentMode: .fill
                     )
-                    .shadow(radius: 10, y: 6)
+                    .shadow(radius: 8, y: 5)
                     .overlay(alignment: .bottomLeading) {
                         LinearGradient(
                             colors: [.black.opacity(0.0), .black.opacity(0.35)],
@@ -45,7 +36,7 @@ struct ReadingTimelineBookRowView: View {
                         .allowsHitTesting(false)
                     }
                     .overlay(alignment: .bottomLeading) {
-                        Text(book.title)
+                        Text(item.title)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.white)
                             .lineLimit(2)
@@ -55,15 +46,15 @@ struct ReadingTimelineBookRowView: View {
                     }
 
                     VStack(spacing: 2) {
-                        Text(dateText)
+                        Text(item.dateText)
                             .font(.footnote.weight(.semibold))
                             .monospacedDigit()
-                        Text(yearText)
+                        Text(item.yearText)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
 
-                        if let attemptLabel {
+                        if let attemptLabel = item.attemptLabel {
                             Text(attemptLabel)
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.secondary)
@@ -81,20 +72,15 @@ struct ReadingTimelineBookRowView: View {
             ReadingTimelineDot(isHighlighted: true)
         }
         .frame(width: tileWidth)
-        .scrollTransition(.interactive, axis: .horizontal) { content, phase in
-            content
-                .scaleEffect(phase.isIdentity ? 1.0 : 0.94)
-                .opacity(phase.isIdentity ? 1.0 : 0.85)
-        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText)
     }
 
     private var accessibilityText: String {
-        if let attemptLabel {
-            return "\(book.title), \(attemptLabel), beendet am \(date.formatted(date: .long, time: .omitted))"
+        if let attemptLabel = item.attemptLabel {
+            return "\(item.title), \(attemptLabel), beendet am \(item.accessibilityDateText)"
         }
-        return "\(book.title), beendet am \(date.formatted(date: .long, time: .omitted))"
+        return "\(item.title), beendet am \(item.accessibilityDateText)"
     }
 }
 
