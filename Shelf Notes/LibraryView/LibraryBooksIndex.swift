@@ -14,6 +14,22 @@ extension LibraryView {
         let orderedBookIDs: [UUID]
         private let booksByID: [UUID: Book]
 
+        static let empty = LibraryBooksIndex(
+            source: .empty,
+            orderedBookIDs: [],
+            booksByID: [:]
+        )
+
+        init(
+            source: LibrarySourceSnapshot,
+            orderedBookIDs: [UUID],
+            booksByID: [UUID: Book]
+        ) {
+            self.source = source
+            self.orderedBookIDs = orderedBookIDs
+            self.booksByID = booksByID
+        }
+
         @MainActor init(books: [Book]) {
             var indexedBooks: [UUID: Book] = [:]
             indexedBooks.reserveCapacity(books.count)
@@ -40,6 +56,10 @@ extension LibraryView {
 
         var sourceSignature: Int {
             source.signature
+        }
+
+        var librarySourceSignature: LibrarySourceSignature {
+            LibrarySourceSignature(rawValue: source.signature)
         }
 
         func token(input: LibraryDerivedInput) -> LibraryDerivedInputToken {

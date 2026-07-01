@@ -31,8 +31,54 @@ struct LibraryBooksIndexTests {
         let source = LibraryView.LibrarySourceSnapshot(books: [first, second])
 
         #expect(index.sourceSignature == source.signature)
+        #expect(index.librarySourceSignature == LibraryView.LibrarySourceSignature(rawValue: source.signature))
         #expect(index.source.books.map(\.id) == source.books.map(\.id))
         #expect(index.source.books.map(\.title) == ["Noir Nights", "History of Rome"])
+    }
+
+    @Test @MainActor func sourceStoreReusesIndexForEqualSourceInput() {
+        let first = makeBook(id: fixedID(1), title: "Alpha")
+        let second = makeBook(id: fixedID(2), title: "Beta")
+        let store = LibraryView.LibrarySourceStore()
+
+        store.refreshSourceAndTrack(books: [first, second])
+        let initialSignature = store.sourceSignature
+        store.refreshSourceAndTrack(books: [first, second])
+
+        #expect(store.completedIndexBuildCount == 1)
+        #expect(store.sourceSignature == initialSignature)
+        #expect(store.currentIndex.orderedBookIDs == [first.id, second.id])
+    }
+
+    @Test @MainActor func sourceStoreInvalidatesWhenTitleChanges() {
+        let first = makeBook(id: fixedID(1), title: "Alpha")
+        let second = makeBook(id: fixedID(2), title: "Beta")
+        let store = LibraryView.LibrarySourceStore()
+
+        store.refreshSourceAndTrack(books: [first, second])
+        let originalSignature = store.sourceSignature
+        second.title = "Beta Revised"
+        store.refreshSourceAndTrack(books: [first, second])
+
+        #expect(store.completedIndexBuildCount == 2)
+        #expect(store.sourceSignature != originalSignature)
+        #expect(store.currentIndex.source.books.map(\.title) == ["Alpha", "Beta Revised"])
+    }
+
+    @Test @MainActor func sourceStoreIgnoresAppearanceOnlyBookFields() {
+        let first = makeBook(id: fixedID(1), title: "Alpha")
+        let second = makeBook(id: fixedID(2), title: "Beta")
+        let store = LibraryView.LibrarySourceStore()
+
+        store.refreshSourceAndTrack(books: [first, second])
+        let originalSignature = store.sourceSignature
+        first.subtitle = "Shown only outside library indexing"
+        first.thumbnailURL = "https://example.com/cover.jpg"
+        first.userCoverFileName = "local-cover.jpg"
+        store.refreshSourceAndTrack(books: [first, second])
+
+        #expect(store.completedIndexBuildCount == 1)
+        #expect(store.sourceSignature == originalSignature)
     }
 
     @Test @MainActor func alphaSectionsResolveDescriptorIDsThroughIndex() {

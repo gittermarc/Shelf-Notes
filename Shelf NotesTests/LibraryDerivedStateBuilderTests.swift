@@ -187,6 +187,39 @@ struct LibraryDerivedStateBuilderTests {
         #expect(state.alphaSections[2].bookIDs == [hashID])
     }
 
+    @Test func searchUsesPreparedSourceTokens() {
+        let matchingID = UUID()
+        let books = [
+            LibraryView.LibrarySourceSnapshot.BookSnapshot(
+                id: matchingID,
+                title: "Visible Title",
+                author: "Visible Author",
+                createdAt: date(2026, 1, 1),
+                searchTokens: ["prepared hidden crime token"]
+            ),
+            LibraryView.LibrarySourceSnapshot.BookSnapshot(
+                title: "Another Title",
+                author: "Another Author",
+                createdAt: date(2026, 1, 2),
+                searchTokens: ["prepared history token"]
+            )
+        ]
+        let state = LibraryView.LibraryDerivedStateBuilder.makeDerivedState(
+            source: makeSource(books),
+            input: LibraryView.LibraryDerivedStateBuilder.makeInput(
+                searchText: "Crime",
+                selectedStatus: nil,
+                selectedTag: nil,
+                onlyWithNotes: false,
+                sortField: .createdAt,
+                sortAscending: true,
+                buildsAlphaSections: false
+            )
+        )
+
+        #expect(state.displayedBookIDs == [matchingID])
+    }
+
     @Test func sourceSignatureIsOrderIndependentButChangesForRelevantMutations() {
         let first = LibraryView.LibrarySourceSnapshot.BookSnapshot(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000001") ?? UUID(),
@@ -228,8 +261,10 @@ struct LibraryDerivedStateBuilderTests {
         let original = LibraryView.LibrarySourceSnapshot.computeSignature(snapshot: [first, second])
         let reordered = LibraryView.LibrarySourceSnapshot.computeSignature(snapshot: [second, first])
         let mutated = LibraryView.LibrarySourceSnapshot.computeSignature(snapshot: [first, mutatedSecond])
+        let wrapped = LibraryView.LibrarySourceSignature(bookSnapshots: [first, second])
 
         #expect(original == reordered)
         #expect(original != mutated)
+        #expect(wrapped.rawValue == original)
     }
 }

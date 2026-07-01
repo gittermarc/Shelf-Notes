@@ -113,6 +113,41 @@ struct LibraryDisplayStoreTests {
         #expect(state.counts.finished == expected.counts.finished)
     }
 
+    @Test @MainActor func thousandBookFixtureDisplayUsesMemoizedSourceIndex() {
+        let fixture = LargeReadingDatasetBuilder.make1000BookMixedDataset()
+        let sourceStore = LibraryView.LibrarySourceStore()
+        var displayStore = LibraryView.LibraryDisplayStore()
+
+        sourceStore.refreshSourceAndTrack(books: fixture.books)
+        sourceStore.refreshSourceAndTrack(books: fixture.books)
+
+        let index = sourceStore.currentIndex
+        let input = LibraryView.LibraryDerivedStateBuilder.makeInput(
+            searchText: "Performance Book 0001",
+            selectedStatus: nil,
+            selectedTag: nil,
+            onlyWithNotes: false,
+            sortField: .createdAt,
+            sortAscending: false,
+            buildsAlphaSections: false
+        )
+        let token = index.token(input: input)
+        let expected = LibraryView.LibraryDerivedStateBuilder.makeDerivedState(
+            source: index.source,
+            input: input
+        )
+
+        displayStore.resolveIfNeeded(for: token, index: index, input: input)
+        let state = displayStore.displayState(for: token)
+
+        #expect(sourceStore.completedIndexBuildCount == 1)
+        #expect(index.source.books.count == 1000)
+        #expect(state.token == expected.token)
+        #expect(state.displayedBookIDs == expected.displayedBookIDs)
+        #expect(state.displayedBooks.map(\.id) == expected.displayedBookIDs)
+        #expect(state.displayedBookIDs == [fixture.books[1].id])
+    }
+
     private func makeBook(
         id: UUID,
         title: String,

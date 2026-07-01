@@ -46,6 +46,7 @@ struct LibraryView: View {
     @State var showingBulkDeleteConfirm: Bool = false
 
     // Display state cache. The pure builder owns filtering, sorting, counts and sections.
+    @StateObject private var sourceStore = LibrarySourceStore()
     @State private var displayStore = LibraryDisplayStore()
     @State private var pendingRecomputeTask: Task<Void, Never>? = nil
 
@@ -109,7 +110,7 @@ struct LibraryView: View {
     }
 
     var activeBooksIndex: LibraryBooksIndex {
-        LibraryBooksIndex(books: books)
+        sourceStore.currentIndex
     }
 
     var activeDerivedTaskToken: LibraryDerivedInputToken {
@@ -179,6 +180,8 @@ struct LibraryView: View {
         .toolbar { libraryToolbar }
         .toolbar(isSelectionMode ? .hidden : .visible, for: .tabBar)
         .onAppear {
+            refreshLibrarySourceAndSeedIfNeeded()
+
             if libraryHeaderStyle == .standard {
                 headerExpanded = libraryHeaderDefaultExpanded
             } else {
@@ -191,10 +194,9 @@ struct LibraryView: View {
 
             enforceRatingRuleIfNeeded()
             syncDerivedSearchTextNow()
-            seedDerivedStateIfNeeded(
-                using: booksIndex,
-                token: activeDerivedTaskToken(using: booksIndex)
-            )
+        }
+        .onChange(of: books.count) { _, _ in
+            refreshLibrarySourceAndSeedIfNeeded()
         }
         .task(id: activeToken) {
             rebuildDerivedState(for: activeToken, using: booksIndex)
@@ -280,10 +282,20 @@ struct LibraryView: View {
     // MARK: - Derived cache updates
 
     @MainActor
+    private func refreshLibrarySourceAndSeedIfNeeded() {
+        sourceStore.refreshSourceAndTrack(books: books)
+        let index = sourceStore.currentIndex
+        let token = activeDerivedTaskToken(using: index)
+        seedDerivedStateIfNeeded(using: index, token: token)
+    }
+
+    @MainActor
     private func rebuildDerivedState(
         for token: LibraryDerivedInputToken,
         using index: LibraryBooksIndex
     ) {
+        guard books.isEmpty || index.orderedBookIDs.isEmpty == false else { return }
+
         let input = token.input
         displayStore.resolveIfNeeded(for: token, index: index, input: input)
     }

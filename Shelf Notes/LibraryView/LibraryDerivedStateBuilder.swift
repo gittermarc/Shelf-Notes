@@ -25,6 +25,7 @@ extension LibraryView {
 
             return LibraryDerivedInput(
                 searchText: trimmedSearch,
+                normalizedSearchText: LibrarySourceSnapshot.normalizedSearchValue(trimmedSearch),
                 selectedStatusRawValue: selectedStatus?.rawValue,
                 selectedTag: normalizedSelectedTag,
                 onlyWithNotes: onlyWithNotes,
@@ -97,7 +98,7 @@ extension LibraryView {
             _ books: [LibrarySourceSnapshot.BookSnapshot],
             input: LibraryDerivedInput
         ) -> [LibrarySourceSnapshot.BookSnapshot] {
-            let hasSearch = !input.searchText.isEmpty
+            let hasSearch = !input.normalizedSearchText.isEmpty
 
             return books.filter { book in
                 if let selectedStatusRawValue = input.selectedStatusRawValue,
@@ -115,19 +116,9 @@ extension LibraryView {
                 }
 
                 if hasSearch {
-                    if book.title.localizedCaseInsensitiveContains(input.searchText) {
-                        return true
+                    return book.searchTokens.contains { token in
+                        token.contains(input.normalizedSearchText)
                     }
-                    if book.author.localizedCaseInsensitiveContains(input.searchText) {
-                        return true
-                    }
-                    if book.isbn13?.localizedCaseInsensitiveContains(input.searchText) == true {
-                        return true
-                    }
-                    if book.tags.contains(where: { $0.localizedCaseInsensitiveContains(input.searchText) }) {
-                        return true
-                    }
-                    return false
                 }
 
                 return true

@@ -9,6 +9,24 @@ import Foundation
 
 extension LibraryView {
 
+    nonisolated struct LibrarySourceSignature: Equatable, Hashable, Sendable {
+        let rawValue: Int
+
+        static let empty = LibrarySourceSignature(rawValue: 0)
+
+        init(rawValue: Int) {
+            self.rawValue = rawValue
+        }
+
+        init(bookSnapshots: [LibrarySourceSnapshot.BookSnapshot]) {
+            rawValue = LibrarySourceSnapshot.computeSignature(snapshot: bookSnapshots)
+        }
+
+        @MainActor init(books: [Book]) {
+            rawValue = LibrarySourceSnapshot.taskSignature(books: books)
+        }
+    }
+
     nonisolated struct LibraryStatusCounts: Equatable {
         var toRead: Int
         var reading: Int
@@ -36,6 +54,7 @@ extension LibraryView {
             let readFrom: Date?
             let readTo: Date?
             let userRatingAverage1: Double?
+            let searchTokens: [String]
 
             @MainActor init(book: Book) {
                 id = book.id
@@ -49,6 +68,12 @@ extension LibraryView {
                 readFrom = book.readFrom
                 readTo = book.readTo
                 userRatingAverage1 = LibrarySourceSnapshot.normalizedUserRatingAverage1(for: book)
+                searchTokens = LibrarySourceSnapshot.makeSearchTokens(
+                    title: book.title,
+                    author: book.author,
+                    isbn13: book.isbn13,
+                    tags: book.tags
+                )
             }
 
             init(
@@ -62,7 +87,8 @@ extension LibraryView {
                 isbn13: String? = nil,
                 readFrom: Date? = nil,
                 readTo: Date? = nil,
-                userRatingAverage1: Double? = nil
+                userRatingAverage1: Double? = nil,
+                searchTokens: [String]? = nil
             ) {
                 self.id = id
                 self.title = title
@@ -75,6 +101,16 @@ extension LibraryView {
                 self.readFrom = readFrom
                 self.readTo = readTo
                 self.userRatingAverage1 = userRatingAverage1
+                if let searchTokens {
+                    self.searchTokens = LibrarySourceSnapshot.normalizedSearchTokens(searchTokens)
+                } else {
+                    self.searchTokens = LibrarySourceSnapshot.makeSearchTokens(
+                        title: title,
+                        author: author,
+                        isbn13: isbn13,
+                        tags: tags
+                    )
+                }
             }
 
             var status: ReadingStatus {
@@ -177,6 +213,46 @@ extension LibraryView {
             return Int((value * 10).rounded())
         }
 
+        static func makeSearchTokens(
+            title: String,
+            author: String,
+            isbn13: String?,
+            tags: [String]
+        ) -> [String] {
+            var tokens: [String] = []
+            tokens.reserveCapacity(3 + tags.count)
+
+            appendSearchToken(title, to: &tokens)
+            appendSearchToken(author, to: &tokens)
+            if let isbn13 {
+                appendSearchToken(isbn13, to: &tokens)
+            }
+            for tag in tags {
+                appendSearchToken(tag, to: &tokens)
+            }
+
+            return tokens
+        }
+
+        private static func appendSearchToken(_ value: String, to tokens: inout [String]) {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.isEmpty == false else { return }
+            tokens.append(normalizedSearchValue(trimmed))
+        }
+
+        static func normalizedSearchTokens(_ values: [String]) -> [String] {
+            values.compactMap { value in
+                let normalized = normalizedSearchValue(value)
+                return normalized.isEmpty ? nil : normalized
+            }
+        }
+
+        static func normalizedSearchValue(_ value: String) -> String {
+            value
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+        }
+
         private static func normalizedUserRatingAverage1(for book: Book) -> Double? {
             let values = [
                 book.userRatingPlot,
@@ -197,6 +273,7 @@ extension LibraryView {
 
     nonisolated struct LibraryDerivedInput: Hashable {
         let searchText: String
+        let normalizedSearchText: String
         let selectedStatusRawValue: String?
         let selectedTag: String?
         let onlyWithNotes: Bool
@@ -222,6 +299,7 @@ extension LibraryView {
                 sourceSignature: 0,
                 input: LibraryDerivedInput(
                     searchText: "",
+                    normalizedSearchText: "",
                     selectedStatusRawValue: nil,
                     selectedTag: nil,
                     onlyWithNotes: false,
