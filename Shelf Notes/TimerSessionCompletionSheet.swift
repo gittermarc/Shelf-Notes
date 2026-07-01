@@ -254,15 +254,10 @@ struct TimerSessionCompletionSheet: View {
             timer.discardPendingCompletion()
             dismiss()
 
-            let sessionSnapshot = mutation.sessionSnapshot
-            let didMarkBookFinished = mutation.didMarkBookFinished
-            Task { @MainActor in
-                await ChallengeRefreshCoordinator.refreshAfterReadingSessionSave(
-                    modelContext: modelContext,
-                    sessionSnapshot: sessionSnapshot,
-                    didMarkBookFinished: didMarkBookFinished
-                )
-            }
+            ChallengeRefreshCoordinator.requestRefreshAfterReadingSessionSave(
+                modelContext: modelContext,
+                mutation: mutation
+            )
         }
     }
 

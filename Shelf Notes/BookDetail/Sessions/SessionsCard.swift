@@ -188,7 +188,6 @@ struct SessionsCard: View {
             guard let impact = notification.object as? ChallengeSessionImpact else { return }
             guard impact.bookID == book.id else { return }
             latestChallengeImpact = impact
-            challengeRefreshSeed &+= 1
         }
     }
 
@@ -458,20 +457,16 @@ struct SessionsCard: View {
             lastError = error.message
         case .success(let mutation):
             lastError = nil
-            let sessionSnapshot = mutation.sessionSnapshot
-            let didMarkBookFinished = mutation.didMarkBookFinished
-            Task { @MainActor in
-                await ChallengeRefreshCoordinator.refreshAfterReadingSessionSave(
-                    modelContext: modelContext,
-                    sessionSnapshot: sessionSnapshot,
-                    didMarkBookFinished: didMarkBookFinished
-                )
-            }
+            ChallengeRefreshCoordinator.requestRefreshAfterReadingSessionSave(
+                modelContext: modelContext,
+                mutation: mutation
+            )
         }
     }
 
     @MainActor
     private func delete(_ session: ReadingSession) {
+        let sessionSnapshot = SavedReadingSessionSnapshot(bookID: book.id, session: session)
         ReadingAttemptSessionCoordinator.detachBeforeDeleting(session)
         modelContext.delete(session)
         if let error = modelContext.saveWithDiagnostics() {
@@ -479,9 +474,10 @@ struct SessionsCard: View {
         } else {
             lastError = nil
             latestChallengeImpact = nil
-            Task { @MainActor in
-                await ChallengeRefreshCoordinator.refreshAfterReadingSessionMutation(modelContext: modelContext)
-            }
+            ChallengeRefreshCoordinator.requestRefreshAfterReadingSessionDelete(
+                modelContext: modelContext,
+                sessionSnapshot: sessionSnapshot
+            )
         }
     }
 
