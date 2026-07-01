@@ -1,5 +1,135 @@
 import Foundation
 
+struct TagsSourceSnapshot: Identifiable, Hashable {
+    let id: UUID
+    let title: String
+    let author: String
+    let categories: [String]
+    let mainCategory: String?
+    let tags: [String]
+    let statusRawValue: String
+
+    init(
+        id: UUID,
+        title: String,
+        author: String,
+        categories: [String] = [],
+        mainCategory: String? = nil,
+        tags: [String],
+        statusRawValue: String
+    ) {
+        self.id = id
+        self.title = title
+        self.author = author
+        self.categories = categories
+        self.mainCategory = mainCategory
+        self.tags = tags
+        self.statusRawValue = statusRawValue
+    }
+
+    @MainActor
+    init(book: Book) {
+        self.init(
+            id: book.id,
+            title: book.title,
+            author: book.author,
+            categories: book.categories,
+            mainCategory: book.mainCategory,
+            tags: book.tags,
+            statusRawValue: book.statusRawValue
+        )
+    }
+
+    init(dashboardSnapshot: TagsDashboardBookSnapshot) {
+        self.init(
+            id: dashboardSnapshot.id,
+            title: dashboardSnapshot.title,
+            author: dashboardSnapshot.author,
+            categories: [],
+            mainCategory: nil,
+            tags: dashboardSnapshot.tags,
+            statusRawValue: dashboardSnapshot.statusRawValue
+        )
+    }
+
+    init(suggestionSnapshot: TagSuggestionBookSnapshot) {
+        self.init(
+            id: suggestionSnapshot.id,
+            title: suggestionSnapshot.title,
+            author: suggestionSnapshot.author,
+            categories: suggestionSnapshot.categories,
+            mainCategory: suggestionSnapshot.mainCategory,
+            tags: suggestionSnapshot.tags,
+            statusRawValue: suggestionSnapshot.statusRawValue
+        )
+    }
+
+    var dashboardSnapshot: TagsDashboardBookSnapshot {
+        TagsDashboardBookSnapshot(
+            id: id,
+            title: title,
+            author: author,
+            statusRawValue: statusRawValue,
+            tags: tags
+        )
+    }
+
+    var suggestionSnapshot: TagSuggestionBookSnapshot {
+        TagSuggestionBookSnapshot(
+            id: id,
+            title: title,
+            author: author,
+            tags: tags,
+            categories: categories,
+            mainCategory: mainCategory,
+            statusRawValue: statusRawValue
+        )
+    }
+
+    var mutationSnapshot: TagLibraryMutationBookSnapshot {
+        TagLibraryMutationBookSnapshot(id: id, tags: tags)
+    }
+}
+
+struct TagsSourceSignature: Hashable {
+    let rawValue: UInt64
+
+    init(rawValue: UInt64) {
+        self.rawValue = rawValue
+    }
+
+    init(sourceSnapshots: [TagsSourceSnapshot]) {
+        var aggregate: UInt64 = 0xA24B_AED4_963E_E407
+        aggregate &+= UInt64(sourceSnapshots.count) &* 0x9FB2_1C65_1E98_DF25
+
+        for snapshot in sourceSnapshots.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
+            var hasher = Hasher()
+            hasher.combine(snapshot.id)
+            hasher.combine(snapshot.title)
+            hasher.combine(snapshot.author)
+            hasher.combine(snapshot.statusRawValue)
+            hasher.combine(snapshot.mainCategory)
+            hasher.combine(snapshot.tags.count)
+            for rawTag in snapshot.tags {
+                hasher.combine(rawTag)
+                hasher.combine(normalizeTagString(rawTag))
+            }
+            hasher.combine(snapshot.categories.count)
+            for category in snapshot.categories {
+                hasher.combine(category)
+                hasher.combine(normalizeTagString(category))
+            }
+
+            let value = UInt64(bitPattern: Int64(hasher.finalize()))
+            aggregate ^= value &+ 0x9E37_79B9_7F4A_7C15 &+ (aggregate << 6) &+ (aggregate >> 2)
+        }
+
+        self.rawValue = aggregate
+    }
+
+    static let empty = TagsSourceSignature(rawValue: 0xA24B_AED4_963E_E407)
+}
+
 struct TagsDomainIndex {
     struct TagOccurrence: Hashable {
         let rawTag: String
@@ -16,23 +146,19 @@ struct TagsDomainIndex {
         }
     }
 
-    private struct SourceBookSnapshot {
-        let id: UUID
-        let title: String
-        let author: String
-        let statusRawValue: String
-        let tags: [String]
-        let categories: [String]
-        let mainCategory: String?
-    }
+    static let empty = TagsDomainIndex(sourceSnapshots: [])
 
     let totalBooks: Int
+    let sourceSnapshots: [TagsSourceSnapshot]
+    let dashboardSnapshots: [TagsDashboardBookSnapshot]
+    let mutationSnapshots: [TagLibraryMutationBookSnapshot]
     let usageIndex: TagUsageIndex
     let occurrences: [TagOccurrence]
     let normalizedTagsByBookID: [UUID: [String]]
     let suggestionSnapshots: [TagSuggestionBookSnapshot]
     let categoryCandidatesByBookID: [UUID: [String]]
     let comparableMainCategoryKeyByBookID: [UUID: String]
+    let sourceSignature: TagsSourceSignature
     let inputSignature: UInt64
 
     var tagCounts: [TagsIndexBuilder.TagCount] {
@@ -40,36 +166,17 @@ struct TagsDomainIndex {
     }
 
     init(snapshots: [TagsDashboardBookSnapshot]) {
-        self.init(
-            sourceSnapshots: snapshots.map { snapshot in
-                SourceBookSnapshot(
-                    id: snapshot.id,
-                    title: snapshot.title,
-                    author: snapshot.author,
-                    statusRawValue: snapshot.statusRawValue,
-                    tags: snapshot.tags,
-                    categories: [],
-                    mainCategory: nil
-                )
-            },
-            includeSuggestionSnapshots: false
-        )
+        self.init(sourceSnapshots: snapshots.map(TagsSourceSnapshot.init(dashboardSnapshot:)))
     }
 
     init(suggestionSnapshots: [TagSuggestionBookSnapshot]) {
+        self.init(sourceSnapshots: suggestionSnapshots.map(TagsSourceSnapshot.init(suggestionSnapshot:)))
+    }
+
+    init(sourceSnapshots: [TagsSourceSnapshot]) {
         self.init(
-            sourceSnapshots: suggestionSnapshots.map { snapshot in
-                SourceBookSnapshot(
-                    id: snapshot.id,
-                    title: snapshot.title,
-                    author: snapshot.author,
-                    statusRawValue: snapshot.statusRawValue,
-                    tags: snapshot.tags,
-                    categories: snapshot.categories,
-                    mainCategory: snapshot.mainCategory
-                )
-            },
-            includeSuggestionSnapshots: true
+            sourceSnapshots: sourceSnapshots,
+            sourceSignature: TagsSourceSignature(sourceSnapshots: sourceSnapshots)
         )
     }
 
@@ -102,9 +209,9 @@ struct TagsDomainIndex {
         )
     }
 
-    private init(
-        sourceSnapshots: [SourceBookSnapshot],
-        includeSuggestionSnapshots: Bool
+    init(
+        sourceSnapshots: [TagsSourceSnapshot],
+        sourceSignature: TagsSourceSignature
     ) {
         totalBooks = sourceSnapshots.count
 
@@ -116,23 +223,22 @@ struct TagsDomainIndex {
         var untaggedBookIDs: [UUID] = []
         var totalTagUsages = 0
         var suggestionSnapshots: [TagSuggestionBookSnapshot] = []
+        var dashboardSnapshots: [TagsDashboardBookSnapshot] = []
+        var mutationSnapshots: [TagLibraryMutationBookSnapshot] = []
         var categoryCandidatesByBookID: [UUID: [String]] = [:]
         var comparableMainCategoryKeyByBookID: [UUID: String] = [:]
-        var aggregateSignature: UInt64 = 0xC2B2_AE3D_27D4_EB4F
-        aggregateSignature &+= UInt64(sourceSnapshots.count) &* 0x1656_67B1_9E37_79F9
 
-        if includeSuggestionSnapshots {
-            suggestionSnapshots.reserveCapacity(sourceSnapshots.count)
-        }
+        suggestionSnapshots.reserveCapacity(sourceSnapshots.count)
+        dashboardSnapshots.reserveCapacity(sourceSnapshots.count)
+        mutationSnapshots.reserveCapacity(sourceSnapshots.count)
 
         for snapshot in sourceSnapshots {
+            dashboardSnapshots.append(snapshot.dashboardSnapshot)
+            suggestionSnapshots.append(snapshot.suggestionSnapshot)
+            mutationSnapshots.append(snapshot.mutationSnapshot)
+
             var uniqueTags: [String] = []
             uniqueTags.reserveCapacity(snapshot.tags.count)
-
-            var bookHasher = Hasher()
-            bookHasher.combine(snapshot.id)
-            bookHasher.combine(snapshot.statusRawValue)
-            bookHasher.combine(snapshot.tags.count)
 
             for rawTag in snapshot.tags {
                 let normalizedTag = normalizeTagString(rawTag)
@@ -155,8 +261,6 @@ struct TagsDomainIndex {
                         bookID: snapshot.id
                     )
                 )
-                bookHasher.combine(rawTag)
-                bookHasher.combine(normalizedTag)
 
                 if !uniqueTags.contains(where: { $0.caseInsensitiveCompare(normalizedTag) == .orderedSame }) {
                     uniqueTags.append(normalizedTag)
@@ -187,40 +291,15 @@ struct TagsDomainIndex {
                 totalTagUsages += 1
             }
 
-            if includeSuggestionSnapshots {
-                suggestionSnapshots.append(
-                    TagSuggestionBookSnapshot(
-                        id: snapshot.id,
-                        title: snapshot.title,
-                        author: snapshot.author,
-                        tags: snapshot.tags,
-                        categories: snapshot.categories,
-                        mainCategory: snapshot.mainCategory,
-                        statusRawValue: snapshot.statusRawValue
-                    )
-                )
+            let categoryCandidates = TagSuggestionEngine.categoryCandidates(
+                categories: snapshot.categories,
+                mainCategory: snapshot.mainCategory
+            )
+            categoryCandidatesByBookID[snapshot.id] = categoryCandidates
 
-                let categoryCandidates = TagSuggestionEngine.categoryCandidates(
-                    categories: snapshot.categories,
-                    mainCategory: snapshot.mainCategory
-                )
-                categoryCandidatesByBookID[snapshot.id] = categoryCandidates
-
-                if let comparableMainCategoryKey = Self.comparableMainCategoryKey(snapshot.mainCategory) {
-                    comparableMainCategoryKeyByBookID[snapshot.id] = comparableMainCategoryKey
-                }
-
-                bookHasher.combine(snapshot.title)
-                bookHasher.combine(snapshot.author)
-                bookHasher.combine(snapshot.categories.count)
-                for category in snapshot.categories {
-                    bookHasher.combine(category)
-                }
-                bookHasher.combine(snapshot.mainCategory)
+            if let comparableMainCategoryKey = Self.comparableMainCategoryKey(snapshot.mainCategory) {
+                comparableMainCategoryKeyByBookID[snapshot.id] = comparableMainCategoryKey
             }
-
-            let bookHash = UInt64(bitPattern: Int64(bookHasher.finalize()))
-            aggregateSignature ^= bookHash &+ 0x9E37_79B9_7F4A_7C15 &+ (aggregateSignature << 6) &+ (aggregateSignature >> 2)
         }
 
         let entries = aggregates.values
@@ -241,12 +320,16 @@ struct TagsDomainIndex {
                 return lhs.tag.localizedCaseInsensitiveCompare(rhs.tag) == .orderedAscending
             }
 
+        self.sourceSnapshots = sourceSnapshots
+        self.dashboardSnapshots = dashboardSnapshots
+        self.mutationSnapshots = mutationSnapshots
         self.occurrences = occurrences
         self.normalizedTagsByBookID = normalizedTagsByBookID
         self.suggestionSnapshots = suggestionSnapshots
         self.categoryCandidatesByBookID = categoryCandidatesByBookID
         self.comparableMainCategoryKeyByBookID = comparableMainCategoryKeyByBookID
-        self.inputSignature = aggregateSignature
+        self.sourceSignature = sourceSignature
+        self.inputSignature = sourceSignature.rawValue
         self.usageIndex = TagUsageIndex(
             entries: entries,
             entriesByKey: Dictionary(uniqueKeysWithValues: entries.map { ($0.key, $0) }),

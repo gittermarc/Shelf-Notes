@@ -132,6 +132,57 @@ struct TagsDomainIndexTests {
         #expect(suggestions == ["Sci-Fi"])
     }
 
+    @Test func sourceSignatureTracksTagRelevantFieldsAndIgnoresOrder() {
+        let base = [
+            makeSourceSnapshot(1, title: "Noir One", author: "A", tags: ["Crime"], categories: ["Mystery"], mainCategory: "Fiction"),
+            makeSourceSnapshot(2, title: "Noir Two", author: "B", tags: ["Noir"], categories: ["Thriller"], mainCategory: "Fiction")
+        ]
+        let sameValuesDifferentOrder = [base[1], base[0]]
+        let changedTitle = [
+            makeSourceSnapshot(1, title: "Noir Changed", author: "A", tags: ["Crime"], categories: ["Mystery"], mainCategory: "Fiction"),
+            base[1]
+        ]
+        let changedCategory = [
+            makeSourceSnapshot(1, title: "Noir One", author: "A", tags: ["Crime"], categories: ["Detective"], mainCategory: "Fiction"),
+            base[1]
+        ]
+
+        let baseSignature = TagsSourceSignature(sourceSnapshots: base)
+
+        #expect(baseSignature == TagsSourceSignature(sourceSnapshots: sameValuesDifferentOrder))
+        #expect(baseSignature != TagsSourceSignature(sourceSnapshots: changedTitle))
+        #expect(baseSignature != TagsSourceSignature(sourceSnapshots: changedCategory))
+    }
+
+    @Test func sourceIndexExposesReusableDashboardSuggestionAndMutationSnapshots() {
+        let sourceSnapshots = [
+            makeSourceSnapshot(
+                1,
+                title: "Noir One",
+                author: "A. Author",
+                tags: ["Crime"],
+                categories: ["Fiction / Mystery & Detective"],
+                status: .finished
+            ),
+            makeSourceSnapshot(
+                2,
+                title: "Noir Two",
+                author: "A. Author",
+                tags: ["Noir", "Crime"],
+                categories: ["Fiction / Mystery & Detective"],
+                status: .reading
+            )
+        ]
+        let index = TagsDomainIndex(sourceSnapshots: sourceSnapshots)
+
+        #expect(index.dashboardSnapshots.map(\.id) == sourceSnapshots.map(\.id))
+        #expect(index.suggestionSnapshots.map(\.id) == sourceSnapshots.map(\.id))
+        #expect(index.mutationSnapshots.map(\.id) == sourceSnapshots.map(\.id))
+        #expect(index.dashboardSnapshots.first?.statusRawValue == ReadingStatus.finished.rawValue)
+        #expect(index.suggestionSnapshots.first?.categories == ["Fiction / Mystery & Detective"])
+        #expect(index.mutationSnapshots.first?.tags == ["Crime"])
+    }
+
     private func makeSnapshot(
         _ value: Int,
         title: String = "Test Book",
@@ -164,6 +215,26 @@ struct TagsDomainIndexTests {
             tags: tags,
             categories: categories,
             mainCategory: mainCategory,
+            statusRawValue: status.rawValue
+        )
+    }
+
+    private func makeSourceSnapshot(
+        _ value: Int,
+        title: String = "Test Book",
+        author: String = "Test Author",
+        tags: [String],
+        categories: [String] = [],
+        mainCategory: String? = nil,
+        status: ReadingStatus = .toRead
+    ) -> TagsSourceSnapshot {
+        TagsSourceSnapshot(
+            id: fixedID(value),
+            title: title,
+            author: author,
+            categories: categories,
+            mainCategory: mainCategory,
+            tags: tags,
             statusRawValue: status.rawValue
         )
     }

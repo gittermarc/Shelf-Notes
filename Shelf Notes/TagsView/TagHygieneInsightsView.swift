@@ -2,15 +2,12 @@ import SwiftUI
 
 struct TagHygieneInsightsSection: View {
     let report: TagHygieneReport
+    let domainIndex: TagsDomainIndex
     let books: [Book]
     let onApplyCleanup: (TagLibraryMutationResult) -> Void
 
     @State private var pendingCleanupPlan: TagHygieneCleanupPlan?
     @State private var cleanupSuccess: TagHygieneCleanupSuccess?
-
-    private var snapshots: [TagsDashboardBookSnapshot] {
-        TagsDashboardBuilder.makeSnapshots(books: books)
-    }
 
     var body: some View {
         Group {
@@ -29,7 +26,7 @@ struct TagHygieneInsightsSection: View {
                         ForEach(Array(report.insights.prefix(4))) { insight in
                             let cleanupPlan = TagHygieneCleanupBuilder.plan(
                                 for: insight,
-                                snapshots: snapshots
+                                index: domainIndex
                             )
 
                             TagHygieneInsightCard(

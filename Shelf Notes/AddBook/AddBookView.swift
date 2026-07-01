@@ -22,6 +22,8 @@ struct AddBookView: View {
     @StateObject var vm = AddBookViewModel()
 
     var body: some View {
+        let bookIDs = allBooks.map(\.id)
+
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
@@ -65,6 +67,12 @@ struct AddBookView: View {
             .safeAreaInset(edge: .bottom) {
                 primaryActionBar
             }
+        }
+        .task {
+            tagsIndexStore.refreshSourceAndTrack(books: allBooks)
+        }
+        .onChange(of: bookIDs) { _, _ in
+            tagsIndexStore.refreshSourceAndTrack(books: allBooks)
         }
         .sheet(item: $vm.activeSheet, onDismiss: handleSheetDismiss) { sheet in
             switch sheet {

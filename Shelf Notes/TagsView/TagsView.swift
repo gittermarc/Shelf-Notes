@@ -12,6 +12,7 @@ import SwiftData
 // MARK: - Tags Tab
 struct TagsView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var tagsIndexStore: TagsIndexStore
     @Query(sort: \Book.createdAt, order: .reverse) private var books: [Book]
     @State private var searchText: String = ""
     @State private var sortMode: TagsDashboardSortMode = .mostUsed
@@ -19,38 +20,45 @@ struct TagsView: View {
     @State private var deletePlan: TagDeletePlan?
 
     var body: some View {
-        let overview = TagsOverviewBuilder.build(
-            books: books,
+        let dashboard = tagsIndexStore.dashboard
+        let hygieneReport = tagsIndexStore.hygieneReport
+        let visibleEntries = TagsDashboardBuilder.filteredEntries(
+            dashboard.entries,
             searchText: searchText,
             sortMode: sortMode
         )
+        let bookIDs = books.map(\.id)
 
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    TagsDashboardHero(summary: overview.dashboard.summary)
+                    TagsDashboardHero(summary: dashboard.summary)
 
-                    if overview.dashboard.summary.untaggedBooksCount > 0 {
+                    if dashboard.summary.untaggedBooksCount > 0 {
                         NavigationLink {
                             UntaggedBooksView(books: books)
                         } label: {
-                            UntaggedBooksCallout(count: overview.dashboard.summary.untaggedBooksCount)
+                            UntaggedBooksCallout(count: dashboard.summary.untaggedBooksCount)
                         }
                         .buttonStyle(.plain)
                     }
 
-                    TagHygieneInsightsSection(report: overview.hygieneReport, books: books) { result in
+                    TagHygieneInsightsSection(
+                        report: hygieneReport,
+                        domainIndex: tagsIndexStore.domainIndex,
+                        books: books
+                    ) { result in
                         applyMutation(result)
                     }
 
-                    if overview.dashboard.entries.isEmpty {
+                    if dashboard.entries.isEmpty {
                         TagsEmptyState(hasBooks: !books.isEmpty)
                             .frame(maxWidth: .infinity)
                             .padding(.top, 24)
                     } else {
                         TagsExplorerControls(sortMode: $sortMode)
 
-                        if overview.visibleEntries.isEmpty {
+                        if visibleEntries.isEmpty {
                             ContentUnavailableView(
                                 "Keine Tags gefunden",
                                 systemImage: "magnifyingglass",
@@ -64,7 +72,7 @@ struct TagsView: View {
                                 alignment: .leading,
                                 spacing: 12
                             ) {
-                                ForEach(overview.visibleEntries) { entry in
+                                ForEach(visibleEntries) { entry in
                                     NavigationLink {
                                         TagDetailView(tag: entry.tag, books: books)
                                     } label: {
@@ -106,6 +114,12 @@ struct TagsView: View {
                 Text("#\(plan.tag) wird von \(plan.result.changedBooksCount) Büchern entfernt.")
             }
         }
+        .task {
+            tagsIndexStore.refreshSourceAndTrack(books: books)
+        }
+        .onChange(of: bookIDs) { _, _ in
+            tagsIndexStore.refreshSourceAndTrack(books: books)
+        }
     }
 
     private var isDeleteAlertPresented: Binding<Bool> {
@@ -143,7 +157,7 @@ struct TagsView: View {
     private func prepareDelete(tag: String) {
         let result = TagLibraryMutation.delete(
             tag: tag,
-            in: TagLibraryMutation.makeSnapshots(books: books)
+            in: TagLibraryMutation.makeSnapshots(index: tagsIndexStore.domainIndex)
         )
         let normalizedTag = normalizeTagString(tag)
         guard !normalizedTag.isEmpty, result.hasChanges else { return }
@@ -156,6 +170,7 @@ struct TagsView: View {
             _ = TagLibraryMutation.apply(result, to: books)
         }
         _ = modelContext.saveWithDiagnostics()
+        tagsIndexStore.refreshSourceAndTrack(books: books)
     }
 }
 

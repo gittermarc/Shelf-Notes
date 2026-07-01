@@ -18,6 +18,13 @@ enum TagHygieneCleanupBuilder {
         }
     }
 
+    static func plan(
+        for insight: TagHygieneInsight,
+        index: TagsDomainIndex
+    ) -> TagHygieneCleanupPlan? {
+        plan(for: insight, snapshots: index.dashboardSnapshots)
+    }
+
     private static func formattingPlan(
         for insight: TagHygieneInsight,
         snapshots: [TagsDashboardBookSnapshot]

@@ -118,9 +118,7 @@ extension AddBookView {
     }
 
     var addBookTagsDomainIndex: TagsDomainIndex {
-        TagsDomainIndex(
-            suggestionSnapshots: TagSuggestionEngine.makeSnapshots(books: allBooks)
-        )
+        tagsIndexStore.domainIndex
     }
 
     func addBookAutocompleteSuggestions(domainIndex: TagsDomainIndex) -> [String] {

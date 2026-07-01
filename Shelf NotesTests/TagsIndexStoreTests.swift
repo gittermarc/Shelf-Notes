@@ -98,6 +98,100 @@ struct TagsIndexStoreTests {
         #expect(cachedState.frequentItems.map(\.count) == directState.frequentItems.map(\.count))
     }
 
+    @Test func sourceStoreSkipsIdenticalTagRelevantInput() {
+        let store = TagsIndexStore()
+        let snapshots = [
+            makeSourceSnapshot(1, title: "Noir One", tags: ["Crime"]),
+            makeSourceSnapshot(2, title: "Noir Two", tags: ["Crime", "Noir"])
+        ]
+
+        let didUpdate = store.update(sourceSnapshots: snapshots)
+        let didUpdateAgain = store.update(sourceSnapshots: snapshots)
+
+        #expect(didUpdate)
+        #expect(!didUpdateAgain)
+        #expect(store.completedDomainIndexBuildCount == 1)
+        #expect(store.dashboard.summary.totalBooks == 2)
+        #expect(store.tagCounts.map(\.tag) == ["Crime", "Noir"])
+    }
+
+    @Test func sourceStoreRebuildsWhenTagsChange() {
+        let store = TagsIndexStore()
+        let first = [
+            makeSourceSnapshot(1, title: "Noir One", tags: ["Crime"])
+        ]
+        let changedTags = [
+            makeSourceSnapshot(1, title: "Noir One", tags: ["Crime", "Noir"])
+        ]
+
+        let firstUpdate = store.update(sourceSnapshots: first)
+        let secondUpdate = store.update(sourceSnapshots: changedTags)
+
+        #expect(firstUpdate)
+        #expect(secondUpdate)
+        #expect(store.completedDomainIndexBuildCount == 2)
+        #expect(store.tagCounts.map(\.tag) == ["Crime", "Noir"])
+    }
+
+    @Test func sourceStoreIgnoresNonTagRelevantBookEdits() {
+        let store = TagsIndexStore()
+        let book = Book(title: "Noir One", author: "A. Author", status: .toRead, tags: ["Crime"])
+        book.id = fixedID(90)
+
+        store.refreshSource(books: [book])
+        book.subtitle = "Nur Darstellung"
+        book.notes = "Eine Notiz, die Tags nicht betrifft"
+        store.refreshSource(books: [book])
+
+        #expect(store.completedDomainIndexBuildCount == 1)
+        #expect(store.tagCounts.map(\.tag) == ["Crime"])
+    }
+
+    @Test func cleanupMutationRefreshesSourceIndexAfterApply() {
+        let store = TagsIndexStore()
+        let first = Book(title: "One", author: "A", status: .finished, tags: ["Crime"])
+        let second = Book(title: "Two", author: "B", status: .reading, tags: ["Noir"])
+        first.id = fixedID(91)
+        second.id = fixedID(92)
+
+        store.refreshSource(books: [first, second])
+
+        let result = TagLibraryMutation.rename(
+            tag: "Crime",
+            to: "Krimi",
+            in: TagLibraryMutation.makeSnapshots(index: store.domainIndex)
+        )
+        _ = TagLibraryMutation.apply(result, to: [first, second])
+        store.refreshSource(books: [first, second])
+
+        #expect(result.hasChanges)
+        #expect(store.completedDomainIndexBuildCount == 2)
+        #expect(store.tagCounts.map(\.tag) == ["Krimi", "Noir"])
+    }
+
+    @Test func largeFixtureBuildsReusableDomainIndexOnce() {
+        let store = TagsIndexStore()
+        let fixture = LargeReadingDatasetBuilder.make1000BookMixedDataset()
+        var books = fixture.books
+
+        books[0].tags = [" #tag-0 ", "mood-0"]
+        books[1].tags = ["tag-0", "mood-1"]
+        books[2].tags = ["Sci-Fi", "mood-2"]
+        books[3].tags = ["SciFi", "mood-3"]
+        books[4].tags = []
+
+        store.refreshSource(books: books)
+        store.refreshSource(books: books)
+
+        #expect(store.completedDomainIndexBuildCount == 1)
+        #expect(store.domainIndex.totalBooks == 1000)
+        #expect(store.dashboard.summary.totalBooks == 1000)
+        #expect(store.tagCounts.count >= 10)
+        #expect(store.hygieneReport.insights.contains { $0.kind == .formattingConflict })
+        #expect(store.hygieneReport.insights.contains { $0.kind == .duplicateCandidate })
+        #expect(store.hygieneReport.insights.contains { $0.kind == .untaggedBooks })
+    }
+
     private func makeSuggestionSnapshot(
         _ value: Int,
         title: String = "Test Book",
@@ -114,6 +208,26 @@ struct TagsIndexStoreTests {
             tags: tags,
             categories: categories,
             mainCategory: mainCategory,
+            statusRawValue: status.rawValue
+        )
+    }
+
+    private func makeSourceSnapshot(
+        _ value: Int,
+        title: String = "Test Book",
+        author: String = "Test Author",
+        tags: [String],
+        categories: [String] = [],
+        mainCategory: String? = nil,
+        status: ReadingStatus = .toRead
+    ) -> TagsSourceSnapshot {
+        TagsSourceSnapshot(
+            id: fixedID(value),
+            title: title,
+            author: author,
+            categories: categories,
+            mainCategory: mainCategory,
+            tags: tags,
             statusRawValue: status.rawValue
         )
     }

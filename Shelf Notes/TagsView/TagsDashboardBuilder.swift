@@ -94,32 +94,33 @@ enum TagsDashboardBuilder {
         snapshots: [TagsDashboardBookSnapshot],
         limit: Int = 8
     ) -> [TagsDashboardRelatedTag] {
+        relatedTags(
+            for: tag,
+            index: TagsDomainIndex(snapshots: snapshots),
+            limit: limit
+        )
+    }
+
+    static func relatedTags(
+        for tag: String,
+        index: TagsDomainIndex,
+        limit: Int = 8
+    ) -> [TagsDashboardRelatedTag] {
         let normalizedTag = normalizeTagString(tag)
         guard !normalizedTag.isEmpty else { return [] }
+        let normalizedKey = normalizedTag.lowercased()
+        let matchingBookIDs = Set(index.usageIndex.bookIDs(matching: normalizedTag))
+        guard !matchingBookIDs.isEmpty else { return [] }
 
-        struct Aggregate {
-            var tag: String
-            var sharedBookCount: Int
-        }
-
-        var aggregates: [String: Aggregate] = [:]
-
-        for book in snapshots {
-            let tags = normalizedTags(for: book)
-            guard tags.contains(where: { $0.caseInsensitiveCompare(normalizedTag) == .orderedSame }) else {
-                continue
+        return index.usageIndex.entries
+            .filter { $0.key != normalizedKey }
+            .map { entry in
+                TagsDashboardRelatedTag(
+                    tag: entry.tag,
+                    sharedBookCount: Set(entry.bookIDs).intersection(matchingBookIDs).count
+                )
             }
-
-            for otherTag in tags where otherTag.caseInsensitiveCompare(normalizedTag) != .orderedSame {
-                let key = otherTag.lowercased()
-                var aggregate = aggregates[key] ?? Aggregate(tag: otherTag, sharedBookCount: 0)
-                aggregate.sharedBookCount += 1
-                aggregates[key] = aggregate
-            }
-        }
-
-        return aggregates.values
-            .map { TagsDashboardRelatedTag(tag: $0.tag, sharedBookCount: $0.sharedBookCount) }
+            .filter { $0.sharedBookCount > 0 }
             .sorted { lhs, rhs in
                 if lhs.sharedBookCount != rhs.sharedBookCount {
                     return lhs.sharedBookCount > rhs.sharedBookCount

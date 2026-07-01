@@ -48,8 +48,8 @@ enum AppStartupMaintenanceService {
         modelContext: ModelContext,
         store: TagsIndexStore
     ) {
-        let snapshot = fetchTagSuggestionSnapshot(modelContext: modelContext)
-        store.update(suggestionSnapshots: snapshot)
+        let snapshot = fetchTagsSourceSnapshot(modelContext: modelContext)
+        store.update(sourceSnapshots: snapshot)
     }
 
     static func fetchBookTagsSnapshot(modelContext: ModelContext) -> [TagsIndexBuilder.BookTagsSnapshot] {
@@ -71,6 +71,18 @@ enum AppStartupMaintenanceService {
 
         let books = (try? modelContext.fetch(descriptor)) ?? []
         return TagsIndexBuilder.makeSuggestionSnapshot(books: books)
+            .sorted { lhs, rhs in
+                lhs.id.uuidString < rhs.id.uuidString
+            }
+    }
+
+    static func fetchTagsSourceSnapshot(modelContext: ModelContext) -> [TagsSourceSnapshot] {
+        let descriptor = FetchDescriptor<Book>(
+            sortBy: [SortDescriptor(\Book.createdAt, order: .reverse)]
+        )
+
+        let books = (try? modelContext.fetch(descriptor)) ?? []
+        return TagsIndexBuilder.makeSourceSnapshots(books: books)
             .sorted { lhs, rhs in
                 lhs.id.uuidString < rhs.id.uuidString
             }

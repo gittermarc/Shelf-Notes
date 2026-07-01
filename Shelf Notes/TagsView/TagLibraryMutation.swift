@@ -44,6 +44,14 @@ enum TagLibraryMutation {
         }
     }
 
+    static func makeSnapshots(sourceSnapshots: [TagsSourceSnapshot]) -> [TagLibraryMutationBookSnapshot] {
+        sourceSnapshots.map(\.mutationSnapshot)
+    }
+
+    static func makeSnapshots(index: TagsDomainIndex) -> [TagLibraryMutationBookSnapshot] {
+        index.mutationSnapshots
+    }
+
     static func rename(
         tag sourceTag: String,
         to targetTag: String,

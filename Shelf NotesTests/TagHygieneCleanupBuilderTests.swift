@@ -99,6 +99,23 @@ struct TagHygieneCleanupBuilderTests {
         #expect(plan?.result.changes.first?.newTags == ["Crime"])
     }
 
+    @Test func cleanupPlanCanUseSharedDomainIndex() {
+        let snapshots = [
+            makeSnapshot(1, tags: [" #Crime ", "Noir"]),
+            makeSnapshot(2, tags: ["Crime"])
+        ]
+        let index = TagsDomainIndex(snapshots: snapshots)
+        let report = TagHygieneBuilder.build(index: index, maxInsights: 10)
+        let insight = report.insights.first { $0.kind == .formattingConflict }
+
+        let plan = insight.flatMap { TagHygieneCleanupBuilder.plan(for: $0, index: index) }
+
+        #expect(plan?.kind == .normalizeFormatting)
+        #expect(plan?.targetTag == "Crime")
+        #expect(plan?.affectedBookIDs == [fixedID(1)])
+        #expect(plan?.result.changes.first?.newTags == ["Crime", "Noir"])
+    }
+
     private func makeSnapshot(
         _ value: Int,
         title: String = "Test Book",
