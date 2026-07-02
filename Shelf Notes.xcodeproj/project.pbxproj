@@ -87,6 +87,7 @@
 			membershipExceptions = (
 				Shared/LiveActivity/LiveActivitySharedStore.swift,
 				Shared/LiveActivity/ReadingSessionActivityAttributes.swift,
+				Shared/LiveActivity/ReadingSessionLiveActivityPresentation.swift,
 				Shared/LiveActivity/ReadingSessionLiveActivitySnapshot.swift,
 				Shared/LiveActivity/ReadingTimerSharedModels.swift,
 			);
