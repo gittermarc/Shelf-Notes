@@ -16,30 +16,34 @@ final class ReadingSessionLiveActivityCoordinator {
     @available(iOS 16.1, *)
     private var activity: Activity<ReadingSessionActivityAttributes>?
 
-    func startOrUpdate(from active: ReadingTimerManager.ActiveState) {
+    func startOrUpdate(
+        from active: ReadingTimerManager.ActiveState,
+        autoStopMinutes: Int? = nil
+    ) {
         guard #available(iOS 16.1, *) else { return }
 
         let now = Date()
         let (attributes, state) = makePayload(active: active, now: now)
-        let content = makeActivityContent(from: state)
+        let content = makeActivityContent(from: state, now: now, autoStopMinutes: autoStopMinutes)
 
         Task { [weak self] in
             guard let self else { return }
 
-            if let existing = self.activity {
-                // If attributes mismatch, end + recreate (should be rare; app prevents it).
-                if existing.attributes.bookID != attributes.bookID {
-                    await self.endCurrentActivityInternal(using: existing.content.state)
-                    self.activity = nil
-                }
+            if let existing = self.activity, existing.attributes.bookID != attributes.bookID {
+                await self.end(activity: existing, using: existing.content.state)
+                self.activity = nil
             }
 
-            if self.activity == nil {
-                self.activity = self.findExistingActivity(bookID: attributes.bookID)
-            }
+            self.activity = await self.resolveExistingActivity(bookID: attributes.bookID)
 
             if let existing = self.activity {
                 await existing.update(content)
+                LiveActivitySharedStore.removeOrphanedCoverFiles(keepingBookIDStrings: [attributes.bookID])
+                return
+            }
+
+            guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+                LiveActivitySharedStore.removeOrphanedCoverFiles(keepingBookIDStrings: [attributes.bookID])
                 return
             }
 
@@ -50,9 +54,10 @@ final class ReadingSessionLiveActivityCoordinator {
                     pushType: nil
                 )
                 self.activity = requested
+                LiveActivitySharedStore.removeOrphanedCoverFiles(keepingBookIDStrings: [attributes.bookID])
             } catch {
                 // Live Activities can be disabled by the user or fail for other reasons.
-                // We intentionally ignore errors to keep the timer flow unchanged.
+                // The reading timer must keep working even when ActivityKit is unavailable.
             }
         }
     }
@@ -64,7 +69,7 @@ final class ReadingSessionLiveActivityCoordinator {
             guard let self else { return }
 
             if let activity = self.activity {
-                await self.endCurrentActivityInternal(using: activity.content.state)
+                await self.end(activity: activity, using: activity.content.state)
                 self.activity = nil
             }
         }
@@ -73,38 +78,58 @@ final class ReadingSessionLiveActivityCoordinator {
     // MARK: - Internals
 
     @available(iOS 16.1, *)
-    private func endCurrentActivityInternal(using state: ReadingSessionActivityAttributes.ContentState) async {
+    private func end(
+        activity: Activity<ReadingSessionActivityAttributes>,
+        using state: ReadingSessionActivityAttributes.ContentState
+    ) async {
         // End immediately so the lock screen doesn't show stale info once the sheet opens.
-        await activity?.end(makeActivityContent(from: state), dismissalPolicy: .immediate)
+        await activity.end(makeActivityContent(from: state), dismissalPolicy: .immediate)
     }
 
     @available(iOS 16.1, *)
-    private func findExistingActivity(bookID: String) -> Activity<ReadingSessionActivityAttributes>? {
-        for a in Activity<ReadingSessionActivityAttributes>.activities {
-            if a.attributes.bookID == bookID {
-                return a
+    private func resolveExistingActivity(bookID: String) async -> Activity<ReadingSessionActivityAttributes>? {
+        var keeper: Activity<ReadingSessionActivityAttributes>?
+
+        for existing in Activity<ReadingSessionActivityAttributes>.activities {
+            if existing.attributes.bookID == bookID, keeper == nil {
+                keeper = existing
+            } else {
+                await end(activity: existing, using: existing.content.state)
             }
         }
-        return nil
+
+        return keeper
     }
 
     private func makeActivityContent(
-        from state: ReadingSessionActivityAttributes.ContentState
+        from state: ReadingSessionActivityAttributes.ContentState,
+        now: Date = Date(),
+        autoStopMinutes: Int? = nil
     ) -> ActivityContent<ReadingSessionActivityAttributes.ContentState> {
-        ActivityContent(state: state, staleDate: nil)
+        ActivityContent(
+            state: state,
+            staleDate: ReadingSessionLiveActivityLifecyclePolicy.staleDate(
+                for: state,
+                now: now,
+                autoStopMinutes: autoStopMinutes
+            )
+        )
     }
 
     @available(iOS 16.2, *)
     nonisolated static func refreshExistingActivityFromSharedState(bookID: UUID, now: Date = Date()) async {
         let shared = LiveActivitySharedStore.userDefaults
-        guard let data = shared.data(forKey: ReadingTimerSharedKeys.activeBlob),
-              let active = try? JSONDecoder().decode(ReadingTimerActiveBlob.self, from: data),
+        guard let active = ReadingTimerSharedCodec.decodeActive(from: shared.data(forKey: ReadingTimerSharedKeys.activeBlob)),
+              active.hasSupportedSchemaVersion,
               active.bookID == bookID else {
             return
         }
 
         let state = ReadingSessionActivityAttributes.ContentState(active: active, now: now)
-        let content = ActivityContent(state: state, staleDate: nil)
+        let content = ActivityContent(
+            state: state,
+            staleDate: ReadingSessionLiveActivityLifecyclePolicy.staleDate(for: state, now: now)
+        )
         let bookIDString = bookID.uuidString
 
         for activity in Activity<ReadingSessionActivityAttributes>.activities {

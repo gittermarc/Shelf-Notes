@@ -22,6 +22,7 @@ struct RootView: View {
     @AppStorage("did_offer_csv_import_v1") private var didOfferCSVImport: Bool = false
     @State private var showingCSVFirstRun = false
     @State private var lastKnownBookCount: Int? = nil
+    @State private var liveActivityRouteBook: Book? = nil
 
     // MARK: - Appearance
     @AppStorage(AppearanceStorageKey.colorScheme) private var colorSchemeRaw: String = AppColorSchemeOption.system.rawValue
@@ -96,6 +97,9 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, newPhase in
             handleScenePhaseChange(newPhase)
         }
+        .onOpenURL { url in
+            handleOpenURL(url)
+        }
         .sheet(isPresented: $showingCSVFirstRun) {
             NavigationStack {
                 CSVImportExportView(title: "Erstimport", showExportSection: false, showDoneButton: true)
@@ -114,6 +118,14 @@ struct RootView: View {
             )
             .environmentObject(timer)
             .environmentObject(tagsIndexStore)
+        }
+        .sheet(item: $liveActivityRouteBook) { book in
+            NavigationStack {
+                BookDetailView(book: book)
+                    .environmentObject(pro)
+                    .environmentObject(timer)
+                    .environmentObject(tagsIndexStore)
+            }
         }
     }
 
@@ -177,6 +189,28 @@ struct RootView: View {
             cancelCoverBackfill()
         } else {
             scheduleCoverBackfillIfNeeded()
+        }
+    }
+
+    private func handleOpenURL(_ url: URL) {
+        guard let route = ReadingSessionLiveActivityDeepLink.route(from: url) else { return }
+
+        selectedTab = 0
+        timer.syncFromSharedStoreOnAppActive()
+
+        switch route.destination {
+        case .completion:
+            liveActivityRouteBook = nil
+
+        case .session:
+            guard timer.pendingCompletion == nil else {
+                liveActivityRouteBook = nil
+                return
+            }
+            liveActivityRouteBook = AppStartupMaintenanceService.book(
+                withID: route.bookID,
+                modelContext: modelContext
+            )
         }
     }
 

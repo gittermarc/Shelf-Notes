@@ -16,11 +16,34 @@ nonisolated enum ReadingTimerSharedKeys {
     static let pendingCompletionBlob: String = "reading_timer_pending_completion_v1"
 }
 
+nonisolated enum ReadingTimerSharedCodec {
+    static func decodeActive(from data: Data?) -> ReadingTimerActiveBlob? {
+        guard let data else { return nil }
+        return try? JSONDecoder().decode(ReadingTimerActiveBlob.self, from: data)
+    }
+
+    static func decodePendingCompletion(from data: Data?) -> ReadingTimerPendingCompletionBlob? {
+        guard let data else { return nil }
+        return try? JSONDecoder().decode(ReadingTimerPendingCompletionBlob.self, from: data)
+    }
+
+    static func encodeActive(_ blob: ReadingTimerActiveBlob) -> Data? {
+        try? JSONEncoder().encode(blob)
+    }
+
+    static func encodePendingCompletion(_ blob: ReadingTimerPendingCompletionBlob) -> Data? {
+        try? JSONEncoder().encode(blob)
+    }
+}
+
 /// Shared, Codable representation of the current active timer session.
 ///
 /// This is intentionally duplicated (instead of referencing `ReadingTimerManager.ActiveState`)
 /// so the widget extension can decode it without importing the app module.
 nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
+    static let currentSchemaVersion = 2
+
+    var schemaVersion: Int
     var bookID: UUID
     var bookTitle: String
     var startedAt: Date
@@ -31,6 +54,7 @@ nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
     var liveActivitySnapshot: ReadingSessionLiveActivitySnapshot?
 
     init(
+        schemaVersion: Int = ReadingTimerActiveBlob.currentSchemaVersion,
         bookID: UUID,
         bookTitle: String,
         startedAt: Date,
@@ -40,14 +64,69 @@ nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
         pausedAt: Date?,
         liveActivitySnapshot: ReadingSessionLiveActivitySnapshot? = nil
     ) {
+        self.schemaVersion = schemaVersion
         self.bookID = bookID
-        self.bookTitle = bookTitle
+        self.bookTitle = Self.normalizedTitle(bookTitle)
         self.startedAt = startedAt
         self.lastResumedAt = lastResumedAt
         self.accumulatedSeconds = max(0, accumulatedSeconds)
         self.isPaused = isPaused
-        self.pausedAt = pausedAt
+        self.pausedAt = isPaused ? (pausedAt ?? lastResumedAt) : pausedAt
         self.liveActivitySnapshot = liveActivitySnapshot
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case bookID
+        case bookTitle
+        case startedAt
+        case lastResumedAt
+        case accumulatedSeconds
+        case isPaused
+        case pausedAt
+        case liveActivitySnapshot
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let bookID = try container.decode(UUID.self, forKey: .bookID)
+        let title = (try? container.decode(String.self, forKey: .bookTitle)) ?? ReadingSessionLiveActivitySnapshot.defaultTitle
+        let startedAt = (try? container.decode(Date.self, forKey: .startedAt)) ?? Date()
+        let lastResumedAt = (try? container.decode(Date.self, forKey: .lastResumedAt)) ?? startedAt
+        let accumulatedSeconds = (try? container.decode(Int.self, forKey: .accumulatedSeconds)) ?? 0
+        let isPaused = (try? container.decode(Bool.self, forKey: .isPaused)) ?? false
+        let pausedAt = try? container.decode(Date.self, forKey: .pausedAt)
+        let snapshot = try? container.decode(ReadingSessionLiveActivitySnapshot.self, forKey: .liveActivitySnapshot)
+        let schemaVersion = (try? container.decode(Int.self, forKey: .schemaVersion)) ?? 1
+
+        self.init(
+            schemaVersion: schemaVersion,
+            bookID: bookID,
+            bookTitle: title,
+            startedAt: startedAt,
+            lastResumedAt: lastResumedAt,
+            accumulatedSeconds: accumulatedSeconds,
+            isPaused: isPaused,
+            pausedAt: pausedAt,
+            liveActivitySnapshot: snapshot
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(bookID, forKey: .bookID)
+        try container.encode(bookTitle, forKey: .bookTitle)
+        try container.encode(startedAt, forKey: .startedAt)
+        try container.encode(lastResumedAt, forKey: .lastResumedAt)
+        try container.encode(accumulatedSeconds, forKey: .accumulatedSeconds)
+        try container.encode(isPaused, forKey: .isPaused)
+        try container.encodeIfPresent(pausedAt, forKey: .pausedAt)
+        try container.encodeIfPresent(liveActivitySnapshot, forKey: .liveActivitySnapshot)
+    }
+
+    var hasSupportedSchemaVersion: Bool {
+        schemaVersion > 0 && schemaVersion <= Self.currentSchemaVersion
     }
 
     func totalElapsedSeconds(now: Date) -> Int {
@@ -75,10 +154,18 @@ nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
         lastResumedAt = now
         liveActivitySnapshot?.stateLabel = ReadingSessionLiveActivitySnapshot.runningStateLabel
     }
+
+    private static func normalizedTitle(_ raw: String) -> String {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? ReadingSessionLiveActivitySnapshot.defaultTitle : value
+    }
 }
 
 /// Shared, Codable representation of a timer session completion that still needs user input.
 nonisolated struct ReadingTimerPendingCompletionBlob: Codable, Equatable {
+    static let currentSchemaVersion = 2
+
+    var schemaVersion: Int
     var id: UUID
     var bookID: UUID
     var bookTitle: String
@@ -89,6 +176,7 @@ nonisolated struct ReadingTimerPendingCompletionBlob: Codable, Equatable {
     var autoStopMinutes: Int?
 
     init(
+        schemaVersion: Int = ReadingTimerPendingCompletionBlob.currentSchemaVersion,
         id: UUID,
         bookID: UUID,
         bookTitle: String,
@@ -98,13 +186,73 @@ nonisolated struct ReadingTimerPendingCompletionBlob: Codable, Equatable {
         wasAutoStopped: Bool,
         autoStopMinutes: Int?
     ) {
+        self.schemaVersion = schemaVersion
         self.id = id
         self.bookID = bookID
-        self.bookTitle = bookTitle
+        self.bookTitle = Self.normalizedTitle(bookTitle)
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.durationSeconds = max(0, durationSeconds)
         self.wasAutoStopped = wasAutoStopped
         self.autoStopMinutes = autoStopMinutes
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case id
+        case bookID
+        case bookTitle
+        case startedAt
+        case endedAt
+        case durationSeconds
+        case wasAutoStopped
+        case autoStopMinutes
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let id = (try? container.decode(UUID.self, forKey: .id)) ?? UUID()
+        let bookID = try container.decode(UUID.self, forKey: .bookID)
+        let title = (try? container.decode(String.self, forKey: .bookTitle)) ?? ReadingSessionLiveActivitySnapshot.defaultTitle
+        let startedAt = (try? container.decode(Date.self, forKey: .startedAt)) ?? Date()
+        let endedAt = (try? container.decode(Date.self, forKey: .endedAt)) ?? startedAt
+        let durationSeconds = (try? container.decode(Int.self, forKey: .durationSeconds)) ?? 0
+        let wasAutoStopped = (try? container.decode(Bool.self, forKey: .wasAutoStopped)) ?? false
+        let autoStopMinutes = try? container.decode(Int.self, forKey: .autoStopMinutes)
+        let schemaVersion = (try? container.decode(Int.self, forKey: .schemaVersion)) ?? 1
+
+        self.init(
+            schemaVersion: schemaVersion,
+            id: id,
+            bookID: bookID,
+            bookTitle: title,
+            startedAt: startedAt,
+            endedAt: endedAt,
+            durationSeconds: durationSeconds,
+            wasAutoStopped: wasAutoStopped,
+            autoStopMinutes: autoStopMinutes
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(id, forKey: .id)
+        try container.encode(bookID, forKey: .bookID)
+        try container.encode(bookTitle, forKey: .bookTitle)
+        try container.encode(startedAt, forKey: .startedAt)
+        try container.encode(endedAt, forKey: .endedAt)
+        try container.encode(durationSeconds, forKey: .durationSeconds)
+        try container.encode(wasAutoStopped, forKey: .wasAutoStopped)
+        try container.encodeIfPresent(autoStopMinutes, forKey: .autoStopMinutes)
+    }
+
+    var hasSupportedSchemaVersion: Bool {
+        schemaVersion > 0 && schemaVersion <= Self.currentSchemaVersion
+    }
+
+    private static func normalizedTitle(_ raw: String) -> String {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? ReadingSessionLiveActivitySnapshot.defaultTitle : value
     }
 }

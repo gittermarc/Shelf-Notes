@@ -96,7 +96,13 @@ enum AppStartupMaintenanceService {
         _ pending: ReadingTimerManager.PendingCompletion,
         modelContext: ModelContext
     ) -> Book? {
-        let bookID = pending.bookID
+        book(withID: pending.bookID, modelContext: modelContext)
+    }
+
+    static func book(
+        withID bookID: UUID,
+        modelContext: ModelContext
+    ) -> Book? {
         let descriptor = FetchDescriptor<Book>(
             predicate: #Predicate<Book> { $0.id == bookID }
         )

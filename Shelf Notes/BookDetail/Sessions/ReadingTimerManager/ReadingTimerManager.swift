@@ -39,7 +39,7 @@ final class ReadingTimerManager: ObservableObject {
     /// Kept private, but accessed via small internal helpers so extensions can stay in separate files.
     private var backgroundEnteredAt: Date?
 
-    // MARK: - Live Activity (Phase 1: display-only)
+    // MARK: - Live Activity
 
     let liveActivityCoordinator = ReadingSessionLiveActivityCoordinator()
 
@@ -105,7 +105,10 @@ final class ReadingTimerManager: ObservableObject {
 
         backgroundEnteredAt = nil
         persistActive()
-        liveActivityCoordinator.startOrUpdate(from: self.active!)
+        liveActivityCoordinator.startOrUpdate(
+            from: self.active!,
+            autoStopMinutes: liveActivityAutoStopMinutes
+        )
 
         if let coverThumbnailData {
             Task.detached(priority: .utility) {
@@ -113,6 +116,13 @@ final class ReadingTimerManager: ObservableObject {
                     bookID: refreshBookID,
                     sourceThumbnailData: coverThumbnailData
                 )
+
+                guard let active = ReadingTimerSharedCodec.decodeActive(
+                    from: LiveActivitySharedStore.userDefaults.data(forKey: ReadingTimerSharedKeys.activeBlob)
+                ), active.bookID == refreshBookID else {
+                    LiveActivitySharedStore.removeCoverFile(bookIDString: refreshBookID.uuidString)
+                    return
+                }
 
                 // Trigger a lightweight state update so the lock screen re-renders
                 // after the cover thumbnail becomes available.
@@ -143,7 +153,7 @@ final class ReadingTimerManager: ObservableObject {
 
         backgroundEnteredAt = nil
         persistActive()
-        liveActivityCoordinator.startOrUpdate(from: a)
+        liveActivityCoordinator.startOrUpdate(from: a, autoStopMinutes: liveActivityAutoStopMinutes)
         objectWillChange.send()
     }
 
@@ -161,7 +171,7 @@ final class ReadingTimerManager: ObservableObject {
 
         backgroundEnteredAt = nil
         persistActive()
-        liveActivityCoordinator.startOrUpdate(from: a)
+        liveActivityCoordinator.startOrUpdate(from: a, autoStopMinutes: liveActivityAutoStopMinutes)
         objectWillChange.send()
     }
 
@@ -198,6 +208,7 @@ final class ReadingTimerManager: ObservableObject {
         self.active = nil
         backgroundEnteredAt = nil
         clearPersistedActive()
+        LiveActivitySharedStore.removeCoverFile(bookIDString: a.bookID.uuidString)
 
         objectWillChange.send()
     }
@@ -206,6 +217,9 @@ final class ReadingTimerManager: ObservableObject {
     func abortActiveSession() {
         objectWillChange.send()
         liveActivityCoordinator.endCurrentActivity()
+        if let bookID = active?.bookID {
+            LiveActivitySharedStore.removeCoverFile(bookIDString: bookID.uuidString)
+        }
         active = nil
         backgroundEnteredAt = nil
         clearPersistedActive()

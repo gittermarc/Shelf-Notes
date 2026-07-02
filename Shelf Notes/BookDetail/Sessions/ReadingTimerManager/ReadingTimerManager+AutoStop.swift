@@ -10,6 +10,12 @@ extension ReadingTimerManager {
 
     // MARK: - Auto-stop (background/inactive)
 
+    var liveActivityAutoStopMinutes: Int? {
+        let settings = readAutoStopSettings()
+        guard settings.enabled, settings.minutes > 0 else { return nil }
+        return settings.minutes
+    }
+
     func handleScenePhaseChange(_ phase: ScenePhase) {
         if phase == .active {
             // When controls were used from the lock screen, the widget extension updated

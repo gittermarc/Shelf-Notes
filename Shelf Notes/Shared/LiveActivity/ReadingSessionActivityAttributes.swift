@@ -127,6 +127,90 @@ extension ReadingSessionActivityAttributes.ContentState {
     }
 }
 
+nonisolated enum ReadingSessionLiveActivityLifecyclePolicy {
+    static let fallbackRunningFreshSeconds = 8 * 60 * 60
+    static let pausedFreshSeconds = 12 * 60 * 60
+    static let minimumFreshSeconds = 15 * 60
+    static let autoStopGraceSeconds = 5 * 60
+
+    static func staleDate(
+        now: Date,
+        isPaused: Bool,
+        autoStopMinutes: Int? = nil
+    ) -> Date {
+        let seconds: Int
+
+        if isPaused {
+            seconds = pausedFreshSeconds
+        } else if let autoStopMinutes, autoStopMinutes > 0 {
+            seconds = max(
+                minimumFreshSeconds,
+                autoStopMinutes * 60 + autoStopGraceSeconds
+            )
+        } else {
+            seconds = fallbackRunningFreshSeconds
+        }
+
+        return now.addingTimeInterval(TimeInterval(seconds))
+    }
+
+    static func staleDate(
+        for state: ReadingSessionActivityAttributes.ContentState,
+        now: Date,
+        autoStopMinutes: Int? = nil
+    ) -> Date {
+        staleDate(
+            now: now,
+            isPaused: state.isPaused,
+            autoStopMinutes: autoStopMinutes
+        )
+    }
+}
+
+nonisolated enum ReadingSessionLiveActivityDeepLink {
+    enum Destination: String, Codable, Hashable, Sendable {
+        case session
+        case completion
+    }
+
+    struct Route: Equatable, Sendable {
+        let bookID: UUID
+        let destination: Destination
+    }
+
+    static let scheme = "shelfnotes"
+    static let host = "reading-session"
+
+    static func url(bookID: UUID, destination: Destination = .session) -> URL? {
+        url(bookIDString: bookID.uuidString, destination: destination)
+    }
+
+    static func url(bookIDString: String, destination: Destination = .session) -> URL? {
+        var components = URLComponents()
+        components.scheme = scheme
+        components.host = host
+        components.queryItems = [
+            URLQueryItem(name: "bookID", value: bookIDString),
+            URLQueryItem(name: "destination", value: destination.rawValue)
+        ]
+        return components.url
+    }
+
+    static func route(from url: URL) -> Route? {
+        guard url.scheme == scheme, url.host == host else { return nil }
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+
+        let items = components.queryItems ?? []
+        let bookIDString = items.first(where: { $0.name == "bookID" })?.value
+        let destinationString = items.first(where: { $0.name == "destination" })?.value
+
+        guard let bookIDString, let bookID = UUID(uuidString: bookIDString) else { return nil }
+
+        let destination = destinationString.flatMap(Destination.init(rawValue:)) ?? .session
+        return Route(bookID: bookID, destination: destination)
+    }
+}
+
 nonisolated enum ReadingSessionDurationFormatter {
     static func format(_ seconds: Int) -> String {
         let s = max(0, seconds)

@@ -22,22 +22,19 @@ extension ReadingTimerManager {
 
     func persistActive() {
         guard let active = active else { return }
-        do {
-            let blob = ReadingTimerActiveBlob(
-                bookID: active.bookID,
-                bookTitle: active.bookTitle,
-                startedAt: active.startedAt,
-                lastResumedAt: active.lastResumedAt,
-                accumulatedSeconds: active.accumulatedSeconds,
-                isPaused: active.isPaused,
-                pausedAt: active.pausedAt,
-                liveActivitySnapshot: active.liveActivitySnapshot
-            )
+        let blob = ReadingTimerActiveBlob(
+            bookID: active.bookID,
+            bookTitle: active.bookTitle,
+            startedAt: active.startedAt,
+            lastResumedAt: active.lastResumedAt,
+            accumulatedSeconds: active.accumulatedSeconds,
+            isPaused: active.isPaused,
+            pausedAt: active.pausedAt,
+            liveActivitySnapshot: active.liveActivitySnapshot
+        )
 
-            let data = try JSONEncoder().encode(blob)
+        if let data = ReadingTimerSharedCodec.encodeActive(blob) {
             LiveActivitySharedStore.userDefaults.set(data, forKey: ReadingTimerSharedKeys.activeBlob)
-        } catch {
-            // If persistence fails, we still keep the in-memory timer running.
         }
     }
 
@@ -45,74 +42,71 @@ extension ReadingTimerManager {
         migrateLegacyActiveBlobIfNeeded()
 
         guard let data = LiveActivitySharedStore.userDefaults.data(forKey: ReadingTimerSharedKeys.activeBlob) else { return }
-        do {
-            let decoded = try JSONDecoder().decode(ReadingTimerActiveBlob.self, from: data)
-
-            let active = ActiveState(
-                bookID: decoded.bookID,
-                bookTitle: decoded.bookTitle,
-                startedAt: decoded.startedAt,
-                lastResumedAt: decoded.lastResumedAt,
-                accumulatedSeconds: decoded.accumulatedSeconds,
-                isPaused: decoded.isPaused,
-                pausedAt: decoded.pausedAt,
-                liveActivitySnapshot: decoded.liveActivitySnapshot
-            )
-
-            setActiveForInternalUse(active)
-            liveActivityCoordinator.startOrUpdate(from: active)
-
-            // Ensure any views (e.g. BookDetail) show the running/paused state immediately.
-            objectWillChange.send()
-        } catch {
+        guard let decoded = ReadingTimerSharedCodec.decodeActive(from: data), decoded.hasSupportedSchemaVersion else {
             clearPersistedActive()
             liveActivityCoordinator.endCurrentActivity()
+            return
         }
+
+        let active = ActiveState(
+            bookID: decoded.bookID,
+            bookTitle: decoded.bookTitle,
+            startedAt: decoded.startedAt,
+            lastResumedAt: decoded.lastResumedAt,
+            accumulatedSeconds: decoded.accumulatedSeconds,
+            isPaused: decoded.isPaused,
+            pausedAt: decoded.pausedAt,
+            liveActivitySnapshot: decoded.liveActivitySnapshot
+        )
+
+        setActiveForInternalUse(active)
+        liveActivityCoordinator.startOrUpdate(from: active, autoStopMinutes: liveActivityAutoStopMinutes)
+
+        // Ensure any views (e.g. BookDetail) show the running/paused state immediately.
+        objectWillChange.send()
     }
 
     func clearPersistedActive() {
         LiveActivitySharedStore.userDefaults.removeObject(forKey: ReadingTimerSharedKeys.activeBlob)
         UserDefaults.standard.removeObject(forKey: Keys.activeBlob)
+        LiveActivitySharedStore.removeOrphanedCoverFiles(keepingBookIDStrings: [])
     }
 
     func persistPendingCompletion() {
         guard let pendingCompletion else { return }
-        do {
-            let blob = ReadingTimerPendingCompletionBlob(
-                id: pendingCompletion.id,
-                bookID: pendingCompletion.bookID,
-                bookTitle: pendingCompletion.bookTitle,
-                startedAt: pendingCompletion.startedAt,
-                endedAt: pendingCompletion.endedAt,
-                durationSeconds: pendingCompletion.durationSeconds,
-                wasAutoStopped: pendingCompletion.wasAutoStopped,
-                autoStopMinutes: pendingCompletion.autoStopMinutes
-            )
-            let data = try JSONEncoder().encode(blob)
+        let blob = ReadingTimerPendingCompletionBlob(
+            id: pendingCompletion.id,
+            bookID: pendingCompletion.bookID,
+            bookTitle: pendingCompletion.bookTitle,
+            startedAt: pendingCompletion.startedAt,
+            endedAt: pendingCompletion.endedAt,
+            durationSeconds: pendingCompletion.durationSeconds,
+            wasAutoStopped: pendingCompletion.wasAutoStopped,
+            autoStopMinutes: pendingCompletion.autoStopMinutes
+        )
+        if let data = ReadingTimerSharedCodec.encodePendingCompletion(blob) {
             LiveActivitySharedStore.userDefaults.set(data, forKey: ReadingTimerSharedKeys.pendingCompletionBlob)
-        } catch {
-            // Non-fatal.
         }
     }
 
     func loadPendingCompletionFromDisk() {
         guard let data = LiveActivitySharedStore.userDefaults.data(forKey: ReadingTimerSharedKeys.pendingCompletionBlob) else { return }
-        do {
-            let decoded = try JSONDecoder().decode(ReadingTimerPendingCompletionBlob.self, from: data)
-            let pending = PendingCompletion(
-                id: decoded.id,
-                bookID: decoded.bookID,
-                bookTitle: decoded.bookTitle,
-                startedAt: decoded.startedAt,
-                endedAt: decoded.endedAt,
-                durationSeconds: decoded.durationSeconds,
-                wasAutoStopped: decoded.wasAutoStopped,
-                autoStopMinutes: decoded.autoStopMinutes
-            )
-            pendingCompletion = pending
-        } catch {
+        guard let decoded = ReadingTimerSharedCodec.decodePendingCompletion(from: data), decoded.hasSupportedSchemaVersion else {
             clearPersistedPendingCompletion()
+            return
         }
+
+        let pending = PendingCompletion(
+            id: decoded.id,
+            bookID: decoded.bookID,
+            bookTitle: decoded.bookTitle,
+            startedAt: decoded.startedAt,
+            endedAt: decoded.endedAt,
+            durationSeconds: decoded.durationSeconds,
+            wasAutoStopped: decoded.wasAutoStopped,
+            autoStopMinutes: decoded.autoStopMinutes
+        )
+        pendingCompletion = pending
     }
 
     func clearPersistedPendingCompletion() {
@@ -125,8 +119,7 @@ extension ReadingTimerManager {
 
         let shared = LiveActivitySharedStore.userDefaults
         if let data = shared.data(forKey: ReadingTimerSharedKeys.activeBlob) {
-            do {
-                let decoded = try JSONDecoder().decode(ReadingTimerActiveBlob.self, from: data)
+            if let decoded = ReadingTimerSharedCodec.decodeActive(from: data), decoded.hasSupportedSchemaVersion {
                 let mapped = ActiveState(
                     bookID: decoded.bookID,
                     bookTitle: decoded.bookTitle,
@@ -141,9 +134,9 @@ extension ReadingTimerManager {
                 if active != mapped {
                     setActiveForInternalUse(mapped)
                     clearBackgroundEnteredAt()
-                    liveActivityCoordinator.startOrUpdate(from: mapped)
+                    liveActivityCoordinator.startOrUpdate(from: mapped, autoStopMinutes: liveActivityAutoStopMinutes)
                 }
-            } catch {
+            } else {
                 clearPersistedActive()
                 liveActivityCoordinator.endCurrentActivity()
                 setActiveForInternalUse(nil)
@@ -153,6 +146,7 @@ extension ReadingTimerManager {
                 setActiveForInternalUse(nil)
                 clearBackgroundEnteredAt()
                 liveActivityCoordinator.endCurrentActivity()
+                LiveActivitySharedStore.removeOrphanedCoverFiles(keepingBookIDStrings: [])
             }
         }
 
