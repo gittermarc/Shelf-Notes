@@ -87,6 +87,7 @@
 			membershipExceptions = (
 				Shared/LiveActivity/LiveActivitySharedStore.swift,
 				Shared/LiveActivity/ReadingSessionActivityAttributes.swift,
+				Shared/LiveActivity/ReadingSessionLiveActivitySnapshot.swift,
 				Shared/LiveActivity/ReadingTimerSharedModels.swift,
 			);
 			target = 60CF7A4B2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension */;
@@ -436,7 +437,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Shelf Notes/Shelf_Notes.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = HPJKAPZ8A3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -471,7 +472,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Shelf Notes/Shelf_Notes.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = HPJKAPZ8A3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -715,7 +716,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = ShelfNotesLiveActivityExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = HPJKAPZ8A3;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShelfNotesLiveActivity/Info.plist;
@@ -747,7 +748,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = ShelfNotesLiveActivityExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = HPJKAPZ8A3;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShelfNotesLiveActivity/Info.plist;

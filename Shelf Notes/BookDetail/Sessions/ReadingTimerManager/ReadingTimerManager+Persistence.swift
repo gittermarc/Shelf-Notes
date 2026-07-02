@@ -30,7 +30,8 @@ extension ReadingTimerManager {
                 lastResumedAt: active.lastResumedAt,
                 accumulatedSeconds: active.accumulatedSeconds,
                 isPaused: active.isPaused,
-                pausedAt: active.pausedAt
+                pausedAt: active.pausedAt,
+                liveActivitySnapshot: active.liveActivitySnapshot
             )
 
             let data = try JSONEncoder().encode(blob)
@@ -54,7 +55,8 @@ extension ReadingTimerManager {
                 lastResumedAt: decoded.lastResumedAt,
                 accumulatedSeconds: decoded.accumulatedSeconds,
                 isPaused: decoded.isPaused,
-                pausedAt: decoded.pausedAt
+                pausedAt: decoded.pausedAt,
+                liveActivitySnapshot: decoded.liveActivitySnapshot
             )
 
             setActiveForInternalUse(active)
@@ -132,7 +134,8 @@ extension ReadingTimerManager {
                     lastResumedAt: decoded.lastResumedAt,
                     accumulatedSeconds: decoded.accumulatedSeconds,
                     isPaused: decoded.isPaused,
-                    pausedAt: decoded.pausedAt
+                    pausedAt: decoded.pausedAt,
+                    liveActivitySnapshot: decoded.liveActivitySnapshot
                 )
 
                 if active != mapped {

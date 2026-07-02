@@ -27,6 +27,8 @@ struct SessionsCard: View {
 
     @AppStorage(ChallengePreferencesStorageKey.enabledKinds) private var enabledKindsRaw: String = ChallengePreferencesStore.defaultEnabledKindsRaw
     @AppStorage(ChallengePreferencesStorageKey.preset) private var presetRaw: String = ChallengePreferencesStore.defaultPresetRaw
+    @AppStorage(AppearanceStorageKey.useSystemTint) private var useSystemTint: Bool = true
+    @AppStorage(AppearanceStorageKey.tintColorHex) private var tintColorHex: String = "#007AFF"
 
     @Query private var sessions: [ReadingSession]
 
@@ -34,6 +36,25 @@ struct SessionsCard: View {
 
     private var challengePreferences: ChallengePreferences {
         ChallengePreferencesStore.preferences(enabledKindsRaw: enabledKindsRaw, presetRaw: presetRaw)
+    }
+
+    private var sessionActionHints: [ChallengeActionHint] {
+        let preferences = challengePreferences
+        let dashboard = ChallengeDashboardBuilder.make(
+            challenges: challengeSourceSnapshot.dashboardRecords,
+            progressByID: challengeProgressByID,
+            enabledKinds: preferences.enabledKinds
+        )
+
+        return ChallengeActionHintBuilder.makeSessionHints(
+            from: dashboard.sessionHintItems,
+            bookTitle: safeTitle(book),
+            remainingPages: remainingPagesForBook
+        )
+    }
+
+    private var liveActivityAccentHex: String? {
+        useSystemTint ? nil : tintColorHex
     }
 
     /// Remaining pages for the currently active reading attempt.
@@ -75,16 +96,7 @@ struct SessionsCard: View {
 
     var body: some View {
         let preferences = challengePreferences
-        let dashboard = ChallengeDashboardBuilder.make(
-            challenges: challengeSourceSnapshot.dashboardRecords,
-            progressByID: challengeProgressByID,
-            enabledKinds: preferences.enabledKinds
-        )
-        let actionHints = ChallengeActionHintBuilder.makeSessionHints(
-            from: dashboard.sessionHintItems,
-            bookTitle: safeTitle(book),
-            remainingPages: remainingPagesForBook
-        )
+        let actionHints = sessionActionHints
         let refreshID = ChallengeActionHintRefreshID(
             challengeSignature: challengeSourceSnapshot.signature,
             refreshSeed: challengeRefreshSeed,
@@ -177,12 +189,16 @@ struct SessionsCard: View {
         }
         .task(id: refreshID) {
             await refreshChallengeHints()
+            await MainActor.run {
+                refreshLiveActivitySnapshotIfNeeded()
+            }
         }
         .onAppear {
             challengeRefreshSeed &+= 1
         }
         .onReceive(NotificationCenter.default.publisher(for: .readingSessionsDidChange)) { _ in
             challengeRefreshSeed &+= 1
+            refreshLiveActivitySnapshotIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .challengeSessionImpactDidChange)) { notification in
             guard let impact = notification.object as? ChallengeSessionImpact else { return }
@@ -361,6 +377,7 @@ struct SessionsCard: View {
         showingRereadStartSheet = true
     }
 
+    @MainActor
     private func requestTimerStart() {
         guard needsRereadChoice else {
             startTimer()
@@ -406,12 +423,33 @@ struct SessionsCard: View {
         }
     }
 
+    @MainActor
     private func startTimer() {
         let title = safeTitle(book)
+        let liveActivitySnapshot = makeLiveActivitySnapshot(isPaused: false)
         lastError = timer.start(
             bookID: book.id,
             bookTitle: title,
-            coverThumbnailData: book.userCoverData
+            coverThumbnailData: book.userCoverData,
+            liveActivitySnapshot: liveActivitySnapshot
+        )
+    }
+
+    @MainActor
+    private func refreshLiveActivitySnapshotIfNeeded() {
+        guard timer.activeBookID == book.id else { return }
+        timer.updateLiveActivitySnapshot(makeLiveActivitySnapshot(isPaused: timer.isPaused))
+    }
+
+    @MainActor
+    private func makeLiveActivitySnapshot(isPaused: Bool) -> ReadingSessionLiveActivitySnapshot {
+        ReadingSessionLiveActivitySnapshotBuilder.make(
+            book: book,
+            allSessions: sessions,
+            challengeHints: sessionActionHints,
+            isPaused: isPaused,
+            hasCover: book.userCoverData != nil,
+            accentHex: liveActivityAccentHex
         )
     }
 

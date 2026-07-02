@@ -28,6 +28,27 @@ nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
     var accumulatedSeconds: Int
     var isPaused: Bool
     var pausedAt: Date?
+    var liveActivitySnapshot: ReadingSessionLiveActivitySnapshot?
+
+    init(
+        bookID: UUID,
+        bookTitle: String,
+        startedAt: Date,
+        lastResumedAt: Date,
+        accumulatedSeconds: Int,
+        isPaused: Bool,
+        pausedAt: Date?,
+        liveActivitySnapshot: ReadingSessionLiveActivitySnapshot? = nil
+    ) {
+        self.bookID = bookID
+        self.bookTitle = bookTitle
+        self.startedAt = startedAt
+        self.lastResumedAt = lastResumedAt
+        self.accumulatedSeconds = max(0, accumulatedSeconds)
+        self.isPaused = isPaused
+        self.pausedAt = pausedAt
+        self.liveActivitySnapshot = liveActivitySnapshot
+    }
 
     func totalElapsedSeconds(now: Date) -> Int {
         let base = max(0, accumulatedSeconds)
@@ -44,6 +65,7 @@ nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
         accumulatedSeconds = max(0, accumulatedSeconds + segment)
         isPaused = true
         pausedAt = now
+        liveActivitySnapshot?.stateLabel = ReadingSessionLiveActivitySnapshot.pausedStateLabel
     }
 
     mutating func resume(now: Date) {
@@ -51,6 +73,7 @@ nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
         isPaused = false
         pausedAt = nil
         lastResumedAt = now
+        liveActivitySnapshot?.stateLabel = ReadingSessionLiveActivitySnapshot.runningStateLabel
     }
 }
 

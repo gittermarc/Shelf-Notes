@@ -2,8 +2,8 @@
 //  ReadingSessionLiveActivityCoordinator.swift
 //  Shelf Notes
 //
-//  Phase 1 (display-only): mirrors the active ReadingTimerManager session into a Live Activity
-//  without changing any existing UI flows.
+//  Mirrors the active ReadingTimerManager session into a Live Activity without
+//  changing existing timer flows.
 //
 
 import Foundation
@@ -103,13 +103,7 @@ final class ReadingSessionLiveActivityCoordinator {
             return
         }
 
-        let elapsed = active.totalElapsedSeconds(now: now)
-        let effectiveStartDate = now.addingTimeInterval(-Double(elapsed))
-        let state = ReadingSessionActivityAttributes.ContentState(
-            isPaused: active.isPaused,
-            effectiveStartDate: effectiveStartDate,
-            pausedElapsedSeconds: elapsed
-        )
+        let state = ReadingSessionActivityAttributes.ContentState(active: active, now: now)
         let content = ActivityContent(state: state, staleDate: nil)
         let bookIDString = bookID.uuidString
 
@@ -126,16 +120,20 @@ final class ReadingSessionLiveActivityCoordinator {
     ) {
         let elapsed = elapsedSeconds(now: now, active: active)
         let effectiveStartDate = now.addingTimeInterval(-Double(elapsed))
-
-        let attributes = ReadingSessionActivityAttributes(
-            bookID: active.bookID.uuidString,
-            bookTitle: sanitizeTitle(active.bookTitle)
+        let snapshot = active.liveActivitySnapshot ?? ReadingSessionLiveActivitySnapshot.fallback(
+            bookID: active.bookID,
+            bookTitle: active.bookTitle,
+            isPaused: active.isPaused
         )
+
+        let attributes = ReadingSessionActivityAttributes(snapshot: snapshot)
 
         let state = ReadingSessionActivityAttributes.ContentState(
             isPaused: active.isPaused,
             effectiveStartDate: effectiveStartDate,
-            pausedElapsedSeconds: elapsed
+            pausedElapsedSeconds: elapsed,
+            snapshot: snapshot,
+            contentUpdatedAt: now
         )
 
         return (attributes, state)
@@ -148,17 +146,5 @@ final class ReadingSessionLiveActivityCoordinator {
         }
         let segment = max(0, Int(now.timeIntervalSince(active.lastResumedAt).rounded()))
         return max(0, base + segment)
-    }
-
-    private func sanitizeTitle(_ raw: String) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = trimmed.isEmpty ? "Buch" : trimmed
-
-        // Keep lock screen layout predictable.
-        let maxCount = 48
-        if title.count <= maxCount {
-            return title
-        }
-        return String(title.prefix(maxCount - 1)) + "…"
     }
 }

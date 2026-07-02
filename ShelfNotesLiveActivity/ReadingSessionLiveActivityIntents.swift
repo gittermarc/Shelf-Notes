@@ -60,13 +60,7 @@ struct ReadingSessionTogglePauseIntent: LiveActivityIntent {
     }
 
     private func updateLiveActivity(bookIDString: String, active: ReadingTimerActiveBlob, now: Date) async {
-        let elapsed = active.totalElapsedSeconds(now: now)
-        let effectiveStartDate = now.addingTimeInterval(-Double(elapsed))
-        let state = ReadingSessionActivityAttributes.ContentState(
-            isPaused: active.isPaused,
-            effectiveStartDate: effectiveStartDate,
-            pausedElapsedSeconds: elapsed
-        )
+        let state = ReadingSessionActivityAttributes.ContentState(active: active, now: now)
         let content = ActivityContent(state: state, staleDate: nil)
 
         for activity in Activity<ReadingSessionActivityAttributes>.activities {
@@ -95,11 +89,23 @@ struct ReadingSessionStopIntent: LiveActivityIntent {
     func perform() async throws -> some IntentResult {
         let now = Date()
         guard let uuid = UUID(uuidString: bookID) else {
-            await endLiveActivity(bookIDString: bookID, now: now)
+            let state = ReadingSessionActivityAttributes.ContentState(
+                isPaused: true,
+                effectiveStartDate: now,
+                pausedElapsedSeconds: 0,
+                contentUpdatedAt: now
+            )
+            await endLiveActivity(bookIDString: bookID, state: state)
             return .result()
         }
 
         let shared = LiveActivitySharedStore.userDefaults
+        var endingState = ReadingSessionActivityAttributes.ContentState(
+            isPaused: true,
+            effectiveStartDate: now,
+            pausedElapsedSeconds: 0,
+            contentUpdatedAt: now
+        )
 
         if let data = shared.data(forKey: ReadingTimerSharedKeys.activeBlob),
            let active = try? JSONDecoder().decode(ReadingTimerActiveBlob.self, from: data),
@@ -113,6 +119,13 @@ struct ReadingSessionStopIntent: LiveActivityIntent {
             }
 
             let duration = active.totalElapsedSeconds(now: end)
+            endingState = ReadingSessionActivityAttributes.ContentState(
+                isPaused: true,
+                effectiveStartDate: end.addingTimeInterval(-Double(duration)),
+                pausedElapsedSeconds: duration,
+                snapshot: active.liveActivitySnapshot,
+                contentUpdatedAt: now
+            )
             let pending = ReadingTimerPendingCompletionBlob(
                 id: UUID(),
                 bookID: active.bookID,
@@ -131,16 +144,14 @@ struct ReadingSessionStopIntent: LiveActivityIntent {
             shared.removeObject(forKey: ReadingTimerSharedKeys.activeBlob)
         }
 
-        await endLiveActivity(bookIDString: bookID, now: now)
+        await endLiveActivity(bookIDString: bookID, state: endingState)
         return .result()
     }
 
-    private func endLiveActivity(bookIDString: String, now: Date) async {
-        let state = ReadingSessionActivityAttributes.ContentState(
-            isPaused: true,
-            effectiveStartDate: now,
-            pausedElapsedSeconds: 0
-        )
+    private func endLiveActivity(
+        bookIDString: String,
+        state: ReadingSessionActivityAttributes.ContentState
+    ) async {
         let content = ActivityContent(state: state, staleDate: nil)
 
         for activity in Activity<ReadingSessionActivityAttributes>.activities {

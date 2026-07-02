@@ -28,6 +28,10 @@ extension ReadingTimerManager {
         /// Timestamp when the user paused (for display). Optional.
         var pausedAt: Date?
 
+        /// Display payload for the Reading Live Activity. Kept as a value snapshot so
+        /// the widget extension never needs app-domain or SwiftData objects.
+        var liveActivitySnapshot: ReadingSessionLiveActivitySnapshot?
+
         init(
             bookID: UUID,
             bookTitle: String,
@@ -35,7 +39,8 @@ extension ReadingTimerManager {
             lastResumedAt: Date,
             accumulatedSeconds: Int,
             isPaused: Bool,
-            pausedAt: Date?
+            pausedAt: Date?,
+            liveActivitySnapshot: ReadingSessionLiveActivitySnapshot? = nil
         ) {
             self.bookID = bookID
             self.bookTitle = bookTitle
@@ -44,11 +49,12 @@ extension ReadingTimerManager {
             self.accumulatedSeconds = accumulatedSeconds
             self.isPaused = isPaused
             self.pausedAt = pausedAt
+            self.liveActivitySnapshot = liveActivitySnapshot
         }
 
         // Backward compatibility with earlier stored blobs (v1).
         enum CodingKeys: String, CodingKey {
-            case bookID, bookTitle, startedAt, lastResumedAt, accumulatedSeconds, isPaused, pausedAt
+            case bookID, bookTitle, startedAt, lastResumedAt, accumulatedSeconds, isPaused, pausedAt, liveActivitySnapshot
         }
 
         init(from decoder: Decoder) throws {
@@ -65,6 +71,7 @@ extension ReadingTimerManager {
             self.accumulatedSeconds = (try? c.decode(Int.self, forKey: .accumulatedSeconds)) ?? 0
             self.isPaused = (try? c.decode(Bool.self, forKey: .isPaused)) ?? false
             self.pausedAt = try? c.decode(Date.self, forKey: .pausedAt)
+            self.liveActivitySnapshot = try? c.decode(ReadingSessionLiveActivitySnapshot.self, forKey: .liveActivitySnapshot)
 
             // Sanity: if paused but pausedAt missing, set it.
             if isPaused && pausedAt == nil {

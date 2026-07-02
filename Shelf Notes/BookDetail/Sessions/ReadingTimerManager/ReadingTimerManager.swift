@@ -70,7 +70,8 @@ final class ReadingTimerManager: ObservableObject {
         bookID: UUID,
         bookTitle: String,
         startedAt: Date = Date(),
-        coverThumbnailData: Data? = nil
+        coverThumbnailData: Data? = nil,
+        liveActivitySnapshot: ReadingSessionLiveActivitySnapshot? = nil
     ) -> String? {
         // Ensure UI updates immediately (BookDetail timer label + Root sheet triggers later).
         objectWillChange.send()
@@ -98,7 +99,8 @@ final class ReadingTimerManager: ObservableObject {
             lastResumedAt: startedAt,
             accumulatedSeconds: 0,
             isPaused: false,
-            pausedAt: nil
+            pausedAt: nil,
+            liveActivitySnapshot: liveActivitySnapshot
         )
 
         backgroundEnteredAt = nil
@@ -136,6 +138,7 @@ final class ReadingTimerManager: ObservableObject {
         a.accumulatedSeconds = max(0, a.accumulatedSeconds + segment)
         a.isPaused = true
         a.pausedAt = now
+        a.liveActivitySnapshot?.stateLabel = ReadingSessionLiveActivitySnapshot.pausedStateLabel
         active = a
 
         backgroundEnteredAt = nil
@@ -153,6 +156,7 @@ final class ReadingTimerManager: ObservableObject {
         a.isPaused = false
         a.pausedAt = nil
         a.lastResumedAt = resumedAt
+        a.liveActivitySnapshot?.stateLabel = ReadingSessionLiveActivitySnapshot.runningStateLabel
         active = a
 
         backgroundEnteredAt = nil
