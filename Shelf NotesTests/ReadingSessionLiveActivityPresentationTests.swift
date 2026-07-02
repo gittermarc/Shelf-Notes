@@ -141,6 +141,61 @@ struct ReadingSessionLiveActivityPresentationTests {
         #expect(presentation.progressAccessibilityLabel == "Fortschritt: 18 Seiten gelesen")
     }
 
+    @Test func coverAccessibilityUsesPlaceholderWhenStoredCoverIsMissing() {
+        let (attributes, state) = makePayload()
+
+        let presentation = ReadingSessionLiveActivityPresentation(attributes: attributes, state: state)
+
+        #expect(!presentation.hasStoredCover)
+        #expect(presentation.coverAccessibilityLabel == "Cover-Platzhalter für Testbuch")
+    }
+
+    @Test func coverAccessibilityUsesCoverLabelWhenStoredCoverIsAvailable() {
+        let snapshot = ReadingSessionLiveActivitySnapshot(
+            bookID: UUID(),
+            bookTitle: "Cover Book",
+            hasCover: true
+        )
+        let attributes = ReadingSessionActivityAttributes(snapshot: snapshot)
+        let state = ReadingSessionActivityAttributes.ContentState(
+            isPaused: false,
+            effectiveStartDate: Date(timeIntervalSince1970: 3_200),
+            pausedElapsedSeconds: 0,
+            snapshot: snapshot
+        )
+
+        let presentation = ReadingSessionLiveActivityPresentation(attributes: attributes, state: state)
+
+        #expect(presentation.hasStoredCover)
+        #expect(presentation.coverAccessibilityLabel == "Cover von Cover Book")
+    }
+
+    @Test func presentationClampsInvalidProgressValuesForDefensiveRendering() {
+        let snapshot = ReadingSessionLiveActivitySnapshot(
+            bookID: UUID(),
+            bookTitle: "Invalid Progress",
+            pageCount: -20,
+            pagesRead: -4,
+            remainingPages: -12,
+            progressFraction: 1.4,
+            challengeProgressFraction: .nan,
+            hasCover: false
+        )
+        let attributes = ReadingSessionActivityAttributes(snapshot: snapshot)
+        let state = ReadingSessionActivityAttributes.ContentState(
+            isPaused: false,
+            effectiveStartDate: Date(timeIntervalSince1970: 3_400),
+            pausedElapsedSeconds: 0,
+            snapshot: snapshot
+        )
+
+        let presentation = ReadingSessionLiveActivityPresentation(attributes: attributes, state: state)
+
+        #expect(presentation.progressFraction == 1.0)
+        #expect(presentation.progressText == "100 % gelesen")
+        #expect(presentation.challengeProgressFraction == nil)
+    }
+
     private func makePayload(
         title: String = "Testbuch",
         author: String? = "Autorin",

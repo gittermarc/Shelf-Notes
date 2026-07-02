@@ -33,8 +33,8 @@ struct ReadingSessionDynamicIslandCenterView: View {
         let presentation = presentation
 
         VStack(alignment: .leading, spacing: 2) {
-            Text(presentation.title)
-                .font(.subheadline.weight(.semibold))
+            Text(presentation.compactTitle)
+                .font(.caption.weight(.semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
 
@@ -74,16 +74,16 @@ struct ReadingSessionDynamicIslandTrailingView: View {
 
             if context.state.isPaused {
                 Text(ReadingSessionDurationFormatter.format(context.state.pausedElapsedSeconds))
-                    .font(.headline.weight(.bold))
+                    .font(.subheadline.weight(.bold))
                     .monospacedDigit()
                     .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+                    .minimumScaleFactor(0.68)
             } else {
                 Text(context.state.effectiveStartDate, style: .timer)
-                    .font(.headline.weight(.bold))
+                    .font(.subheadline.weight(.bold))
                     .monospacedDigit()
                     .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+                    .minimumScaleFactor(0.68)
             }
         }
         .accessibilityLabel(presentation.timerAccessibilityLabel)
@@ -99,13 +99,13 @@ struct ReadingSessionDynamicIslandBottomView: View {
     var body: some View {
         let presentation = presentation
 
-        VStack(spacing: 7) {
+        VStack(spacing: 5) {
             ReadingSessionActivityProgressView(presentation: presentation, mode: .dynamicIsland)
 
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 ReadingSessionActivityChallengeChip(presentation: presentation, compact: true)
 
-                Spacer(minLength: 4)
+                Spacer(minLength: 2)
 
                 ReadingSessionActivityControlsView(
                     context: context,

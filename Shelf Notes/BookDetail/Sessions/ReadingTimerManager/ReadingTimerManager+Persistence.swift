@@ -42,7 +42,7 @@ extension ReadingTimerManager {
         migrateLegacyActiveBlobIfNeeded()
 
         guard let data = LiveActivitySharedStore.userDefaults.data(forKey: ReadingTimerSharedKeys.activeBlob) else { return }
-        guard let decoded = ReadingTimerSharedCodec.decodeActive(from: data), decoded.hasSupportedSchemaVersion else {
+        guard let decoded = ReadingTimerSharedCodec.decodeSupportedActive(from: data) else {
             clearPersistedActive()
             liveActivityCoordinator.endCurrentActivity()
             return
@@ -91,7 +91,7 @@ extension ReadingTimerManager {
 
     func loadPendingCompletionFromDisk() {
         guard let data = LiveActivitySharedStore.userDefaults.data(forKey: ReadingTimerSharedKeys.pendingCompletionBlob) else { return }
-        guard let decoded = ReadingTimerSharedCodec.decodePendingCompletion(from: data), decoded.hasSupportedSchemaVersion else {
+        guard let decoded = ReadingTimerSharedCodec.decodeSupportedPendingCompletion(from: data) else {
             clearPersistedPendingCompletion()
             return
         }
@@ -119,7 +119,7 @@ extension ReadingTimerManager {
 
         let shared = LiveActivitySharedStore.userDefaults
         if let data = shared.data(forKey: ReadingTimerSharedKeys.activeBlob) {
-            if let decoded = ReadingTimerSharedCodec.decodeActive(from: data), decoded.hasSupportedSchemaVersion {
+            if let decoded = ReadingTimerSharedCodec.decodeSupportedActive(from: data) {
                 let mapped = ActiveState(
                     bookID: decoded.bookID,
                     bookTitle: decoded.bookTitle,

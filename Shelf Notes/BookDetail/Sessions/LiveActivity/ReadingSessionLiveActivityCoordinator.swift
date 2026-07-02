@@ -119,8 +119,7 @@ final class ReadingSessionLiveActivityCoordinator {
     @available(iOS 16.2, *)
     nonisolated static func refreshExistingActivityFromSharedState(bookID: UUID, now: Date = Date()) async {
         let shared = LiveActivitySharedStore.userDefaults
-        guard let active = ReadingTimerSharedCodec.decodeActive(from: shared.data(forKey: ReadingTimerSharedKeys.activeBlob)),
-              active.hasSupportedSchemaVersion,
+        guard let active = ReadingTimerSharedCodec.decodeSupportedActive(from: shared.data(forKey: ReadingTimerSharedKeys.activeBlob)),
               active.bookID == bookID else {
             return
         }

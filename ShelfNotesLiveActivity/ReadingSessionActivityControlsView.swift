@@ -15,7 +15,7 @@ enum ReadingSessionActivityControlsMode: Equatable {
     var controlSize: ControlSize {
         switch self {
         case .lockScreen:
-            return .small
+            return .mini
         case .dynamicIsland:
             return .mini
         }
@@ -27,6 +27,15 @@ enum ReadingSessionActivityControlsMode: Equatable {
             return true
         case .dynamicIsland:
             return false
+        }
+    }
+
+    var spacing: CGFloat {
+        switch self {
+        case .lockScreen:
+            return 6
+        case .dynamicIsland:
+            return 7
         }
     }
 }
@@ -41,7 +50,7 @@ struct ReadingSessionActivityControlsView: View {
     }
 
     var body: some View {
-        HStack(spacing: mode == .lockScreen ? 10 : 8) {
+        HStack(spacing: mode.spacing) {
             Button(intent: ReadingSessionTogglePauseIntent(bookID: context.attributes.bookID)) {
                 controlLabel(
                     title: presentation.toggleTitle,
@@ -61,13 +70,16 @@ struct ReadingSessionActivityControlsView: View {
             .accessibilityLabel(presentation.stopAccessibilityLabel)
         }
         .controlSize(mode.controlSize)
+        .labelStyle(.titleAndIcon)
     }
 
     @ViewBuilder
     private func controlLabel(title: String, systemImage: String) -> some View {
         if mode.showsText {
             Label(title, systemImage: systemImage)
-                .font(.caption.weight(.semibold))
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
         } else {
             Image(systemName: systemImage)
                 .font(.caption.weight(.bold))

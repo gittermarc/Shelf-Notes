@@ -218,6 +218,50 @@ struct ReadingSessionLiveActivityLifecycleTests {
         #expect(removable == [LiveActivitySharedStore.coverFileName(bookIDString: removedID)])
     }
 
+    @Test func supportedSharedCodecsRejectFutureSchemas() throws {
+        let active = ReadingTimerActiveBlob(
+            schemaVersion: ReadingTimerActiveBlob.currentSchemaVersion + 1,
+            bookID: UUID(),
+            bookTitle: "Future Active",
+            startedAt: Date(timeIntervalSince1970: 90_000),
+            lastResumedAt: Date(timeIntervalSince1970: 90_000),
+            accumulatedSeconds: 0,
+            isPaused: false,
+            pausedAt: nil
+        )
+        let pending = ReadingTimerPendingCompletionBlob(
+            schemaVersion: ReadingTimerPendingCompletionBlob.currentSchemaVersion + 1,
+            id: UUID(),
+            bookID: UUID(),
+            bookTitle: "Future Pending",
+            startedAt: Date(timeIntervalSince1970: 90_500),
+            endedAt: Date(timeIntervalSince1970: 90_900),
+            durationSeconds: 400,
+            wasAutoStopped: false,
+            autoStopMinutes: nil
+        )
+
+        let activeData = try #require(ReadingTimerSharedCodec.encodeActive(active))
+        let pendingData = try #require(ReadingTimerSharedCodec.encodePendingCompletion(pending))
+
+        #expect(ReadingTimerSharedCodec.decodeActive(from: activeData) != nil)
+        #expect(ReadingTimerSharedCodec.decodePendingCompletion(from: pendingData) != nil)
+        #expect(ReadingTimerSharedCodec.decodeSupportedActive(from: activeData) == nil)
+        #expect(ReadingTimerSharedCodec.decodeSupportedPendingCompletion(from: pendingData) == nil)
+    }
+
+    @Test func staleDateUsesMinimumWindowForVeryShortAutoStopValues() {
+        let now = Date(timeIntervalSince1970: 95_000)
+
+        let stale = ReadingSessionLiveActivityLifecyclePolicy.staleDate(
+            now: now,
+            isPaused: false,
+            autoStopMinutes: 1
+        )
+
+        #expect(stale == now.addingTimeInterval(TimeInterval(15 * 60)))
+    }
+
     private struct LegacyActiveBlob: Encodable {
         let bookID: UUID
         let bookTitle: String

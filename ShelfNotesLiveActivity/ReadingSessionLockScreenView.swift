@@ -18,42 +18,45 @@ struct ReadingSessionLockScreenView: View {
         let presentation = presentation
 
         ZStack {
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(ReadingSessionActivityTheme.cardBackground(accentHex: presentation.accentHex))
                 .overlay(alignment: .topTrailing) {
                     Circle()
-                        .fill(ReadingSessionActivityTheme.accentColor(from: presentation.accentHex).opacity(0.18))
-                        .frame(width: 118, height: 118)
-                        .blur(radius: 18)
-                        .offset(x: 34, y: -38)
+                        .fill(ReadingSessionActivityTheme.accentColor(from: presentation.accentHex).opacity(0.16))
+                        .frame(width: 96, height: 96)
+                        .blur(radius: 16)
+                        .offset(x: 26, y: -32)
                 }
                 .overlay {
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
                         .stroke(.white.opacity(0.12), lineWidth: 1)
                 }
 
-            HStack(alignment: .top, spacing: 14) {
+            HStack(alignment: .top, spacing: 10) {
                 ReadingSessionActivityCoverView(
                     bookID: context.attributes.bookID,
                     presentation: presentation,
                     size: .lockScreen
                 )
+                .layoutPriority(1)
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
                     ReadingSessionStatusHeader(presentation: presentation)
 
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(presentation.title)
-                            .font(.headline.weight(.semibold))
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.white)
                             .lineLimit(2)
-                            .minimumScaleFactor(0.82)
+                            .minimumScaleFactor(0.78)
+                            .fixedSize(horizontal: false, vertical: true)
 
                         if let author = presentation.authorText {
                             Text(author)
-                                .font(.caption)
-                                .foregroundStyle(.white.opacity(0.72))
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.70))
                                 .lineLimit(1)
+                                .minimumScaleFactor(0.80)
                         }
                     }
 
@@ -62,26 +65,26 @@ struct ReadingSessionLockScreenView: View {
                     ReadingSessionActivityProgressView(presentation: presentation, mode: .lockScreen)
                         .tint(.white)
 
-                    if presentation.hasChallenge {
-                        HStack(alignment: .center, spacing: 8) {
-                            ReadingSessionActivityChallengeChip(presentation: presentation, compact: false)
-
-                            Spacer(minLength: 6)
+                    HStack(alignment: .center, spacing: 6) {
+                        if presentation.hasChallenge {
+                            ReadingSessionActivityChallengeChip(presentation: presentation, compact: true)
+                                .layoutPriority(1)
                         }
-                    }
 
-                    ReadingSessionActivityControlsView(
-                        context: context,
-                        presentation: presentation,
-                        mode: .lockScreen
-                    )
+                        Spacer(minLength: 2)
+
+                        ReadingSessionActivityControlsView(
+                            context: context,
+                            presentation: presentation,
+                            mode: .lockScreen
+                        )
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(14)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 4)
         .accessibilityElement(children: .contain)
     }
 }
@@ -94,31 +97,35 @@ private struct ReadingSessionStatusHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 7) {
-            HStack(spacing: 5) {
+        HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 Circle()
                     .fill(accent)
-                    .frame(width: 7, height: 7)
+                    .frame(width: 6, height: 6)
 
                 Text(presentation.statusText)
-                    .font(.caption2.weight(.bold))
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
                     .textCase(.uppercase)
-                    .tracking(0.4)
+                    .tracking(0.25)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
             .background(.white.opacity(0.12), in: Capsule())
             .foregroundStyle(.white)
             .accessibilityLabel("Status: \(presentation.statusText)")
 
             if let attempt = presentation.attemptText {
                 Text(attempt)
-                    .font(.caption2.weight(.semibold))
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
                     .lineLimit(1)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
+                    .minimumScaleFactor(0.78)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
                     .background(accent.opacity(0.18), in: Capsule())
                     .foregroundStyle(accent)
+                    .accessibilityLabel("Lesedurchgang: \(attempt)")
             }
         }
     }
@@ -129,24 +136,29 @@ private struct ReadingSessionTimerBlock: View {
     let presentation: ReadingSessionLiveActivityPresentation
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: 0) {
             Text(presentation.timerCaption)
-                .font(.caption2.weight(.semibold))
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.62))
                 .textCase(.uppercase)
-                .tracking(0.5)
+                .tracking(0.45)
+                .lineLimit(1)
 
             if context.state.isPaused {
                 Text(ReadingSessionDurationFormatter.format(context.state.pausedElapsedSeconds))
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .font(.system(size: 27, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
                     .accessibilityLabel(presentation.timerAccessibilityLabel)
             } else {
                 Text(context.state.effectiveStartDate, style: .timer)
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .font(.system(size: 27, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
                     .accessibilityLabel(presentation.timerAccessibilityLabel)
             }
         }

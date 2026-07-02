@@ -27,6 +27,16 @@ nonisolated enum ReadingTimerSharedCodec {
         return try? JSONDecoder().decode(ReadingTimerPendingCompletionBlob.self, from: data)
     }
 
+    static func decodeSupportedActive(from data: Data?) -> ReadingTimerActiveBlob? {
+        guard let blob = decodeActive(from: data), blob.hasSupportedSchemaVersion else { return nil }
+        return blob
+    }
+
+    static func decodeSupportedPendingCompletion(from data: Data?) -> ReadingTimerPendingCompletionBlob? {
+        guard let blob = decodePendingCompletion(from: data), blob.hasSupportedSchemaVersion else { return nil }
+        return blob
+    }
+
     static func encodeActive(_ blob: ReadingTimerActiveBlob) -> Data? {
         try? JSONEncoder().encode(blob)
     }

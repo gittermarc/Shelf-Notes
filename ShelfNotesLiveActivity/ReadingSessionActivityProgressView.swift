@@ -28,11 +28,11 @@ struct ReadingSessionActivityProgressView: View {
 
     var body: some View {
         if presentation.hasProgress {
-            VStack(alignment: .leading, spacing: mode == .lockScreen ? 6 : 4) {
+            VStack(alignment: .leading, spacing: mode == .lockScreen ? 4 : 3) {
                 HStack(spacing: 8) {
                     if let progressText = presentation.progressText {
                         Text(progressText)
-                            .font(mode == .lockScreen ? .caption.weight(.semibold) : .caption2.weight(.semibold))
+                            .font(mode == .lockScreen ? .caption2.weight(.semibold) : .caption2.weight(.semibold))
                             .foregroundStyle(primaryText)
                             .lineLimit(1)
                     }
@@ -41,7 +41,7 @@ struct ReadingSessionActivityProgressView: View {
 
                     if let detail = presentation.remainingPagesText ?? presentation.progressDetailText {
                         Text(detail)
-                            .font(.caption2)
+                            .font(.system(size: 10, weight: .regular, design: .rounded))
                             .foregroundStyle(secondaryText)
                             .lineLimit(1)
                     }
@@ -51,7 +51,7 @@ struct ReadingSessionActivityProgressView: View {
                     ProgressView(value: fraction)
                         .progressViewStyle(.linear)
                         .tint(accent)
-                        .scaleEffect(x: 1, y: mode == .lockScreen ? 1.1 : 0.8, anchor: .center)
+                        .frame(height: mode == .lockScreen ? 4 : 3)
                         .clipShape(Capsule())
                 }
             }
@@ -82,7 +82,7 @@ struct ReadingSessionActivityChallengeChip: View {
                 VStack(alignment: .leading, spacing: compact ? 0 : 1) {
                     if let title = presentation.challengeTitle {
                         Text(title)
-                            .font(compact ? .caption2.weight(.semibold) : .caption.weight(.semibold))
+                            .font(compact ? .caption2.weight(.semibold) : .caption2.weight(.semibold))
                             .lineLimit(1)
                     }
 
@@ -94,8 +94,8 @@ struct ReadingSessionActivityChallengeChip: View {
                     }
                 }
             }
-            .padding(.horizontal, compact ? 8 : 10)
-            .padding(.vertical, compact ? 4 : 6)
+            .padding(.horizontal, compact ? 7 : 9)
+            .padding(.vertical, compact ? 3 : 5)
             .background(accent.opacity(0.16), in: Capsule())
             .foregroundStyle(accent)
             .accessibilityElement(children: .ignore)

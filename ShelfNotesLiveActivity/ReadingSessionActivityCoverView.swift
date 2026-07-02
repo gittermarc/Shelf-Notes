@@ -13,9 +13,9 @@ enum ReadingSessionActivityCoverSize: Equatable {
     var dimensions: CGSize {
         switch self {
         case .lockScreen:
-            return CGSize(width: 70, height: 104)
+            return CGSize(width: 58, height: 86)
         case .dynamicIsland:
-            return CGSize(width: 38, height: 56)
+            return CGSize(width: 34, height: 50)
         case .compact:
             return CGSize(width: 24, height: 24)
         }
@@ -24,9 +24,9 @@ enum ReadingSessionActivityCoverSize: Equatable {
     var cornerRadius: CGFloat {
         switch self {
         case .lockScreen:
-            return 16
+            return 13
         case .dynamicIsland:
-            return 10
+            return 9
         case .compact:
             return 8
         }
@@ -63,14 +63,14 @@ struct ReadingSessionActivityCoverView: View {
                     .resizable()
                     .scaledToFill()
             } else {
-                VStack(spacing: size == .lockScreen ? 5 : 0) {
+                VStack(spacing: size == .lockScreen ? 4 : 0) {
                     Image(systemName: "book.closed.fill")
                         .font(size.iconFont)
                         .foregroundStyle(.white.opacity(0.92))
 
                     if size == .lockScreen {
                         Text("Shelf")
-                            .font(.caption2.weight(.semibold))
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
                             .foregroundStyle(.white.opacity(0.70))
                     }
                 }
@@ -82,7 +82,7 @@ struct ReadingSessionActivityCoverView: View {
             RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous)
                 .stroke(.white.opacity(0.16), lineWidth: 1)
         }
-        .shadow(color: .black.opacity(size == .lockScreen ? 0.24 : 0.10), radius: size == .lockScreen ? 8 : 2, x: 0, y: size == .lockScreen ? 5 : 1)
+        .shadow(color: .black.opacity(size == .lockScreen ? 0.18 : 0.10), radius: size == .lockScreen ? 5 : 2, x: 0, y: size == .lockScreen ? 3 : 1)
         .accessibilityLabel(presentation.coverAccessibilityLabel)
     }
 }

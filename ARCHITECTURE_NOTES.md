@@ -940,16 +940,18 @@ Empfehlung:
 
 - Live Activity Support ist per `NSSupportsLiveActivities = true` aktiviert.
 - Shared-Typen liegen unter `Shelf Notes/Shared/LiveActivity`.
-- Extension nutzt App Group.
+- Extension nutzt App Group für Timer-State, Pending Completion und kleine Cover-Thumbnails.
+- App-seitig baut `ReadingSessionLiveActivitySnapshotBuilder` die Darstellungsdaten. Die Extension rendert nur Shared-/Presentation-Werte und importiert keine SwiftData-App-Domain.
+- `ReadingSessionLiveActivityCoordinator` hält eine aktive Reading Live Activity, setzt `staleDate`, prüft Activity Authorization und räumt verwaiste Cover auf.
 
 Risiken:
 
-- Welche Daten konkret zwischen App und Extension geteilt werden, wurde nicht vollständig bewertet: **UNKNOWN**.
 - Live Activity und Reading Timer müssen bei App-Lifecycle-Events konsistent bleiben.
+- App-Group-State muss defensiv decodiert werden, damit alte oder korrupte Daten keine Intent-Fehler auslösen.
 
 Empfehlung:
 
-- Timer-Ende, App-Kill und Geräte-Neustart als Edge Cases testen.
+- Timer-Ende, App-Kill, Geräte-Neustart, fehlende Cover-Datei und mehrfaches Stop/Pause aus der Live Activity als Edge Cases testen.
 
 ### StoreKit / Pro
 

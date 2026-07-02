@@ -86,6 +86,8 @@ Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlic
 
 - Shared Live-Activity-Modelle: `Shelf Notes/Shared/LiveActivity/*`.
 - App Extension: `ShelfNotesLiveActivity/*`.
+- Reading Timer, Snapshot Builder, ActivityKit Coordinator, App-Group-State und Extension-UI sind bewusst getrennt.
+- Live Activity zeigt Timer, Cover/Fallback, Status, Fortschritt, Challenge-Hinweise und Pause/Stop-Controls.
 - App-Group-Entitlement ist in App und Extension vorhanden.
 
 ## Folder Map

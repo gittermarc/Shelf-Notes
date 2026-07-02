@@ -113,7 +113,7 @@ nonisolated struct ReadingSessionActivityAttributes: ActivityAttributes {
     }
 }
 
-extension ReadingSessionActivityAttributes.ContentState {
+nonisolated extension ReadingSessionActivityAttributes.ContentState {
     init(active: ReadingTimerActiveBlob, now: Date) {
         let elapsed = active.totalElapsedSeconds(now: now)
         let effectiveStartDate = now.addingTimeInterval(-Double(elapsed))

@@ -21,6 +21,7 @@ nonisolated struct ReadingSessionLiveActivityPresentation: Hashable, Sendable {
     let challengeTitle: String?
     let challengeDetail: String?
     let challengeProgressFraction: Double?
+    let hasStoredCover: Bool
     let compactStatusText: String
     let compactProgressText: String?
     let minimalSystemImage: String
@@ -57,6 +58,7 @@ nonisolated struct ReadingSessionLiveActivityPresentation: Hashable, Sendable {
         let challengeTitle = Self.normalizedOptionalText(state.challengeTitle, maxLength: 64)
         let challengeDetail = Self.normalizedOptionalText(state.challengeDetail, maxLength: 96)
         let challengeProgress = Self.normalizedFraction(state.challengeProgressFraction)
+        let hasStoredCover = state.hasCover ?? attributes.hasCover ?? false
 
         self.title = normalizedTitle
         self.compactTitle = Self.limited(normalizedTitle, maxLength: 28)
@@ -75,6 +77,7 @@ nonisolated struct ReadingSessionLiveActivityPresentation: Hashable, Sendable {
         self.challengeTitle = challengeTitle
         self.challengeDetail = challengeDetail
         self.challengeProgressFraction = challengeProgress
+        self.hasStoredCover = hasStoredCover
         self.compactStatusText = state.isPaused ? "Pause" : "Live"
         self.compactProgressText = Self.makeCompactProgressText(progress)
         self.minimalSystemImage = state.isPaused ? "pause.fill" : "book.closed.fill"
@@ -82,7 +85,7 @@ nonisolated struct ReadingSessionLiveActivityPresentation: Hashable, Sendable {
         self.toggleSystemImage = state.isPaused ? "play.fill" : "pause.fill"
         self.toggleAccessibilityLabel = state.isPaused ? "Lesesession fortsetzen" : "Lesesession pausieren"
         self.stopAccessibilityLabel = "Lesesession beenden"
-        self.coverAccessibilityLabel = "Cover von \(normalizedTitle)"
+        self.coverAccessibilityLabel = hasStoredCover ? "Cover von \(normalizedTitle)" : "Cover-Platzhalter für \(normalizedTitle)"
         self.progressAccessibilityLabel = Self.makeProgressAccessibilityLabel(
             progressText: Self.makeProgressText(progress),
             detailText: Self.makeProgressDetailText(pagesRead: pagesRead, pageCount: pageCount, remainingPages: remainingPages)

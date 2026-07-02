@@ -246,6 +246,27 @@ struct ReadingSessionLiveActivitySnapshotBuilderTests {
         #expect(state.stateLabel == ReadingSessionLiveActivitySnapshot.pausedStateLabel)
     }
 
+    @Test @MainActor func snapshotFallbacksKeepSparseBookRenderable() {
+        let book = Book(title: "   ", author: "", status: .reading)
+        book.pageCount = -10
+
+        let snapshot = ReadingSessionLiveActivitySnapshotBuilder.make(
+            book: book,
+            allSessions: [],
+            isPaused: false,
+            hasCover: false,
+            accentHex: "not-a-color"
+        )
+
+        #expect(snapshot.bookTitle == ReadingSessionLiveActivitySnapshot.defaultTitle)
+        #expect(snapshot.bookAuthor == nil)
+        #expect(snapshot.pageCount == nil)
+        #expect(snapshot.pagesRead == nil)
+        #expect(snapshot.remainingPages == nil)
+        #expect(snapshot.progressFraction == nil)
+        #expect(snapshot.accentHex == nil)
+    }
+
     private func makeHint(
         title: String,
         detail: String,
