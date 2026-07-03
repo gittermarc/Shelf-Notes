@@ -64,6 +64,8 @@ struct LibraryBookRouletteCard: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityLabel("Buchroulette starten")
+                .accessibilityHint("Wählt zufällig ein Buch aus deinem Stapel aus")
             }
         }
         .padding(12)
@@ -132,11 +134,28 @@ struct LibraryBookRouletteCard: View {
                     Label("Nochmal ziehen", systemImage: "arrow.triangle.2.circlepath")
                 }
                 .buttonStyle(.bordered)
+                .accessibilityHint("Wählt ein anderes Buch aus dem Stapel")
             }
             .font(.caption.weight(.semibold))
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Gezogenes Buch: \(candidate.title)")
+        .accessibilityLabel(selectedCandidateAccessibilityLabel(candidate: candidate))
+    }
+
+    private func selectedCandidateAccessibilityLabel(
+        candidate: LibraryView.LibraryBookRoulette.Candidate
+    ) -> String {
+        var parts = ["Gezogenes Buch", candidate.title]
+
+        if candidate.author.isEmpty == false {
+            parts.append(candidate.author)
+        }
+
+        if candidate.tags.isEmpty == false {
+            parts.append("Tags: \(candidate.tags.joined(separator: ", "))")
+        }
+
+        return parts.joined(separator: ", ")
     }
 
     private func tagLine(_ tags: [String]) -> some View {

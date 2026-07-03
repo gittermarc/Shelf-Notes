@@ -84,7 +84,7 @@ struct LibraryShelfLaneView: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(lane.title): \(title(for: book))")
+        .accessibilityLabel(accessibilityLabel(for: book))
         .accessibilityHint("Öffnet das Buch")
     }
 
@@ -99,5 +99,21 @@ struct LibraryShelfLaneView: View {
     private func title(for book: Book) -> String {
         let trimmed = book.title.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Ohne Titel" : trimmed
+    }
+
+    private func accessibilityLabel(for book: Book) -> String {
+        var parts = [lane.title, title(for: book)]
+        let author = book.author.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if author.isEmpty == false {
+            parts.append(author)
+        }
+
+        if let summary = lane.presentationsByBookID[book.id]?.accessibilitySummary,
+           summary.isEmpty == false {
+            parts.append(summary)
+        }
+
+        return parts.joined(separator: ", ")
     }
 }

@@ -85,13 +85,11 @@ extension LibraryView {
             Image(systemName: books.isEmpty ? "books.vertical" : "magnifyingglass")
                 .font(.system(size: 46))
 
-            Text(books.isEmpty ? "Noch nichts im Regal" : "Keine Treffer")
+            Text(emptyStateTitle)
                 .font(.title2)
                 .bold()
 
-            Text(books.isEmpty
-                 ? "Füge dein erstes Buch hinzu — oder importiere es direkt über Google Books."
-                 : "Entweder deine Filter sind zu gut — oder du brauchst einen neuen Suchbegriff. 😄")
+            Text(emptyStateMessage)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)

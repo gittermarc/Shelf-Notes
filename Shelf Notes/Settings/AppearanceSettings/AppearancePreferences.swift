@@ -129,9 +129,9 @@ enum LibraryHomeModeOption: String, CaseIterable, Identifiable {
         case .hidden:
             return "Keine Startkarten in der Bibliothek."
         case .compact:
-            return "Weiterlesen und kurze Regalzahlen."
+            return "Weiterlesen, Lesestand und kurze Regalzahlen."
         case .full:
-            return "Weiterlesen, Regalzahlen und Cover-Reihen."
+            return "Weiterlesen, Lesestand, Regalzahlen und Cover-Reihen."
         }
     }
 }

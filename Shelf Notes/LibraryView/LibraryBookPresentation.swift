@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct LibraryBookPresentation: Equatable {
+nonisolated struct LibraryBookPresentation: Equatable {
     let id: UUID
     let progressFraction: Double?
     let progressText: String?

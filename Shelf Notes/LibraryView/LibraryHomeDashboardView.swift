@@ -21,6 +21,7 @@ struct LibraryHomeDashboardView: View {
     let appearance: LibraryRowAppearanceSnapshot
     let continueReadingBook: Book?
     let continueReadingPresentation: LibraryBookPresentation?
+    let insightSnapshot: LibraryView.LibraryHomeInsightSnapshot
     let lanes: [LibraryHomeResolvedLane]
     let quickFilterSnapshot: LibraryView.LibraryQuickFilterSnapshot
     let roulette: LibraryView.LibraryBookRoulette
@@ -48,6 +49,10 @@ struct LibraryHomeDashboardView: View {
         quickFilterSnapshot.isEmpty == false
     }
 
+    private var showsInsights: Bool {
+        insightSnapshot.isEmpty == false
+    }
+
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: 82), spacing: 8)]
     }
@@ -63,6 +68,10 @@ struct LibraryHomeDashboardView: View {
             }
 
             quickStats
+
+            if showsInsights {
+                LibraryHomeInsightsCard(snapshot: insightSnapshot)
+            }
 
             if showsQuickFilters {
                 LibraryQuickFilterChipsView(
@@ -105,7 +114,7 @@ struct LibraryHomeDashboardView: View {
             Divider()
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Smart Shelf")
+        .accessibilityLabel("Smart Shelf, persönlicher Bibliotheksbereich")
     }
 
     private var quickStats: some View {

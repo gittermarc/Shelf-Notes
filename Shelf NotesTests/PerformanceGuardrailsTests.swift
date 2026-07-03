@@ -68,4 +68,33 @@ struct PerformanceGuardrailsTests {
         #expect(progressByMetric[.booksFinished]?.value == 67)
         #expect(progressByMetric[.booksFinished]?.unitSuffix == "Abschlüsse")
     }
+
+    @Test func libraryHomeInsightsStayBoundedForDashboardUse() {
+        let progress = LibraryView.LibraryHomeInsightProgressInput(
+            year: 2026,
+            finishedThisYear: 42,
+            goalTarget: 52,
+            minutesLast7: 540,
+            activeDaysLast7: 7,
+            currentStreak: 12
+        )
+        let challenge = LibraryView.LibraryHomeInsightChallengeInput(
+            readyToClaimCount: 3,
+            title: "Belohnung wartet",
+            value: "3",
+            caption: "Challenges bereit",
+            systemImage: "sparkles",
+            progressFraction: 1,
+            isRewardReady: true
+        )
+
+        let snapshot = LibraryView.LibraryHomeInsightBuilder.makeSnapshot(
+            progress: progress,
+            challenge: challenge,
+            maxItems: 4
+        )
+
+        #expect(snapshot.items.count == 4)
+        #expect(snapshot.items.map(\.kind) == [.challenge, .yearGoal, .weeklyMinutes, .readingStreak])
+    }
 }

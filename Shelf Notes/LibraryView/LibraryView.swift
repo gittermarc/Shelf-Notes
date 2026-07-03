@@ -24,7 +24,9 @@ struct LibraryView: View {
     // `private` members are not visible across files, so these need to be
     // internal to keep the split compiling.
     @Environment(\.modelContext) var modelContext
+    @Environment(\.scenePhase) var scenePhase
     @Query(sort: \Book.createdAt, order: .reverse) var books: [Book]
+    @Query(sort: \ReadingGoal.year, order: .reverse) var goals: [ReadingGoal]
 
     @State var showingAddSheet = false
 
@@ -49,8 +51,11 @@ struct LibraryView: View {
 
     // Display state cache. The pure builder owns filtering, sorting, counts and sections.
     @StateObject private var sourceStore = LibrarySourceStore()
+    @StateObject private var progressMetricsModel = ProgressHubMetricsModel()
     @State private var displayStore = LibraryDisplayStore()
     @State private var pendingRecomputeTask: Task<Void, Never>? = nil
+    @State private var challengeSourceSnapshot: ChallengeSourceSnapshot = .empty
+    @State private var challengeProgressByID: [UUID: ChallengeEngine.ChallengeProgress] = [:]
 
     // Grid delete (LazyVGrid has no swipe-to-delete)
     @State var bookToDelete: Book? = nil
@@ -82,6 +87,10 @@ struct LibraryView: View {
     @AppStorage(AppearanceStorageKey.libraryRowMaxTags) var libraryRowMaxTags: Int = 2
     @AppStorage(AppearanceStorageKey.libraryTagStyle) var libraryTagStyleRaw: String = LibraryTagStyleOption.hashtags.rawValue
     @AppStorage(AppearanceStorageKey.libraryRowContentSpacing) var libraryRowContentSpacing: Double = 2
+
+    // Challenge preferences for lightweight Smart Shelf insights.
+    @AppStorage(ChallengePreferencesStorageKey.enabledKinds) var challengeEnabledKindsRaw: String = ChallengePreferencesStore.defaultEnabledKindsRaw
+    @AppStorage(ChallengePreferencesStorageKey.preset) var challengePresetRaw: String = ChallengePreferencesStore.defaultPresetRaw
 
     // A–Z hint logic (only show when it’s actually helpful)
     static let alphaIndexHintThreshold: Int = 30
@@ -168,6 +177,15 @@ struct LibraryView: View {
             source: booksIndex.source,
             longInactiveCutoff: libraryMaintenanceLongInactiveCutoff
         )
+        let challengeDashboard: ChallengeDashboardState = ChallengeDashboardBuilder.make(
+            challenges: challengeSourceSnapshot.dashboardRecords,
+            progressByID: challengeProgressByID,
+            enabledKinds: challengePreferences.enabledKinds
+        )
+        let insightSnapshot: LibraryHomeInsightSnapshot = LibraryHomeInsightBuilder.makeSnapshot(
+            progress: libraryHomeInsightProgressInput,
+            challenge: LibraryHomeInsightBuilder.makeChallengeInput(from: challengeDashboard)
+        )
         let showsHomeDashboard: Bool = shouldShowHomeDashboard(source: booksIndex.source)
 
         VStack(spacing: 0) {
@@ -189,6 +207,7 @@ struct LibraryView: View {
                                     quickFilterSnapshot: quickFilterSnapshot,
                                     roulette: roulette,
                                     maintenanceSummary: maintenanceSummary,
+                                    insightSnapshot: insightSnapshot,
                                     index: booksIndex
                                 )
                             }
@@ -206,6 +225,7 @@ struct LibraryView: View {
                                         quickFilterSnapshot: quickFilterSnapshot,
                                         roulette: roulette,
                                         maintenanceSummary: maintenanceSummary,
+                                        insightSnapshot: insightSnapshot,
                                         index: booksIndex
                                     )
                                 }
@@ -218,6 +238,7 @@ struct LibraryView: View {
                                         quickFilterSnapshot: quickFilterSnapshot,
                                         roulette: roulette,
                                         maintenanceSummary: maintenanceSummary,
+                                        insightSnapshot: insightSnapshot,
                                         index: booksIndex
                                     )
                                 }
@@ -252,6 +273,21 @@ struct LibraryView: View {
         }
         .task(id: activeToken) {
             rebuildDerivedState(for: activeToken, using: booksIndex)
+        }
+        .task(id: progressInsightsRefreshToken) {
+            refreshLibraryHomeProgressInsights()
+        }
+        .task(id: challengePreferences.storageSignature) {
+            await refreshLibraryHomeChallengeInsights()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .readingSessionsDidChange)) { _ in
+            requestLibraryHomeProgressInsightsRefresh()
+            Task { await refreshLibraryHomeChallengeInsights(ensuringCurrent: false) }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                requestLibraryHomeProgressInsightsRefresh()
+            }
         }
         .onChange(of: searchText) { _, _ in
             scheduleDerivedCacheRecomputeDebounced()
@@ -395,6 +431,37 @@ struct LibraryView: View {
         LibraryHomeModeOption(rawValue: libraryHomeModeRaw) ?? .compact
     }
 
+    var challengePreferences: ChallengePreferences {
+        ChallengePreferencesStore.preferences(
+            enabledKindsRaw: challengeEnabledKindsRaw,
+            presetRaw: challengePresetRaw
+        )
+    }
+
+    var progressInsightsYear: Int {
+        Calendar.current.component(.year, from: Date())
+    }
+
+    var progressInsightsRefreshToken: ProgressHubMetricsModel.SourceRefreshToken {
+        ProgressHubMetricsModel.makeRefreshToken(
+            year: progressInsightsYear,
+            books: books,
+            goals: goals
+        )
+    }
+
+    var libraryHomeInsightProgressInput: LibraryHomeInsightProgressInput {
+        let metrics = progressMetricsModel.metrics
+        return LibraryHomeInsightProgressInput(
+            year: metrics.year,
+            finishedThisYear: metrics.finishedThisYear,
+            goalTarget: metrics.goalTarget,
+            minutesLast7: metrics.minutesLast7,
+            activeDaysLast7: metrics.activeDaysLast7,
+            currentStreak: metrics.currentStreak
+        )
+    }
+
     var libraryMaintenanceLongInactiveCutoff: Date? {
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: Date())
@@ -429,11 +496,13 @@ struct LibraryView: View {
     }
 
     func shouldShowHomeDashboard(source: LibrarySourceSnapshot) -> Bool {
-        isHomeState
-        && !isSelectionMode
-        && !source.books.isEmpty
-        && libraryHeaderStyle != .hidden
-        && libraryHomeMode != .hidden
+        LibraryHomeDashboardVisibility.shouldShow(
+            isHomeState: isHomeState,
+            isSelectionMode: isSelectionMode,
+            bookCount: source.books.count,
+            headerStyle: libraryHeaderStyle,
+            homeMode: libraryHomeMode
+        )
     }
 
     func resolvedHomeLanes(
@@ -459,6 +528,7 @@ struct LibraryView: View {
         quickFilterSnapshot: LibraryQuickFilterSnapshot,
         roulette: LibraryBookRoulette,
         maintenanceSummary: LibraryShelfMaintenanceSummary,
+        insightSnapshot: LibraryHomeInsightSnapshot,
         index: LibraryBooksIndex
     ) -> some View {
         LibraryHomeDashboardView(
@@ -467,6 +537,7 @@ struct LibraryView: View {
             appearance: libraryRowAppearance,
             continueReadingBook: snapshot.continueReadingBookID.flatMap { index.book(for: $0) },
             continueReadingPresentation: snapshot.continueReadingBookID.flatMap { index.presentation(for: $0) },
+            insightSnapshot: insightSnapshot,
             lanes: resolvedHomeLanes(snapshot: snapshot, index: index),
             quickFilterSnapshot: quickFilterSnapshot,
             roulette: roulette,
@@ -504,5 +575,69 @@ struct LibraryView: View {
         }
 
         return result
+    }
+
+    var emptyStateTitle: String {
+        if books.isEmpty { return "Noch nichts im Regal" }
+        if let selectedSmartFilter { return "Keine Treffer für \(selectedSmartFilter.title)" }
+        if let selectedCollectionName { return "Keine Treffer in \(selectedCollectionName)" }
+        if let selectedTag { return "Keine Treffer für #\(selectedTag)" }
+        return "Keine Treffer"
+    }
+
+    var emptyStateMessage: String {
+        if books.isEmpty {
+            return "Füge dein erstes Buch hinzu — oder importiere es direkt über Google Books."
+        }
+
+        if let selectedSmartFilter {
+            return "Gute Nachricht: Für „\(selectedSmartFilter.title)“ gibt es gerade nichts zu tun. Dein Regal ist hier sauber."
+        }
+
+        if selectedCollectionName != nil || selectedTag != nil || selectedStatus != nil || onlyWithNotes || !searchText.isEmpty {
+            return "Diese Kombination ist gerade zu streng. Setz die Filter zurück oder probier einen weicheren Suchbegriff."
+        }
+
+        return "Entweder deine Filter sind zu gut — oder du brauchst einen neuen Suchbegriff. 😄"
+    }
+
+    @MainActor
+    func refreshLibraryHomeProgressInsights() {
+        progressMetricsModel.refreshSourceAndTrack(
+            year: progressInsightsYear,
+            books: books,
+            goals: goals,
+            modelContext: modelContext
+        )
+    }
+
+    @MainActor
+    func requestLibraryHomeProgressInsightsRefresh() {
+        progressMetricsModel.requestSessionMetricsRefresh(modelContext: modelContext)
+    }
+
+    @MainActor
+    func refreshLibraryHomeChallengeInsights(ensuringCurrent: Bool = true) async {
+        let preferences = challengePreferences
+
+        if ensuringCurrent {
+            await ChallengeRefreshCoordinator.prepareCurrentChallenges(
+                modelContext: modelContext,
+                enabledKinds: preferences.enabledKinds
+            )
+        }
+
+        let nextSnapshot = ChallengeSourceStore.makeSnapshot(
+            modelContext: modelContext,
+            enabledKinds: preferences.enabledKinds,
+            includeHistory: false
+        )
+        let nextProgressByID = await ChallengeRefreshCoordinator.computeProgressMap(
+            for: nextSnapshot.progressRecords,
+            modelContext: modelContext
+        )
+
+        challengeSourceSnapshot = nextSnapshot
+        challengeProgressByID = nextProgressByID
     }
 }
