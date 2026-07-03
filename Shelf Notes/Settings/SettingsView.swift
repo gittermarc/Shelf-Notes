@@ -75,6 +75,8 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                LibraryWidgetPrivacySettingsSection()
+
                 Section("Challenges") {
                     NavigationLink(value: SettingsRoute.challenges) {
                         Label("Challenge-Missionen", systemImage: "trophy")

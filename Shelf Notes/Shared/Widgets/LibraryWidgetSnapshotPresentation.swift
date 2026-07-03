@@ -44,6 +44,8 @@ nonisolated struct LibraryWidgetSnapshotPresentation: Hashable, Sendable {
         now: Date = Date(),
         calendar: Calendar = .current
     ) {
+        let privacy = snapshot.effectivePrivacy
+
         isEmpty = snapshot.state == .emptyLibrary || snapshot.totalBooks == 0
         isStale = now.timeIntervalSince(snapshot.generatedAt) > 60 * 60 * 24
         heroTitle = "Dein Regal"
@@ -55,11 +57,16 @@ nonisolated struct LibraryWidgetSnapshotPresentation: Hashable, Sendable {
             Metric(title: "Stapel", value: String(snapshot.wantToReadBooks), detail: "offen")
         ]
 
-        if let currentBook = snapshot.currentBook {
+        if privacy.usesReducedMode, !isEmpty {
+            currentBookTitle = "Privater Widget-Modus"
+            currentBookDetail = "Buchtitel und Cover sind ausgeblendet."
+            currentBookProgressText = nil
+            hasCurrentBookCover = false
+        } else if let currentBook = snapshot.currentBook {
             currentBookTitle = currentBook.title
             currentBookDetail = Self.bookDetailText(for: currentBook)
             currentBookProgressText = Self.progressText(for: currentBook)
-            hasCurrentBookCover = currentBook.hasCover
+            hasCurrentBookCover = currentBook.hasCover && privacy.showsCovers
         } else if isEmpty {
             currentBookTitle = "Dein Regal wartet"
             currentBookDetail = "Füge dein erstes Buch hinzu und starte deine Bibliothek."
@@ -90,13 +97,17 @@ nonisolated struct LibraryWidgetSnapshotPresentation: Hashable, Sendable {
             activityDetail = "Noch keine Lesesessions erfasst"
         }
 
-        shelfItems = snapshot.recentShelfItems.prefix(5).map { item in
-            ShelfItem(
-                id: item.id,
-                title: item.title,
-                author: item.author,
-                hasCover: item.hasCover
-            )
+        if privacy.usesReducedMode {
+            shelfItems = []
+        } else {
+            shelfItems = snapshot.recentShelfItems.prefix(5).map { item in
+                ShelfItem(
+                    id: item.id,
+                    title: item.title,
+                    author: item.author,
+                    hasCover: item.hasCover && privacy.showsCovers
+                )
+            }
         }
     }
 

@@ -35,6 +35,7 @@ extension ReadingTimerManager {
 
         if let data = ReadingTimerSharedCodec.encodeActive(blob) {
             LiveActivitySharedStore.userDefaults.set(data, forKey: ReadingTimerSharedKeys.activeBlob)
+            notifyLibraryWidgetSnapshotRefresh()
         }
     }
 
@@ -70,6 +71,7 @@ extension ReadingTimerManager {
         LiveActivitySharedStore.userDefaults.removeObject(forKey: ReadingTimerSharedKeys.activeBlob)
         UserDefaults.standard.removeObject(forKey: Keys.activeBlob)
         LiveActivitySharedStore.removeOrphanedCoverFiles(keepingBookIDStrings: [])
+        notifyLibraryWidgetSnapshotRefresh()
     }
 
     func persistPendingCompletion() {
@@ -111,6 +113,10 @@ extension ReadingTimerManager {
 
     func clearPersistedPendingCompletion() {
         LiveActivitySharedStore.userDefaults.removeObject(forKey: ReadingTimerSharedKeys.pendingCompletionBlob)
+    }
+
+    private func notifyLibraryWidgetSnapshotRefresh() {
+        LibraryWidgetSnapshotRefreshNotification.post()
     }
 
     func syncFromSharedStoreOnAppActive() {

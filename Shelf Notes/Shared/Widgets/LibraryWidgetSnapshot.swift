@@ -123,6 +123,38 @@ nonisolated struct LibraryWidgetYearlyGoalSnapshot: Codable, Hashable, Sendable 
     }
 }
 
+nonisolated struct LibraryWidgetPrivacySnapshot: Codable, Hashable, Sendable {
+    var showsBookTitles: Bool
+    var showsCovers: Bool
+    var usesReducedMode: Bool
+
+    init(
+        showsBookTitles: Bool = true,
+        showsCovers: Bool = true,
+        usesReducedMode: Bool = false
+    ) {
+        self.usesReducedMode = usesReducedMode
+
+        if usesReducedMode {
+            self.showsBookTitles = false
+            self.showsCovers = false
+        } else {
+            self.showsBookTitles = showsBookTitles
+            self.showsCovers = showsCovers
+        }
+    }
+
+    static let full = LibraryWidgetPrivacySnapshot()
+
+    var hidesBookTitles: Bool {
+        !showsBookTitles || usesReducedMode
+    }
+
+    var hidesCovers: Bool {
+        !showsCovers || usesReducedMode
+    }
+}
+
 nonisolated struct LibraryWidgetSnapshot: Codable, Hashable, Sendable {
     static let currentSchemaVersion = 1
 
@@ -139,6 +171,7 @@ nonisolated struct LibraryWidgetSnapshot: Codable, Hashable, Sendable {
     var last7DaysReadingDays: Int
     var currentReadingStreakDays: Int
     var recentShelfItems: [LibraryWidgetBookSnapshot]
+    var privacy: LibraryWidgetPrivacySnapshot?
 
     init(
         schemaVersion: Int = LibraryWidgetSnapshot.currentSchemaVersion,
@@ -153,7 +186,8 @@ nonisolated struct LibraryWidgetSnapshot: Codable, Hashable, Sendable {
         last7DaysReadingMinutes: Int = 0,
         last7DaysReadingDays: Int = 0,
         currentReadingStreakDays: Int = 0,
-        recentShelfItems: [LibraryWidgetBookSnapshot] = []
+        recentShelfItems: [LibraryWidgetBookSnapshot] = [],
+        privacy: LibraryWidgetPrivacySnapshot? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.generatedAt = generatedAt
@@ -168,6 +202,7 @@ nonisolated struct LibraryWidgetSnapshot: Codable, Hashable, Sendable {
         self.last7DaysReadingDays = max(0, last7DaysReadingDays)
         self.currentReadingStreakDays = max(0, currentReadingStreakDays)
         self.recentShelfItems = Array(recentShelfItems.prefix(6))
+        self.privacy = privacy
     }
 
     static func empty(generatedAt: Date) -> LibraryWidgetSnapshot {
@@ -201,6 +236,10 @@ nonisolated struct LibraryWidgetSnapshot: Codable, Hashable, Sendable {
         last7DaysReadingMinutes > 0 || last7DaysReadingDays > 0 || currentReadingStreakDays > 0
     }
 
+    var effectivePrivacy: LibraryWidgetPrivacySnapshot {
+        privacy ?? .full
+    }
+
     func hasSameRenderableContent(as other: LibraryWidgetSnapshot) -> Bool {
         schemaVersion == other.schemaVersion &&
         state == other.state &&
@@ -213,6 +252,7 @@ nonisolated struct LibraryWidgetSnapshot: Codable, Hashable, Sendable {
         last7DaysReadingMinutes == other.last7DaysReadingMinutes &&
         last7DaysReadingDays == other.last7DaysReadingDays &&
         currentReadingStreakDays == other.currentReadingStreakDays &&
-        recentShelfItems == other.recentShelfItems
+        recentShelfItems == other.recentShelfItems &&
+        privacy == other.privacy
     }
 }

@@ -21,7 +21,7 @@ extension ModelContext {
 
         do {
             try save()
-            NotificationCenter.default.post(name: LibraryWidgetSnapshotRefreshNotification.name, object: nil)
+            LibraryWidgetSnapshotRefreshNotification.post()
             Task { @MainActor in
                 SyncDiagnostics.shared.recordLocalSave(success: true, error: nil, source: source)
             }

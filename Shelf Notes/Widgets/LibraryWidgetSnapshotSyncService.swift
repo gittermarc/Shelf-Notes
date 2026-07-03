@@ -19,6 +19,8 @@ final class LibraryWidgetSnapshotSyncService {
         case startup
         case appBecameActive
         case modelContextSave
+        case timerStateChanged
+        case widgetPrivacyChanged
         case manual
     }
 
@@ -30,6 +32,7 @@ final class LibraryWidgetSnapshotSyncService {
     private let calendarProvider: () -> Calendar
     private let reloadTimelines: @MainActor (String) -> Void
     private let debounceNanoseconds: UInt64
+    private let privacyPreferencesProvider: () -> LibraryWidgetPrivacyPreferences
     private var pendingRefreshTask: Task<Void, Never>?
 
     init(
@@ -37,6 +40,9 @@ final class LibraryWidgetSnapshotSyncService {
         debounceNanoseconds: UInt64 = 1_000_000_000,
         nowProvider: @escaping () -> Date = Date.init,
         calendarProvider: @escaping () -> Calendar = { .current },
+        privacyPreferencesProvider: @escaping () -> LibraryWidgetPrivacyPreferences = {
+            LibraryWidgetPrivacyPreferences.load()
+        },
         reloadTimelines: @escaping @MainActor (String) -> Void = { kind in
             #if canImport(WidgetKit)
             WidgetCenter.shared.reloadTimelines(ofKind: kind)
@@ -49,6 +55,7 @@ final class LibraryWidgetSnapshotSyncService {
         self.debounceNanoseconds = debounceNanoseconds
         self.nowProvider = nowProvider
         self.calendarProvider = calendarProvider
+        self.privacyPreferencesProvider = privacyPreferencesProvider
         self.reloadTimelines = reloadTimelines
     }
 
@@ -126,9 +133,13 @@ final class LibraryWidgetSnapshotSyncService {
             generatedAt: generatedAt,
             calendar: calendar
         )
+        let privateAwareSnapshot = LibraryWidgetPrivacyApplier.applying(
+            privacyPreferencesProvider(),
+            to: rawSnapshot
+        )
 
         return LibraryWidgetCoverExporter.exportCoversAndUpdateAvailability(
-            in: rawSnapshot,
+            in: privateAwareSnapshot,
             books: books
         )
     }

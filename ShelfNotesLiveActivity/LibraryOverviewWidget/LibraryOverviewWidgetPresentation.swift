@@ -19,6 +19,8 @@ struct LibraryOverviewWidgetPresentation: Hashable, Sendable {
     var isSnapshotUnavailable: Bool
     var isEmpty: Bool
     var isStale: Bool
+    var usesReducedMode: Bool
+    var showsCovers: Bool
     var heroSubtitle: String
     var metrics: [Metric]
     var currentTitle: String
@@ -37,10 +39,14 @@ struct LibraryOverviewWidgetPresentation: Hashable, Sendable {
         now: Date = Date(),
         calendar: Calendar = .current
     ) {
+        let privacy = snapshot.effectivePrivacy
+
         self.snapshot = snapshot
         self.isSnapshotUnavailable = isSnapshotUnavailable
         isEmpty = !snapshot.hasBooks
         isStale = now.timeIntervalSince(snapshot.generatedAt) > 60 * 60 * 24
+        usesReducedMode = privacy.usesReducedMode
+        showsCovers = privacy.showsCovers && !privacy.usesReducedMode
         heroSubtitle = Self.heroSubtitle(snapshot: snapshot, isSnapshotUnavailable: isSnapshotUnavailable)
         metrics = [
             Metric(id: "read", title: "Gelesen", value: "\(snapshot.readBooks)", symbolName: "checkmark.circle.fill"),
@@ -53,9 +59,14 @@ struct LibraryOverviewWidgetPresentation: Hashable, Sendable {
             currentDetail = "Dann aktualisiert sich dein Widget automatisch."
             currentProgressText = nil
             currentProgressFraction = nil
+        } else if privacy.usesReducedMode, !isEmpty {
+            currentTitle = "Privater Widget-Modus"
+            currentDetail = "Buchtitel und Cover sind ausgeblendet."
+            currentProgressText = nil
+            currentProgressFraction = nil
         } else if let currentBook = snapshot.currentBook {
             currentTitle = currentBook.title
-            currentDetail = Self.currentDetail(for: currentBook)
+            currentDetail = Self.currentDetail(for: currentBook, privacy: privacy)
             currentProgressText = Self.progressText(for: currentBook)
             currentProgressFraction = currentBook.progressFraction
         } else if isEmpty {
@@ -89,7 +100,7 @@ struct LibraryOverviewWidgetPresentation: Hashable, Sendable {
             activityDetail = "Noch keine Lesesessions erfasst"
         }
 
-        shelfItems = Array(snapshot.recentShelfItems.prefix(5))
+        shelfItems = privacy.usesReducedMode ? [] : Array(snapshot.recentShelfItems.prefix(5))
     }
 
     private static func heroSubtitle(
@@ -115,7 +126,14 @@ struct LibraryOverviewWidgetPresentation: Hashable, Sendable {
         return "Alles gelesen, starkes Regal"
     }
 
-    private static func currentDetail(for book: LibraryOverviewBookSnapshot) -> String {
+    private static func currentDetail(
+        for book: LibraryOverviewBookSnapshot,
+        privacy: LibraryOverviewPrivacySnapshot
+    ) -> String {
+        if !privacy.showsBookTitles {
+            return "Details ausgeblendet"
+        }
+
         if let author = book.author, !author.isEmpty {
             return author
         }

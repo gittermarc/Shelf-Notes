@@ -10,4 +10,8 @@ import Foundation
 
 nonisolated enum LibraryWidgetSnapshotRefreshNotification {
     static let name = Notification.Name("LibraryWidgetSnapshotRefreshNotification")
+
+    static func post() {
+        NotificationCenter.default.post(name: name, object: nil)
+    }
 }

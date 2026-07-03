@@ -42,6 +42,18 @@ struct LibraryOverviewYearlyGoalSnapshot: Codable, Hashable, Sendable {
     var progressFraction: Double
 }
 
+struct LibraryOverviewPrivacySnapshot: Codable, Hashable, Sendable {
+    var showsBookTitles: Bool
+    var showsCovers: Bool
+    var usesReducedMode: Bool
+
+    static let full = LibraryOverviewPrivacySnapshot(
+        showsBookTitles: true,
+        showsCovers: true,
+        usesReducedMode: false
+    )
+}
+
 struct LibraryOverviewWidgetSnapshot: Codable, Hashable, Sendable {
     static let currentSchemaVersion = 1
 
@@ -58,6 +70,7 @@ struct LibraryOverviewWidgetSnapshot: Codable, Hashable, Sendable {
     var last7DaysReadingDays: Int
     var currentReadingStreakDays: Int
     var recentShelfItems: [LibraryOverviewBookSnapshot]
+    var privacy: LibraryOverviewPrivacySnapshot?
 
     var hasSupportedSchemaVersion: Bool {
         schemaVersion > 0 && schemaVersion <= Self.currentSchemaVersion
@@ -69,6 +82,10 @@ struct LibraryOverviewWidgetSnapshot: Codable, Hashable, Sendable {
 
     var hasRecentActivity: Bool {
         last7DaysReadingMinutes > 0 || last7DaysReadingDays > 0 || currentReadingStreakDays > 0
+    }
+
+    var effectivePrivacy: LibraryOverviewPrivacySnapshot {
+        privacy ?? .full
     }
 
     static func empty(generatedAt: Date) -> LibraryOverviewWidgetSnapshot {
@@ -85,7 +102,8 @@ struct LibraryOverviewWidgetSnapshot: Codable, Hashable, Sendable {
             last7DaysReadingMinutes: 0,
             last7DaysReadingDays: 0,
             currentReadingStreakDays: 0,
-            recentShelfItems: []
+            recentShelfItems: [],
+            privacy: nil
         )
     }
 
@@ -141,7 +159,8 @@ struct LibraryOverviewWidgetSnapshot: Codable, Hashable, Sendable {
                     hasCover: false,
                     coverRevision: nil
                 )
-            }
+            },
+            privacy: .full
         )
     }
 }

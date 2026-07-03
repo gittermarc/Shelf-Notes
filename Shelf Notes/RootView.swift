@@ -203,6 +203,11 @@ struct RootView: View {
     }
 
     private func handleOpenURL(_ url: URL) {
+        if let route = ShelfNotesDeepLink.route(from: url) {
+            handleShelfNotesDeepLink(route)
+            return
+        }
+
         guard let route = ReadingSessionLiveActivityDeepLink.route(from: url) else { return }
 
         selectedTab = 0
@@ -219,6 +224,30 @@ struct RootView: View {
             }
             liveActivityRouteBook = AppStartupMaintenanceService.book(
                 withID: route.bookID,
+                modelContext: modelContext
+            )
+        }
+    }
+
+    private func handleShelfNotesDeepLink(_ route: ShelfNotesDeepLink) {
+        timer.syncFromSharedStoreOnAppActive()
+        liveActivityRouteBook = nil
+
+        switch route.destination {
+        case .library:
+            selectedTab = 0
+
+        case .progress:
+            selectedTab = 1
+
+        case .book(let bookID):
+            selectedTab = 0
+            guard timer.pendingCompletion == nil else {
+                liveActivityRouteBook = nil
+                return
+            }
+            liveActivityRouteBook = AppStartupMaintenanceService.book(
+                withID: bookID,
                 modelContext: modelContext
             )
         }

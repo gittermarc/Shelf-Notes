@@ -170,6 +170,49 @@ struct LibraryWidgetSnapshotPresentationTests {
         #expect(presentation.isStale)
     }
 
+    @Test func reducedPrivacyModeUsesNonIdentifyingPresentation() {
+        let snapshot = LibraryWidgetPrivacyApplier.applying(
+            LibraryWidgetPrivacyPreferences(usesReducedMode: true),
+            to: LibraryWidgetSnapshot(
+                generatedAt: date(2026, 4, 15),
+                state: .ready,
+                totalBooks: 4,
+                readBooks: 2,
+                readingBooks: 1,
+                wantToReadBooks: 1,
+                currentBook: LibraryWidgetBookSnapshot(
+                    id: fixedID(1),
+                    title: "Private Book",
+                    author: "Private Author",
+                    kind: .currentReading,
+                    statusRawValue: ReadingStatus.reading.rawValue,
+                    hasCover: true,
+                    coverRevision: 12
+                ),
+                recentShelfItems: [
+                    LibraryWidgetBookSnapshot(
+                        id: fixedID(2),
+                        title: "Another Book",
+                        kind: .recentlyFinished,
+                        statusRawValue: ReadingStatus.finished.rawValue,
+                        hasCover: true
+                    )
+                ]
+            )
+        )
+
+        let presentation = LibraryWidgetSnapshotPresentation(
+            snapshot: snapshot,
+            now: date(2026, 4, 15, 12),
+            calendar: calendar
+        )
+
+        #expect(presentation.currentBookTitle == "Privater Widget-Modus")
+        #expect(presentation.currentBookDetail == "Buchtitel und Cover sind ausgeblendet.")
+        #expect(!presentation.hasCurrentBookCover)
+        #expect(presentation.shelfItems.isEmpty)
+    }
+
     private func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 0, _ minute: Int = 0) -> Date {
         calendar.date(
             from: DateComponents(

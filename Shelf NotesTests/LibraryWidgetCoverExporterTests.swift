@@ -80,6 +80,67 @@ struct LibraryWidgetCoverExporterTests {
         #expect(normalized.currentBook?.coverRevision == nil)
     }
 
+    @Test @MainActor func cleanupRemovesOnlyUnusedWidgetCovers() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let keptID = fixedID(1)
+        let removedID = fixedID(2)
+        let coverDirectory = LibraryWidgetCoverFilePolicy.directoryURL(in: directory)
+        try FileManager.default.createDirectory(at: coverDirectory, withIntermediateDirectories: true)
+
+        let keptURL = LibraryWidgetCoverFilePolicy.fileURL(bookID: keptID, in: directory)
+        let removedURL = LibraryWidgetCoverFilePolicy.fileURL(bookID: removedID, in: directory)
+        let liveActivityLikeURL = coverDirectory.appendingPathComponent("live_activity_cover_\(removedID.uuidString).jpg")
+        try Data("kept".utf8).write(to: keptURL)
+        try Data("removed".utf8).write(to: removedURL)
+        try Data("live".utf8).write(to: liveActivityLikeURL)
+
+        LibraryWidgetCoverExporter.cleanupUnusedCovers(
+            keeping: [keptID],
+            containerURL: directory
+        )
+
+        #expect(FileManager.default.fileExists(atPath: keptURL.path))
+        #expect(!FileManager.default.fileExists(atPath: removedURL.path))
+        #expect(FileManager.default.fileExists(atPath: liveActivityLikeURL.path))
+    }
+
+    @Test @MainActor func exporterCleansAllWidgetCoversWhenSnapshotDoesNotUseCovers() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let staleID = fixedID(9)
+        let coverDirectory = LibraryWidgetCoverFilePolicy.directoryURL(in: directory)
+        try FileManager.default.createDirectory(at: coverDirectory, withIntermediateDirectories: true)
+        let staleURL = LibraryWidgetCoverFilePolicy.fileURL(bookID: staleID, in: directory)
+        try Data("stale".utf8).write(to: staleURL)
+
+        let snapshot = LibraryWidgetSnapshot(
+            generatedAt: Date(timeIntervalSince1970: 1_000),
+            state: .ready,
+            totalBooks: 1,
+            readBooks: 0,
+            readingBooks: 1,
+            wantToReadBooks: 0,
+            currentBook: LibraryWidgetBookSnapshot(
+                id: staleID,
+                title: "Private",
+                kind: .currentReading,
+                statusRawValue: ReadingStatus.reading.rawValue,
+                hasCover: false
+            )
+        )
+
+        _ = LibraryWidgetCoverExporter.exportCoversAndUpdateAvailability(
+            in: snapshot,
+            books: [],
+            directoryURLProvider: { directory }
+        )
+
+        #expect(!FileManager.default.fileExists(atPath: staleURL.path))
+    }
+
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("LibraryWidgetCoverExporterTests", isDirectory: true)

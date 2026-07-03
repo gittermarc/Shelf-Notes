@@ -47,6 +47,11 @@ enum LibraryWidgetCoverExporter {
                 .map(\.id)
         )
         guard !requestedBookIDs.isEmpty else {
+            cleanupUnusedCovers(
+                keeping: [],
+                containerURL: containerURL,
+                fileManager: fileManager
+            )
             return snapshot.withCoverAvailability(availableBookIDs: [])
         }
 
@@ -79,7 +84,40 @@ enum LibraryWidgetCoverExporter {
             }
         }
 
+        cleanupUnusedCovers(
+            keeping: availableBookIDs,
+            containerURL: containerURL,
+            fileManager: fileManager
+        )
+
         return snapshot.withCoverAvailability(availableBookIDs: availableBookIDs)
+    }
+
+    static func cleanupUnusedCovers(
+        keeping keptBookIDs: Set<UUID>,
+        containerURL: URL,
+        fileManager: FileManager = .default
+    ) {
+        let directoryURL = LibraryWidgetCoverFilePolicy.directoryURL(in: containerURL)
+        guard let fileURLs = try? fileManager.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: nil
+        ) else {
+            return
+        }
+
+        let keptFileNames = Set(keptBookIDs.map { LibraryWidgetCoverFilePolicy.fileName(bookID: $0) })
+        for fileURL in fileURLs {
+            let fileName = fileURL.lastPathComponent
+            guard fileName.hasPrefix(LibraryWidgetCoverFilePolicy.filePrefix),
+                  fileURL.pathExtension.lowercased() == LibraryWidgetCoverFilePolicy.fileExtension,
+                  !keptFileNames.contains(fileName)
+            else {
+                continue
+            }
+
+            try? fileManager.removeItem(at: fileURL)
+        }
     }
 
     private static func coverSourceData(for book: Book) -> Data? {
