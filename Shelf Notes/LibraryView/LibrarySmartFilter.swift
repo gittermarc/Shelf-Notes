@@ -19,6 +19,17 @@ extension LibraryView {
 
         var id: String { rawValue }
 
+        static var maintenanceFilters: [LibrarySmartFilter] {
+            [
+                .withoutCover,
+                .withoutTags,
+                .withoutPageCount,
+                .unrated,
+                .rereads,
+                .longInactive
+            ]
+        }
+
         var title: String {
             switch self {
             case .withoutCover:
@@ -54,6 +65,25 @@ extension LibraryView {
                 return "arrow.triangle.2.circlepath"
             case .longInactive:
                 return "clock.arrow.circlepath"
+            }
+        }
+
+        var maintenanceTitle: String {
+            switch self {
+            case .withoutCover:
+                return "ohne Cover"
+            case .withoutTags:
+                return "ohne Tags"
+            case .withoutPageCount:
+                return "ohne Seitenzahl"
+            case .unrated:
+                return "unbewertet"
+            case .withNotes:
+                return "mit Notizen"
+            case .rereads:
+                return "Re-Reads"
+            case .longInactive:
+                return "lange ruhig"
             }
         }
 

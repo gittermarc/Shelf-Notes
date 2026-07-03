@@ -9,6 +9,7 @@ import SwiftUI
 
 struct LibraryHomeAppearanceSettingsSection: View {
     let homeMode: Binding<LibraryHomeModeOption>
+    let showsMaintenance: Binding<Bool>
     let resolvedHeaderStyle: LibraryHeaderStyleOption
 
     var body: some View {
@@ -22,6 +23,17 @@ struct LibraryHomeAppearanceSettingsSection: View {
         Text(homeMode.wrappedValue.subtitle)
             .font(.caption)
             .foregroundStyle(.secondary)
+
+        Toggle(isOn: showsMaintenance) {
+            Label("Regalpflege-Hinweise", systemImage: "wand.and.sparkles")
+        }
+        .disabled(homeMode.wrappedValue == .hidden)
+
+        if showsMaintenance.wrappedValue, homeMode.wrappedValue != .hidden {
+            Text("Zeigt kurze Hinweise für Bücher ohne Cover, Tags, Seitenzahl oder Bewertung.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
 
         if resolvedHeaderStyle == .hidden, homeMode.wrappedValue != .hidden {
             Text("Bei ausgeschaltetem Header bleibt auch Smart Shelf verborgen, damit die Bibliothek bewusst ruhig bleibt.")

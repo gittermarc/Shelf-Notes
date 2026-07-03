@@ -22,9 +22,16 @@ struct LibraryHomeDashboardView: View {
     let continueReadingBook: Book?
     let continueReadingPresentation: LibraryBookPresentation?
     let lanes: [LibraryHomeResolvedLane]
+    let maintenanceSummary: LibraryView.LibraryShelfMaintenanceSummary
+    let showsMaintenance: Bool
+    let onSelectSmartFilter: (LibraryView.LibrarySmartFilter) -> Void
 
     private var showsLanes: Bool {
         mode == .full && lanes.isEmpty == false
+    }
+
+    private var showsMaintenanceCard: Bool {
+        showsMaintenance && maintenanceSummary.isEmpty == false
     }
 
     private var columns: [GridItem] {
@@ -42,6 +49,13 @@ struct LibraryHomeDashboardView: View {
             }
 
             quickStats
+
+            if showsMaintenanceCard {
+                LibraryShelfMaintenanceCard(
+                    summary: maintenanceSummary,
+                    onSelectFilter: onSelectSmartFilter
+                )
+            }
 
             if showsLanes {
                 VStack(alignment: .leading, spacing: 12) {

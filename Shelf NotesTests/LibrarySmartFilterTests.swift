@@ -19,6 +19,19 @@ struct LibrarySmartFilterTests {
         #expect(LibraryView.LibrarySmartFilter.longInactive.id == "longInactive")
     }
 
+    @Test func maintenanceFiltersExposeActionableShelfHints() {
+        #expect(LibraryView.LibrarySmartFilter.maintenanceFilters == [
+            .withoutCover,
+            .withoutTags,
+            .withoutPageCount,
+            .unrated,
+            .rereads,
+            .longInactive
+        ])
+        #expect(LibraryView.LibrarySmartFilter.withoutPageCount.maintenanceTitle == "ohne Seitenzahl")
+        #expect(LibraryView.LibrarySmartFilter.withNotes.maintenanceTitle == "mit Notizen")
+    }
+
     @Test func longInactiveRequiresReadingStatusAndCutoff() {
         let oldReading = LibraryView.LibrarySourceSnapshot.BookSnapshot(
             title: "Old Reading",

@@ -457,6 +457,92 @@ struct LibraryDerivedStateBuilderTests {
         #expect(state.displayedBookIDs == [inactiveID])
     }
 
+    @Test func combinesStatusTagNotesSearchAndSmartFilter() {
+        let matchingID = UUID(uuidString: "00000000-0000-0000-0000-000000000031") ?? UUID()
+        let noNotesID = UUID(uuidString: "00000000-0000-0000-0000-000000000032") ?? UUID()
+        let wrongTagID = UUID(uuidString: "00000000-0000-0000-0000-000000000033") ?? UUID()
+        let ratedID = UUID(uuidString: "00000000-0000-0000-0000-000000000034") ?? UUID()
+        let wrongSearchID = UUID(uuidString: "00000000-0000-0000-0000-000000000035") ?? UUID()
+        let books = [
+            LibraryView.LibrarySourceSnapshot.BookSnapshot(
+                id: matchingID,
+                title: "Noir Journal",
+                createdAt: date(2026, 1, 1),
+                statusRawValue: ReadingStatus.finished.rawValue,
+                tags: ["Crime"],
+                hasNotes: true,
+                pageCount: 300,
+                hasCover: true,
+                coverRevision: 1,
+                hasUserRating: false
+            ),
+            LibraryView.LibrarySourceSnapshot.BookSnapshot(
+                id: noNotesID,
+                title: "Noir Without Notes",
+                createdAt: date(2026, 1, 2),
+                statusRawValue: ReadingStatus.finished.rawValue,
+                tags: ["Crime"],
+                hasNotes: false,
+                pageCount: 300,
+                hasCover: true,
+                coverRevision: 2,
+                hasUserRating: false
+            ),
+            LibraryView.LibrarySourceSnapshot.BookSnapshot(
+                id: wrongTagID,
+                title: "Noir Different Tag",
+                createdAt: date(2026, 1, 3),
+                statusRawValue: ReadingStatus.finished.rawValue,
+                tags: ["History"],
+                hasNotes: true,
+                pageCount: 300,
+                hasCover: true,
+                coverRevision: 3,
+                hasUserRating: false
+            ),
+            LibraryView.LibrarySourceSnapshot.BookSnapshot(
+                id: ratedID,
+                title: "Noir Rated",
+                createdAt: date(2026, 1, 4),
+                statusRawValue: ReadingStatus.finished.rawValue,
+                tags: ["Crime"],
+                hasNotes: true,
+                pageCount: 300,
+                hasCover: true,
+                coverRevision: 4,
+                hasUserRating: true,
+                userRatingAverage1: 4.0
+            ),
+            LibraryView.LibrarySourceSnapshot.BookSnapshot(
+                id: wrongSearchID,
+                title: "Quiet Journal",
+                createdAt: date(2026, 1, 5),
+                statusRawValue: ReadingStatus.finished.rawValue,
+                tags: ["Crime"],
+                hasNotes: true,
+                pageCount: 300,
+                hasCover: true,
+                coverRevision: 5,
+                hasUserRating: false
+            )
+        ]
+        let source = makeSource(books)
+        let input = LibraryView.LibraryDerivedStateBuilder.makeInput(
+            searchText: "Noir",
+            selectedStatus: .finished,
+            selectedTag: "Crime",
+            onlyWithNotes: true,
+            smartFilter: .unrated,
+            sortField: .createdAt,
+            sortAscending: true,
+            buildsAlphaSections: false
+        )
+
+        let state = LibraryView.LibraryDerivedStateBuilder.makeDerivedState(source: source, input: input)
+
+        #expect(state.displayedBookIDs == [matchingID])
+    }
+
     private func filteredIDs(
         _ source: LibraryView.LibrarySourceSnapshot,
         smartFilter: LibraryView.LibrarySmartFilter

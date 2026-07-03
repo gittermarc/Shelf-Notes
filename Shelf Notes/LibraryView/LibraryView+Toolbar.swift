@@ -100,6 +100,26 @@ extension LibraryView {
                             }
                         }
                     }
+
+                    Section("Smart Filter") {
+                        Picker("Smart Filter", selection: Binding(
+                            get: { selectedSmartFilter?.rawValue ?? "__all__" },
+                            set: { newValue in
+                                if newValue == "__all__" {
+                                    selectedSmartFilter = nil
+                                } else {
+                                    selectedSmartFilter = LibrarySmartFilter(rawValue: newValue)
+                                }
+                            }
+                        )) {
+                            Text("Alle").tag("__all__")
+
+                            ForEach(LibrarySmartFilter.allCases) { smartFilter in
+                                Label(smartFilter.title, systemImage: smartFilter.systemImage)
+                                    .tag(smartFilter.rawValue)
+                            }
+                        }
+                    }
                 } label: {
                     Image(systemName: "line.3.horizontal.decrease.circle")
                 }

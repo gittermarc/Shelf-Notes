@@ -63,6 +63,7 @@ struct LibraryView: View {
     @AppStorage(AppearanceStorageKey.libraryHeaderStyle) var libraryHeaderStyleRaw: String = LibraryHeaderStyleOption.standard.rawValue
     @AppStorage(AppearanceStorageKey.libraryHeaderDefaultExpanded) var libraryHeaderDefaultExpanded: Bool = false
     @AppStorage(AppearanceStorageKey.libraryHomeMode) var libraryHomeModeRaw: String = LibraryHomeModeOption.compact.rawValue
+    @AppStorage(AppearanceStorageKey.libraryHomeShowsMaintenance) var libraryHomeShowsMaintenance: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowVerticalInset) var libraryRowVerticalInset: Double = 8
     @AppStorage(AppearanceStorageKey.libraryLayoutMode) var libraryLayoutModeRaw: String = LibraryLayoutModeOption.list.rawValue
     @AppStorage(AppearanceStorageKey.libraryCoverSize) var libraryCoverSizeRaw: String = LibraryCoverSizeOption.standard.rawValue
@@ -107,6 +108,7 @@ struct LibraryView: View {
             selectedTag: selectedTag,
             onlyWithNotes: onlyWithNotes,
             smartFilter: selectedSmartFilter,
+            longInactiveCutoff: activeLongInactiveCutoff,
             sortField: sortField,
             sortAscending: sortAscending,
             buildsAlphaSections: shouldBuildAlphaSections
@@ -157,6 +159,10 @@ struct LibraryView: View {
         let alphaLetters: [String] = displayState.alphaLetters
         let showAlphaIndexHint: Bool = shouldShowAlphaIndexHint(displayedCount: displayed.count)
         let homeSnapshot: LibraryHomeSnapshot = LibraryHomeSnapshotBuilder.makeSnapshot(source: booksIndex.source)
+        let maintenanceSummary: LibraryShelfMaintenanceSummary = LibraryShelfMaintenanceBuilder.makeSummary(
+            source: booksIndex.source,
+            longInactiveCutoff: libraryMaintenanceLongInactiveCutoff
+        )
         let showsHomeDashboard: Bool = shouldShowHomeDashboard(source: booksIndex.source)
 
         VStack(spacing: 0) {
@@ -173,7 +179,11 @@ struct LibraryView: View {
                     if libraryLayoutMode == .grid {
                         gridView(displayedBooks: displayed, presentationsByBookID: presentationsByBookID) {
                             if showsHomeDashboard {
-                                homeDashboard(snapshot: homeSnapshot, index: booksIndex)
+                                homeDashboard(
+                                    snapshot: homeSnapshot,
+                                    maintenanceSummary: maintenanceSummary,
+                                    index: booksIndex
+                                )
                             }
                         }
                     } else {
@@ -184,13 +194,21 @@ struct LibraryView: View {
                                 presentationsByBookID: presentationsByBookID
                             ) {
                                 if showsHomeDashboard {
-                                    homeDashboard(snapshot: homeSnapshot, index: booksIndex)
+                                    homeDashboard(
+                                        snapshot: homeSnapshot,
+                                        maintenanceSummary: maintenanceSummary,
+                                        index: booksIndex
+                                    )
                                 }
                             }
                         } else {
                             plainList(displayedBooks: displayed, presentationsByBookID: presentationsByBookID) {
                                 if showsHomeDashboard {
-                                    homeDashboard(snapshot: homeSnapshot, index: booksIndex)
+                                    homeDashboard(
+                                        snapshot: homeSnapshot,
+                                        maintenanceSummary: maintenanceSummary,
+                                        index: booksIndex
+                                    )
                                 }
                             }
                         }
@@ -366,6 +384,16 @@ struct LibraryView: View {
         LibraryHomeModeOption(rawValue: libraryHomeModeRaw) ?? .compact
     }
 
+    var libraryMaintenanceLongInactiveCutoff: Date? {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        return calendar.date(byAdding: .day, value: -30, to: startOfToday)
+    }
+
+    var activeLongInactiveCutoff: Date? {
+        selectedSmartFilter == .longInactive ? libraryMaintenanceLongInactiveCutoff : nil
+    }
+
     var libraryCoverSizeOption: LibraryCoverSizeOption {
         LibraryCoverSizeOption(rawValue: libraryCoverSizeRaw) ?? .standard
     }
@@ -417,6 +445,7 @@ struct LibraryView: View {
 
     func homeDashboard(
         snapshot: LibraryHomeSnapshot,
+        maintenanceSummary: LibraryShelfMaintenanceSummary,
         index: LibraryBooksIndex
     ) -> some View {
         LibraryHomeDashboardView(
@@ -425,7 +454,14 @@ struct LibraryView: View {
             appearance: libraryRowAppearance,
             continueReadingBook: snapshot.continueReadingBookID.flatMap { index.book(for: $0) },
             continueReadingPresentation: snapshot.continueReadingBookID.flatMap { index.presentation(for: $0) },
-            lanes: resolvedHomeLanes(snapshot: snapshot, index: index)
+            lanes: resolvedHomeLanes(snapshot: snapshot, index: index),
+            maintenanceSummary: maintenanceSummary,
+            showsMaintenance: libraryHomeShowsMaintenance,
+            onSelectSmartFilter: { smartFilter in
+                withAnimation {
+                    selectedSmartFilter = smartFilter
+                }
+            }
         )
     }
 }

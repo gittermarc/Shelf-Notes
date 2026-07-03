@@ -76,6 +76,44 @@ struct LibraryDisplayStoreTests {
         #expect(afterResolve.displayedBookIDs == [beta.id])
     }
 
+    @Test @MainActor func smartFilterParticipatesInDisplayInputToken() {
+        let withCover = makeBook(id: fixedID(1), title: "With Cover")
+        withCover.thumbnailURL = "https://example.com/cover.jpg"
+        let withoutCover = makeBook(id: fixedID(2), title: "Without Cover")
+        let index = LibraryView.LibraryBooksIndex(books: [withCover, withoutCover])
+        let baseInput = LibraryView.LibraryDerivedStateBuilder.makeInput(
+            searchText: "",
+            selectedStatus: nil,
+            selectedTag: nil,
+            onlyWithNotes: false,
+            sortField: .title,
+            sortAscending: true,
+            buildsAlphaSections: false
+        )
+        let smartInput = LibraryView.LibraryDerivedStateBuilder.makeInput(
+            searchText: "",
+            selectedStatus: nil,
+            selectedTag: nil,
+            onlyWithNotes: false,
+            smartFilter: .withoutCover,
+            sortField: .title,
+            sortAscending: true,
+            buildsAlphaSections: false
+        )
+        let baseToken = index.token(input: baseInput)
+        let smartToken = index.token(input: smartInput)
+        var store = LibraryView.LibraryDisplayStore()
+
+        store.resolveIfNeeded(for: baseToken, index: index, input: baseInput)
+        let baseState = store.displayState(for: baseToken)
+        store.resolveIfNeeded(for: smartToken, index: index, input: smartInput)
+        let smartState = store.displayState(for: smartToken)
+
+        #expect(baseToken != smartToken)
+        #expect(baseState.displayedBookIDs == [withCover.id, withoutCover.id])
+        #expect(smartState.displayedBookIDs == [withoutCover.id])
+    }
+
     @Test @MainActor func largeLibraryDisplayMatchesPureDerivedBuilder() {
         let books = (0..<500).map { index in
             makeBook(
