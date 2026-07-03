@@ -16,9 +16,27 @@ extension LibraryView {
         displayedBooks: [Book],
         presentationsByBookID: [UUID: LibraryBookPresentation]
     ) -> some View {
+        plainList(
+            displayedBooks: displayedBooks,
+            presentationsByBookID: presentationsByBookID
+        ) {
+            EmptyView()
+        }
+    }
+
+    func plainList<HomeDashboard: View>(
+        displayedBooks: [Book],
+        presentationsByBookID: [UUID: LibraryBookPresentation],
+        @ViewBuilder homeDashboard: @escaping () -> HomeDashboard
+    ) -> some View {
         let rowAppearance = libraryRowAppearance
 
         return List {
+            homeDashboard()
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+
             if isSelectionMode {
                 ForEach(displayedBooks) { book in
                     selectableListRow(

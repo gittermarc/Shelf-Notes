@@ -16,6 +16,19 @@ extension LibraryView {
         displayedBooks: [Book],
         presentationsByBookID: [UUID: LibraryBookPresentation]
     ) -> some View {
+        gridView(
+            displayedBooks: displayedBooks,
+            presentationsByBookID: presentationsByBookID
+        ) {
+            EmptyView()
+        }
+    }
+
+    func gridView<HomeDashboard: View>(
+        displayedBooks: [Book],
+        presentationsByBookID: [UUID: LibraryBookPresentation],
+        @ViewBuilder homeDashboard: @escaping () -> HomeDashboard
+    ) -> some View {
         GeometryReader { geo in
             let sidePadding: CGFloat = 16
             let spacing: CGFloat = 16
@@ -29,6 +42,8 @@ extension LibraryView {
             let rowAppearance = libraryRowAppearance
 
             ScrollView {
+                homeDashboard()
+
                 LazyVGrid(columns: columns, spacing: spacing) {
                     ForEach(displayedBooks) { book in
                         if isSelectionMode {

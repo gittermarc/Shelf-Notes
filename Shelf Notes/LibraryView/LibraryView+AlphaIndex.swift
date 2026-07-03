@@ -40,7 +40,9 @@ extension LibraryView {
             sections: sections,
             letters: letters,
             presentationsByBookID: index.presentations(matching: displayedBooks.map(\.id))
-        )
+        ) {
+            EmptyView()
+        }
     }
 
     func alphaIndexedList(
@@ -48,11 +50,31 @@ extension LibraryView {
         letters: [String],
         presentationsByBookID: [UUID: LibraryBookPresentation]
     ) -> some View {
+        alphaIndexedList(
+            sections: sections,
+            letters: letters,
+            presentationsByBookID: presentationsByBookID
+        ) {
+            EmptyView()
+        }
+    }
+
+    func alphaIndexedList<HomeDashboard: View>(
+        sections: [AlphaSection],
+        letters: [String],
+        presentationsByBookID: [UUID: LibraryBookPresentation],
+        @ViewBuilder homeDashboard: @escaping () -> HomeDashboard
+    ) -> some View {
         let rowAppearance = libraryRowAppearance
 
         return ScrollViewReader { proxy in
             ZStack(alignment: .trailing) {
                 List {
+                    homeDashboard()
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+
                     ForEach(sections) { section in
                         Section {
                             if isSelectionMode {

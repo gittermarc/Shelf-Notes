@@ -1,0 +1,74 @@
+//
+//  LibraryHomeDashboardView.swift
+//  Shelf Notes
+//
+//  Smart Shelf home area shown above the library results in the home state.
+//
+
+import SwiftUI
+
+struct LibraryHomeResolvedLane: Identifiable {
+    let id: String
+    let title: String
+    let systemImage: String
+    let books: [Book]
+    let presentationsByBookID: [UUID: LibraryBookPresentation]
+}
+
+struct LibraryHomeDashboardView: View {
+    let snapshot: LibraryView.LibraryHomeSnapshot
+    let mode: LibraryHomeModeOption
+    let appearance: LibraryRowAppearanceSnapshot
+    let continueReadingBook: Book?
+    let continueReadingPresentation: LibraryBookPresentation?
+    let lanes: [LibraryHomeResolvedLane]
+
+    private var showsLanes: Bool {
+        mode == .full && lanes.isEmpty == false
+    }
+
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: 82), spacing: 8)]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let continueReadingBook {
+                LibraryContinueReadingCard(
+                    book: continueReadingBook,
+                    presentation: continueReadingPresentation,
+                    appearance: appearance
+                )
+            }
+
+            quickStats
+
+            if showsLanes {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(lanes) { lane in
+                        LibraryShelfLaneView(
+                            lane: lane,
+                            appearance: appearance
+                        )
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Smart Shelf")
+    }
+
+    private var quickStats: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            ForEach(snapshot.quickStats) { stat in
+                LibraryHomeStatCard(stat: stat)
+            }
+        }
+    }
+}

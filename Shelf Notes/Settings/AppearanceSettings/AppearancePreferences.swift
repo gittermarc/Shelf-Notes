@@ -28,6 +28,7 @@ enum AppearanceStorageKey {
 
     // Library / list rows (v1)
     static let libraryLayoutMode = "appearance_library_layout_mode_v1"
+    static let libraryHomeMode = "appearance_library_home_mode_v1"
 
     static let libraryShowCovers = "appearance_library_show_covers_v1"
     static let libraryCoverSize = "appearance_library_cover_size_v1"
@@ -100,6 +101,35 @@ enum LibraryLayoutModeOption: String, CaseIterable, Identifiable {
         switch self {
         case .list: return "list.bullet"
         case .grid: return "square.grid.2x2"
+        }
+    }
+}
+
+// MARK: - Library Home
+
+enum LibraryHomeModeOption: String, CaseIterable, Identifiable {
+    case hidden
+    case compact
+    case full
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .hidden: return "Aus"
+        case .compact: return "Kompakt"
+        case .full: return "Voll"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .hidden:
+            return "Keine Startkarten in der Bibliothek."
+        case .compact:
+            return "Weiterlesen und kurze Regalzahlen."
+        case .full:
+            return "Weiterlesen, Regalzahlen und Cover-Reihen."
         }
     }
 }

@@ -62,6 +62,7 @@ struct LibraryView: View {
     // Note: Must be non-private to be accessible from the split extension files.
     @AppStorage(AppearanceStorageKey.libraryHeaderStyle) var libraryHeaderStyleRaw: String = LibraryHeaderStyleOption.standard.rawValue
     @AppStorage(AppearanceStorageKey.libraryHeaderDefaultExpanded) var libraryHeaderDefaultExpanded: Bool = false
+    @AppStorage(AppearanceStorageKey.libraryHomeMode) var libraryHomeModeRaw: String = LibraryHomeModeOption.compact.rawValue
     @AppStorage(AppearanceStorageKey.libraryRowVerticalInset) var libraryRowVerticalInset: Double = 8
     @AppStorage(AppearanceStorageKey.libraryLayoutMode) var libraryLayoutModeRaw: String = LibraryLayoutModeOption.list.rawValue
     @AppStorage(AppearanceStorageKey.libraryCoverSize) var libraryCoverSizeRaw: String = LibraryCoverSizeOption.standard.rawValue
@@ -155,6 +156,8 @@ struct LibraryView: View {
         let alphaSections: [AlphaSection] = displayState.alphaSections
         let alphaLetters: [String] = displayState.alphaLetters
         let showAlphaIndexHint: Bool = shouldShowAlphaIndexHint(displayedCount: displayed.count)
+        let homeSnapshot: LibraryHomeSnapshot = LibraryHomeSnapshotBuilder.makeSnapshot(source: booksIndex.source)
+        let showsHomeDashboard: Bool = shouldShowHomeDashboard(source: booksIndex.source)
 
         VStack(spacing: 0) {
             filterBar(displayedBooks: displayed, counts: counts, showAlphaIndexHint: showAlphaIndexHint)
@@ -168,16 +171,28 @@ struct LibraryView: View {
                     emptyState
                 } else {
                     if libraryLayoutMode == .grid {
-                        gridView(displayedBooks: displayed, presentationsByBookID: presentationsByBookID)
+                        gridView(displayedBooks: displayed, presentationsByBookID: presentationsByBookID) {
+                            if showsHomeDashboard {
+                                homeDashboard(snapshot: homeSnapshot, index: booksIndex)
+                            }
+                        }
                     } else {
                         if sortField == .title {
                             alphaIndexedList(
                                 sections: alphaSections,
                                 letters: alphaLetters,
                                 presentationsByBookID: presentationsByBookID
-                            )
+                            ) {
+                                if showsHomeDashboard {
+                                    homeDashboard(snapshot: homeSnapshot, index: booksIndex)
+                                }
+                            }
                         } else {
-                            plainList(displayedBooks: displayed, presentationsByBookID: presentationsByBookID)
+                            plainList(displayedBooks: displayed, presentationsByBookID: presentationsByBookID) {
+                                if showsHomeDashboard {
+                                    homeDashboard(snapshot: homeSnapshot, index: booksIndex)
+                                }
+                            }
                         }
                     }
                 }
@@ -347,6 +362,10 @@ struct LibraryView: View {
         LibraryLayoutModeOption(rawValue: libraryLayoutModeRaw) ?? .list
     }
 
+    var libraryHomeMode: LibraryHomeModeOption {
+        LibraryHomeModeOption(rawValue: libraryHomeModeRaw) ?? .compact
+    }
+
     var libraryCoverSizeOption: LibraryCoverSizeOption {
         LibraryCoverSizeOption(rawValue: libraryCoverSizeRaw) ?? .standard
     }
@@ -367,6 +386,46 @@ struct LibraryView: View {
             maxTags: libraryRowMaxTags,
             tagStyleRaw: libraryTagStyleRaw,
             rowContentSpacing: libraryRowContentSpacing
+        )
+    }
+
+    func shouldShowHomeDashboard(source: LibrarySourceSnapshot) -> Bool {
+        isHomeState
+        && !isSelectionMode
+        && !source.books.isEmpty
+        && libraryHeaderStyle != .hidden
+        && libraryHomeMode != .hidden
+    }
+
+    func resolvedHomeLanes(
+        snapshot: LibraryHomeSnapshot,
+        index: LibraryBooksIndex
+    ) -> [LibraryHomeResolvedLane] {
+        snapshot.lanes.compactMap { lane in
+            let books = index.books(matching: lane.bookIDs)
+            guard books.isEmpty == false else { return nil }
+
+            return LibraryHomeResolvedLane(
+                id: lane.id,
+                title: lane.title,
+                systemImage: lane.systemImage,
+                books: books,
+                presentationsByBookID: index.presentations(matching: lane.bookIDs)
+            )
+        }
+    }
+
+    func homeDashboard(
+        snapshot: LibraryHomeSnapshot,
+        index: LibraryBooksIndex
+    ) -> some View {
+        LibraryHomeDashboardView(
+            snapshot: snapshot,
+            mode: libraryHomeMode,
+            appearance: libraryRowAppearance,
+            continueReadingBook: snapshot.continueReadingBookID.flatMap { index.book(for: $0) },
+            continueReadingPresentation: snapshot.continueReadingBookID.flatMap { index.presentation(for: $0) },
+            lanes: resolvedHomeLanes(snapshot: snapshot, index: index)
         )
     }
 }

@@ -304,8 +304,8 @@ extension LibraryView {
                 .pickerStyle(.segmented)
             }
 
-            // Mini shelf (adds visual warmth without heavy UI)
-            if isHomeState && displayedBooks.count >= 6 {
+            // Legacy mini shelf remains available when the dedicated Smart Shelf is disabled.
+            if isHomeState && libraryHomeMode == .hidden && displayedBooks.count >= 6 {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(Array(displayedBooks.prefix(12).enumerated()), id: \.element.id) { _, b in
