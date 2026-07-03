@@ -19,6 +19,7 @@ struct LibraryRowAppearanceSettingsSection: View {
     @AppStorage(AppearanceStorageKey.libraryHeaderDefaultExpanded) private var headerDefaultExpanded: Bool = false
     @AppStorage(AppearanceStorageKey.libraryHomeMode) private var homeModeRaw: String = LibraryHomeModeOption.compact.rawValue
     @AppStorage(AppearanceStorageKey.libraryHomeShowsMaintenance) private var homeShowsMaintenance: Bool = true
+    @AppStorage(AppearanceStorageKey.libraryHomeShowsRoulette) private var homeShowsRoulette: Bool = true
 
     // Cover style
     @AppStorage(AppearanceStorageKey.libraryShowCovers) private var showCovers: Bool = true
@@ -132,6 +133,7 @@ struct LibraryRowAppearanceSettingsSection: View {
             LibraryHomeAppearanceSettingsSection(
                 homeMode: homeModeBinding,
                 showsMaintenance: $homeShowsMaintenance,
+                showsRoulette: $homeShowsRoulette,
                 resolvedHeaderStyle: resolvedHeaderStyle
             )
 
@@ -197,6 +199,7 @@ struct LibraryRowAppearanceSettingsSection: View {
         headerDefaultExpanded = false
         homeModeRaw = LibraryHomeModeOption.compact.rawValue
         homeShowsMaintenance = true
+        homeShowsRoulette = true
 
         showCovers = true
         coverSizeRaw = LibraryCoverSizeOption.standard.rawValue

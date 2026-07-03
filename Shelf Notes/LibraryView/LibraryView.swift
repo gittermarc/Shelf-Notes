@@ -32,6 +32,7 @@ struct LibraryView: View {
     @State var searchText: String = ""
     @State var selectedStatus: ReadingStatus? = nil
     @State var selectedTag: String? = nil
+    @State var selectedCollectionName: String? = nil
     @State var onlyWithNotes: Bool = false
     @State var selectedSmartFilter: LibrarySmartFilter? = nil
 
@@ -64,6 +65,7 @@ struct LibraryView: View {
     @AppStorage(AppearanceStorageKey.libraryHeaderDefaultExpanded) var libraryHeaderDefaultExpanded: Bool = false
     @AppStorage(AppearanceStorageKey.libraryHomeMode) var libraryHomeModeRaw: String = LibraryHomeModeOption.compact.rawValue
     @AppStorage(AppearanceStorageKey.libraryHomeShowsMaintenance) var libraryHomeShowsMaintenance: Bool = true
+    @AppStorage(AppearanceStorageKey.libraryHomeShowsRoulette) var libraryHomeShowsRoulette: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowVerticalInset) var libraryRowVerticalInset: Double = 8
     @AppStorage(AppearanceStorageKey.libraryLayoutMode) var libraryLayoutModeRaw: String = LibraryLayoutModeOption.list.rawValue
     @AppStorage(AppearanceStorageKey.libraryCoverSize) var libraryCoverSizeRaw: String = LibraryCoverSizeOption.standard.rawValue
@@ -106,6 +108,7 @@ struct LibraryView: View {
         displayStore.makeInput(
             selectedStatus: selectedStatus,
             selectedTag: selectedTag,
+            selectedCollectionName: selectedCollectionName,
             onlyWithNotes: onlyWithNotes,
             smartFilter: selectedSmartFilter,
             longInactiveCutoff: activeLongInactiveCutoff,
@@ -159,6 +162,8 @@ struct LibraryView: View {
         let alphaLetters: [String] = displayState.alphaLetters
         let showAlphaIndexHint: Bool = shouldShowAlphaIndexHint(displayedCount: displayed.count)
         let homeSnapshot: LibraryHomeSnapshot = LibraryHomeSnapshotBuilder.makeSnapshot(source: booksIndex.source)
+        let quickFilterSnapshot: LibraryQuickFilterSnapshot = LibraryQuickFilterBuilder.makeSnapshot(source: booksIndex.source)
+        let roulette: LibraryBookRoulette = LibraryBookRouletteBuilder.makeRoulette(source: booksIndex.source)
         let maintenanceSummary: LibraryShelfMaintenanceSummary = LibraryShelfMaintenanceBuilder.makeSummary(
             source: booksIndex.source,
             longInactiveCutoff: libraryMaintenanceLongInactiveCutoff
@@ -181,6 +186,8 @@ struct LibraryView: View {
                             if showsHomeDashboard {
                                 homeDashboard(
                                     snapshot: homeSnapshot,
+                                    quickFilterSnapshot: quickFilterSnapshot,
+                                    roulette: roulette,
                                     maintenanceSummary: maintenanceSummary,
                                     index: booksIndex
                                 )
@@ -196,6 +203,8 @@ struct LibraryView: View {
                                 if showsHomeDashboard {
                                     homeDashboard(
                                         snapshot: homeSnapshot,
+                                        quickFilterSnapshot: quickFilterSnapshot,
+                                        roulette: roulette,
                                         maintenanceSummary: maintenanceSummary,
                                         index: booksIndex
                                     )
@@ -206,6 +215,8 @@ struct LibraryView: View {
                                 if showsHomeDashboard {
                                     homeDashboard(
                                         snapshot: homeSnapshot,
+                                        quickFilterSnapshot: quickFilterSnapshot,
+                                        roulette: roulette,
                                         maintenanceSummary: maintenanceSummary,
                                         index: booksIndex
                                     )
@@ -445,6 +456,8 @@ struct LibraryView: View {
 
     func homeDashboard(
         snapshot: LibraryHomeSnapshot,
+        quickFilterSnapshot: LibraryQuickFilterSnapshot,
+        roulette: LibraryBookRoulette,
         maintenanceSummary: LibraryShelfMaintenanceSummary,
         index: LibraryBooksIndex
     ) -> some View {
@@ -455,13 +468,41 @@ struct LibraryView: View {
             continueReadingBook: snapshot.continueReadingBookID.flatMap { index.book(for: $0) },
             continueReadingPresentation: snapshot.continueReadingBookID.flatMap { index.presentation(for: $0) },
             lanes: resolvedHomeLanes(snapshot: snapshot, index: index),
+            quickFilterSnapshot: quickFilterSnapshot,
+            roulette: roulette,
+            rouletteBooksByID: booksByID(matching: roulette.candidateIDs, index: index),
             maintenanceSummary: maintenanceSummary,
             showsMaintenance: libraryHomeShowsMaintenance,
+            showsRoulette: libraryHomeShowsRoulette,
+            onSelectTag: { tag in
+                withAnimation {
+                    selectedTag = tag
+                }
+            },
+            onSelectCollection: { collectionName in
+                withAnimation {
+                    selectedCollectionName = collectionName
+                }
+            },
             onSelectSmartFilter: { smartFilter in
                 withAnimation {
                     selectedSmartFilter = smartFilter
                 }
             }
         )
+    }
+
+    func booksByID(
+        matching ids: [UUID],
+        index: LibraryBooksIndex
+    ) -> [UUID: Book] {
+        var result: [UUID: Book] = [:]
+        result.reserveCapacity(ids.count)
+
+        for book in index.books(matching: ids) {
+            result[book.id] = book
+        }
+
+        return result
     }
 }

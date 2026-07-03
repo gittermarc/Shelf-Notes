@@ -93,6 +93,44 @@ struct LibraryDerivedStateBuilderTests {
         #expect(state.alphaSections.isEmpty)
     }
 
+    @Test func filtersByCollectionName() {
+        let matchingID = UUID()
+        let books = [
+            LibraryView.LibrarySourceSnapshot.BookSnapshot(
+                id: matchingID,
+                title: "Vacation Crime",
+                createdAt: date(2026, 3, 1),
+                collectionNames: ["Urlaub", "Backlog"]
+            ),
+            LibraryView.LibrarySourceSnapshot.BookSnapshot(
+                title: "Home Reading",
+                createdAt: date(2026, 3, 2),
+                collectionNames: ["Zuhause"]
+            ),
+            LibraryView.LibrarySourceSnapshot.BookSnapshot(
+                title: "No List",
+                createdAt: date(2026, 3, 3),
+                collectionNames: []
+            )
+        ]
+
+        let state = LibraryView.LibraryDerivedStateBuilder.makeDerivedState(
+            source: makeSource(books),
+            input: LibraryView.LibraryDerivedStateBuilder.makeInput(
+                searchText: "",
+                selectedStatus: nil,
+                selectedTag: nil,
+                selectedCollectionName: " urlaub ",
+                onlyWithNotes: false,
+                sortField: .createdAt,
+                sortAscending: false,
+                buildsAlphaSections: false
+            )
+        )
+
+        #expect(state.displayedBookIDs == [matchingID])
+    }
+
     @Test func sortsByRatingAndUsesReadDateThenIDAsTieBreaker() {
         let firstID = UUID()
         let secondID = UUID()

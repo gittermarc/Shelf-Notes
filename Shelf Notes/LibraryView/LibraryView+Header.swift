@@ -50,7 +50,12 @@ extension LibraryView {
 
     var isHomeState: Bool {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty && selectedStatus == nil && selectedTag == nil && selectedSmartFilter == nil && !onlyWithNotes
+        return trimmed.isEmpty &&
+        selectedStatus == nil &&
+        selectedTag == nil &&
+        selectedCollectionName == nil &&
+        selectedSmartFilter == nil &&
+        !onlyWithNotes
     }
 
     func shouldShowQuickSortSegment(counts: LibraryStatusCounts) -> Bool {
@@ -65,6 +70,7 @@ extension LibraryView {
         if books.isEmpty { return "Dein ruhiges, soziales-freies Lesetagebuch." }
         if !trimmed.isEmpty { return "Suche: „\(trimmed)“" }
         if let selectedSmartFilter { return "Filter: \(selectedSmartFilter.title)" }
+        if let selectedCollectionName { return "Filter: Liste \(selectedCollectionName)" }
         if let selectedTag { return "Filter: #\(selectedTag)" }
         if let selectedStatus { return "Filter: \(selectedStatus.displayName)" }
         if onlyWithNotes { return "Filter: nur mit Notizen" }
@@ -339,6 +345,12 @@ extension LibraryView {
                     }
                 }
 
+                if let selectedCollectionName {
+                    TagChip(text: selectedCollectionName, systemImage: "rectangle.stack.fill") {
+                        withAnimation { self.selectedCollectionName = nil }
+                    }
+                }
+
                 if onlyWithNotes {
                     TagChip(text: "mit Notizen", systemImage: "note.text") {
                         withAnimation { self.onlyWithNotes = false }
@@ -352,7 +364,7 @@ extension LibraryView {
                 }
 
                 // When collapsed and there are no active filters, keep it tiny.
-                if (selectedStatus == nil && selectedTag == nil && selectedSmartFilter == nil && !onlyWithNotes) {
+                if selectedStatus == nil && selectedTag == nil && selectedCollectionName == nil && selectedSmartFilter == nil && !onlyWithNotes {
                     Text(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Filter: keine (noch 😄)" : "Filter aktiv")
                         .foregroundStyle(.secondary)
                         .font(.caption)
@@ -362,10 +374,11 @@ extension LibraryView {
                         .clipShape(Capsule())
                 }
 
-                if selectedStatus != nil || selectedTag != nil || selectedSmartFilter != nil || onlyWithNotes || !searchText.isEmpty {
+                if selectedStatus != nil || selectedTag != nil || selectedCollectionName != nil || selectedSmartFilter != nil || onlyWithNotes || !searchText.isEmpty {
                     Button("Zurücksetzen") {
                         withAnimation {
                             selectedTag = nil
+                            selectedCollectionName = nil
                             selectedStatus = nil
                             selectedSmartFilter = nil
                             onlyWithNotes = false

@@ -15,6 +15,7 @@ extension LibraryView {
             searchText: String,
             selectedStatus: ReadingStatus?,
             selectedTag: String?,
+            selectedCollectionName: String? = nil,
             onlyWithNotes: Bool,
             smartFilter: LibrarySmartFilter? = nil,
             longInactiveCutoff: Date? = nil,
@@ -23,13 +24,15 @@ extension LibraryView {
             buildsAlphaSections: Bool
         ) -> LibraryDerivedInput {
             let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-            let normalizedSelectedTag = selectedTag?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedSelectedTag = normalizedFilterValue(selectedTag)
+            let normalizedSelectedCollectionName = normalizedFilterValue(selectedCollectionName)
 
             return LibraryDerivedInput(
                 searchText: trimmedSearch,
                 normalizedSearchText: LibrarySourceSnapshot.normalizedSearchValue(trimmedSearch),
                 selectedStatusRawValue: selectedStatus?.rawValue,
                 selectedTag: normalizedSelectedTag,
+                selectedCollectionName: normalizedSelectedCollectionName,
                 onlyWithNotes: onlyWithNotes,
                 smartFilter: smartFilter,
                 longInactiveCutoff: longInactiveCutoff,
@@ -48,6 +51,7 @@ extension LibraryView {
             searchText: String,
             selectedStatus: ReadingStatus?,
             selectedTag: String?,
+            selectedCollectionName: String? = nil,
             onlyWithNotes: Bool,
             smartFilter: LibrarySmartFilter? = nil,
             longInactiveCutoff: Date? = nil,
@@ -60,6 +64,7 @@ extension LibraryView {
                 searchText: searchText,
                 selectedStatus: selectedStatus,
                 selectedTag: selectedTag,
+                selectedCollectionName: selectedCollectionName,
                 onlyWithNotes: onlyWithNotes,
                 smartFilter: smartFilter,
                 longInactiveCutoff: longInactiveCutoff,
@@ -115,7 +120,12 @@ extension LibraryView {
                 }
 
                 if let selectedTag = input.selectedTag,
-                   !book.tags.contains(where: { $0.caseInsensitiveCompare(selectedTag) == .orderedSame }) {
+                   matchesTag(book, normalizedSelectedTag: selectedTag) == false {
+                    return false
+                }
+
+                if let selectedCollectionName = input.selectedCollectionName,
+                   matchesCollection(book, normalizedSelectedCollectionName: selectedCollectionName) == false {
                     return false
                 }
 
@@ -295,6 +305,30 @@ extension LibraryView {
                 return upper
             }
             return "#"
+        }
+
+        private static func matchesTag(
+            _ book: LibrarySourceSnapshot.BookSnapshot,
+            normalizedSelectedTag: String
+        ) -> Bool {
+            book.tags.contains { tag in
+                normalizedFilterValue(normalizeTagString(tag)) == normalizedSelectedTag
+            }
+        }
+
+        private static func matchesCollection(
+            _ book: LibrarySourceSnapshot.BookSnapshot,
+            normalizedSelectedCollectionName: String
+        ) -> Bool {
+            book.collectionNames.contains { collectionName in
+                normalizedFilterValue(collectionName) == normalizedSelectedCollectionName
+            }
+        }
+
+        private static func normalizedFilterValue(_ value: String?) -> String? {
+            guard let value else { return nil }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed.lowercased()
         }
     }
 }

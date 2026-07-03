@@ -22,8 +22,14 @@ struct LibraryHomeDashboardView: View {
     let continueReadingBook: Book?
     let continueReadingPresentation: LibraryBookPresentation?
     let lanes: [LibraryHomeResolvedLane]
+    let quickFilterSnapshot: LibraryView.LibraryQuickFilterSnapshot
+    let roulette: LibraryView.LibraryBookRoulette
+    let rouletteBooksByID: [UUID: Book]
     let maintenanceSummary: LibraryView.LibraryShelfMaintenanceSummary
     let showsMaintenance: Bool
+    let showsRoulette: Bool
+    let onSelectTag: (String) -> Void
+    let onSelectCollection: (String) -> Void
     let onSelectSmartFilter: (LibraryView.LibrarySmartFilter) -> Void
 
     private var showsLanes: Bool {
@@ -32,6 +38,14 @@ struct LibraryHomeDashboardView: View {
 
     private var showsMaintenanceCard: Bool {
         showsMaintenance && maintenanceSummary.isEmpty == false
+    }
+
+    private var showsRouletteCard: Bool {
+        showsRoulette && roulette.isEmpty == false
+    }
+
+    private var showsQuickFilters: Bool {
+        quickFilterSnapshot.isEmpty == false
     }
 
     private var columns: [GridItem] {
@@ -49,6 +63,22 @@ struct LibraryHomeDashboardView: View {
             }
 
             quickStats
+
+            if showsQuickFilters {
+                LibraryQuickFilterChipsView(
+                    snapshot: quickFilterSnapshot,
+                    onSelectTag: onSelectTag,
+                    onSelectCollection: onSelectCollection
+                )
+            }
+
+            if showsRouletteCard {
+                LibraryBookRouletteCard(
+                    roulette: roulette,
+                    booksByID: rouletteBooksByID,
+                    appearance: appearance
+                )
+            }
 
             if showsMaintenanceCard {
                 LibraryShelfMaintenanceCard(

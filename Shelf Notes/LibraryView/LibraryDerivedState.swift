@@ -402,6 +402,7 @@ extension LibraryView {
         let normalizedSearchText: String
         let selectedStatusRawValue: String?
         let selectedTag: String?
+        let selectedCollectionName: String?
         let onlyWithNotes: Bool
         let smartFilter: LibrarySmartFilter?
         let longInactiveCutoff: Date?
@@ -430,6 +431,7 @@ extension LibraryView {
                     normalizedSearchText: "",
                     selectedStatusRawValue: nil,
                     selectedTag: nil,
+                    selectedCollectionName: nil,
                     onlyWithNotes: false,
                     smartFilter: nil,
                     longInactiveCutoff: nil,

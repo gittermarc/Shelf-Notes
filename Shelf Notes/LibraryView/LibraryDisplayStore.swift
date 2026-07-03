@@ -21,6 +21,7 @@ extension LibraryView {
         func makeInput(
             selectedStatus: ReadingStatus?,
             selectedTag: String?,
+            selectedCollectionName: String? = nil,
             onlyWithNotes: Bool,
             smartFilter: LibrarySmartFilter? = nil,
             longInactiveCutoff: Date? = nil,
@@ -32,6 +33,7 @@ extension LibraryView {
                 searchText: resolvedSearchText,
                 selectedStatus: selectedStatus,
                 selectedTag: selectedTag,
+                selectedCollectionName: selectedCollectionName,
                 onlyWithNotes: onlyWithNotes,
                 smartFilter: smartFilter,
                 longInactiveCutoff: longInactiveCutoff,

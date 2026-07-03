@@ -10,6 +10,7 @@ import SwiftUI
 struct LibraryHomeAppearanceSettingsSection: View {
     let homeMode: Binding<LibraryHomeModeOption>
     let showsMaintenance: Binding<Bool>
+    let showsRoulette: Binding<Bool>
     let resolvedHeaderStyle: LibraryHeaderStyleOption
 
     var body: some View {
@@ -29,8 +30,19 @@ struct LibraryHomeAppearanceSettingsSection: View {
         }
         .disabled(homeMode.wrappedValue == .hidden)
 
+        Toggle(isOn: showsRoulette) {
+            Label("Buchroulette", systemImage: "die.face.5")
+        }
+        .disabled(homeMode.wrappedValue == .hidden)
+
         if showsMaintenance.wrappedValue, homeMode.wrappedValue != .hidden {
             Text("Zeigt kurze Hinweise für Bücher ohne Cover, Tags, Seitenzahl oder Bewertung.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
+        if showsRoulette.wrappedValue, homeMode.wrappedValue != .hidden {
+            Text("Zeigt im Smart Shelf eine kleine Zufallsauswahl aus deinem Stapel ungelesener Bücher.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

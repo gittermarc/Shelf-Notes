@@ -88,10 +88,11 @@ extension LibraryView {
 
                         Toggle("Nur mit Notizen", isOn: $onlyWithNotes)
 
-                        if selectedTag != nil || selectedStatus != nil || selectedSmartFilter != nil || onlyWithNotes || !searchText.isEmpty {
+                        if selectedTag != nil || selectedCollectionName != nil || selectedStatus != nil || selectedSmartFilter != nil || onlyWithNotes || !searchText.isEmpty {
                             Button("Filter zurücksetzen") {
                                 withAnimation {
                                     selectedTag = nil
+                                    selectedCollectionName = nil
                                     selectedStatus = nil
                                     selectedSmartFilter = nil
                                     onlyWithNotes = false
