@@ -97,6 +97,12 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, newPhase in
             handleScenePhaseChange(newPhase)
         }
+        .onReceive(NotificationCenter.default.publisher(for: LibraryWidgetSnapshotRefreshNotification.name)) { _ in
+            LibraryWidgetSnapshotSyncService.shared.scheduleRefresh(
+                modelContext: modelContext,
+                reason: .modelContextSave
+            )
+        }
         .onOpenURL { url in
             handleOpenURL(url)
         }
@@ -183,6 +189,10 @@ struct RootView: View {
 
         if state.shouldRefreshLibraryCaches {
             refreshBookCountAndTagsIndex(shouldOfferCSVImport: false)
+            LibraryWidgetSnapshotSyncService.shared.scheduleRefresh(
+                modelContext: modelContext,
+                reason: .appBecameActive
+            )
         }
 
         if state.shouldCancelCoverBackfill {
@@ -217,6 +227,11 @@ struct RootView: View {
     private func runStartupMaintenance() async {
         await AppStartupMaintenanceService.migrateReadingStatusIfNeeded(modelContext: modelContext)
         refreshBookCountAndTagsIndex(shouldOfferCSVImport: true)
+        LibraryWidgetSnapshotSyncService.shared.scheduleRefresh(
+            modelContext: modelContext,
+            reason: .startup,
+            delayNanoseconds: 0
+        )
         scheduleCoverBackfillIfNeeded()
     }
 
