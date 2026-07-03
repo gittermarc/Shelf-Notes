@@ -13,6 +13,7 @@ extension LibraryView {
     // MARK: Quick segment (optional)
 
     enum QuickSortMode: String, CaseIterable, Identifiable {
+        case activity = "Aktivität"
         case added = "Zuletzt hinzugefügt"
         case read = "Zuletzt gelesen"
         var id: String { rawValue }
@@ -20,10 +21,26 @@ extension LibraryView {
 
     var quickSortModeBinding: Binding<QuickSortMode> {
         Binding(
-            get: { sortField == .readDate ? .read : .added },
+            get: {
+                switch sortField {
+                case .activity:
+                    return .activity
+                case .readDate:
+                    return .read
+                default:
+                    return .added
+                }
+            },
             set: { mode in
                 withAnimation {
-                    sortField = (mode == .read) ? .readDate : .createdAt
+                    switch mode {
+                    case .activity:
+                        sortField = .activity
+                    case .read:
+                        sortField = .readDate
+                    case .added:
+                        sortField = .createdAt
+                    }
                     // sensible default: newest first
                     sortAscending = false
                 }
@@ -33,7 +50,7 @@ extension LibraryView {
 
     var isHomeState: Bool {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty && selectedStatus == nil && selectedTag == nil && !onlyWithNotes
+        return trimmed.isEmpty && selectedStatus == nil && selectedTag == nil && selectedSmartFilter == nil && !onlyWithNotes
     }
 
     func shouldShowQuickSortSegment(counts: LibraryStatusCounts) -> Bool {
@@ -47,6 +64,7 @@ extension LibraryView {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if books.isEmpty { return "Dein ruhiges, soziales-freies Lesetagebuch." }
         if !trimmed.isEmpty { return "Suche: „\(trimmed)“" }
+        if let selectedSmartFilter { return "Filter: \(selectedSmartFilter.title)" }
         if let selectedTag { return "Filter: #\(selectedTag)" }
         if let selectedStatus { return "Filter: \(selectedStatus.displayName)" }
         if onlyWithNotes { return "Filter: nur mit Notizen" }
@@ -127,8 +145,9 @@ extension LibraryView {
 
             if showQuickSort {
                 Picker("", selection: quickSortModeBinding) {
-                    Text(QuickSortMode.added.rawValue).tag(QuickSortMode.added)
-                    Text(QuickSortMode.read.rawValue).tag(QuickSortMode.read)
+                    ForEach(QuickSortMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
                 }
                 .pickerStyle(.segmented)
             }
@@ -214,8 +233,9 @@ extension LibraryView {
 
             if showQuickSortSegment {
                 Picker("", selection: quickSortModeBinding) {
-                    Text(QuickSortMode.added.rawValue).tag(QuickSortMode.added)
-                    Text(QuickSortMode.read.rawValue).tag(QuickSortMode.read)
+                    ForEach(QuickSortMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
                 }
                 .pickerStyle(.segmented)
             }
@@ -277,8 +297,9 @@ extension LibraryView {
 
             if showQuickSortSegment {
                 Picker("", selection: quickSortModeBinding) {
-                    Text(QuickSortMode.added.rawValue).tag(QuickSortMode.added)
-                    Text(QuickSortMode.read.rawValue).tag(QuickSortMode.read)
+                    ForEach(QuickSortMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
                 }
                 .pickerStyle(.segmented)
             }
@@ -324,8 +345,14 @@ extension LibraryView {
                     }
                 }
 
+                if let selectedSmartFilter {
+                    TagChip(text: selectedSmartFilter.title, systemImage: selectedSmartFilter.systemImage) {
+                        withAnimation { self.selectedSmartFilter = nil }
+                    }
+                }
+
                 // When collapsed and there are no active filters, keep it tiny.
-                if (selectedStatus == nil && selectedTag == nil && !onlyWithNotes) {
+                if (selectedStatus == nil && selectedTag == nil && selectedSmartFilter == nil && !onlyWithNotes) {
                     Text(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Filter: keine (noch 😄)" : "Filter aktiv")
                         .foregroundStyle(.secondary)
                         .font(.caption)
@@ -335,11 +362,12 @@ extension LibraryView {
                         .clipShape(Capsule())
                 }
 
-                if selectedStatus != nil || selectedTag != nil || onlyWithNotes || !searchText.isEmpty {
+                if selectedStatus != nil || selectedTag != nil || selectedSmartFilter != nil || onlyWithNotes || !searchText.isEmpty {
                     Button("Zurücksetzen") {
                         withAnimation {
                             selectedTag = nil
                             selectedStatus = nil
+                            selectedSmartFilter = nil
                             onlyWithNotes = false
                             searchText = ""
                         }

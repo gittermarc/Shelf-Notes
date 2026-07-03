@@ -88,11 +88,12 @@ extension LibraryView {
 
                         Toggle("Nur mit Notizen", isOn: $onlyWithNotes)
 
-                        if selectedTag != nil || selectedStatus != nil || onlyWithNotes || !searchText.isEmpty {
+                        if selectedTag != nil || selectedStatus != nil || selectedSmartFilter != nil || onlyWithNotes || !searchText.isEmpty {
                             Button("Filter zurücksetzen") {
                                 withAnimation {
                                     selectedTag = nil
                                     selectedStatus = nil
+                                    selectedSmartFilter = nil
                                     onlyWithNotes = false
                                     searchText = ""
                                 }
@@ -163,7 +164,7 @@ extension LibraryView {
 
     var sortAscendingLabel: String {
         switch sortField {
-        case .createdAt, .readDate:
+        case .activity, .createdAt, .readDate:
             return sortAscending ? "Alt → Neu" : "Neu → Alt"
         case .rating:
             return sortAscending ? "Niedrig → Hoch" : "Hoch → Niedrig"

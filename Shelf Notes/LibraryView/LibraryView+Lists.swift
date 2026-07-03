@@ -74,11 +74,12 @@ extension LibraryView {
                 }
                 .buttonStyle(.borderedProminent)
                 .padding(.top, 4)
-            } else if selectedStatus != nil || selectedTag != nil || onlyWithNotes || !searchText.isEmpty {
+            } else if selectedStatus != nil || selectedTag != nil || selectedSmartFilter != nil || onlyWithNotes || !searchText.isEmpty {
                 Button {
                     withAnimation {
                         selectedTag = nil
                         selectedStatus = nil
+                        selectedSmartFilter = nil
                         onlyWithNotes = false
                         searchText = ""
                     }

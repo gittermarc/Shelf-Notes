@@ -16,6 +16,8 @@ extension LibraryView {
             selectedStatus: ReadingStatus?,
             selectedTag: String?,
             onlyWithNotes: Bool,
+            smartFilter: LibrarySmartFilter? = nil,
+            longInactiveCutoff: Date? = nil,
             sortField: SortField,
             sortAscending: Bool,
             buildsAlphaSections: Bool
@@ -29,6 +31,8 @@ extension LibraryView {
                 selectedStatusRawValue: selectedStatus?.rawValue,
                 selectedTag: normalizedSelectedTag,
                 onlyWithNotes: onlyWithNotes,
+                smartFilter: smartFilter,
+                longInactiveCutoff: longInactiveCutoff,
                 sortField: sortField,
                 sortAscending: sortAscending,
                 buildsAlphaSections: buildsAlphaSections
@@ -39,12 +43,14 @@ extension LibraryView {
             LibraryDerivedInputToken(sourceSignature: source.signature, input: input)
         }
 
-        static func makeInputToken(
+        @MainActor static func makeInputToken(
             books: [Book],
             searchText: String,
             selectedStatus: ReadingStatus?,
             selectedTag: String?,
             onlyWithNotes: Bool,
+            smartFilter: LibrarySmartFilter? = nil,
+            longInactiveCutoff: Date? = nil,
             sortField: SortField,
             sortAscending: Bool,
             buildsAlphaSections: Bool
@@ -55,6 +61,8 @@ extension LibraryView {
                 selectedStatus: selectedStatus,
                 selectedTag: selectedTag,
                 onlyWithNotes: onlyWithNotes,
+                smartFilter: smartFilter,
+                longInactiveCutoff: longInactiveCutoff,
                 sortField: sortField,
                 sortAscending: sortAscending,
                 buildsAlphaSections: buildsAlphaSections
@@ -115,6 +123,11 @@ extension LibraryView {
                     return false
                 }
 
+                if let smartFilter = input.smartFilter,
+                   smartFilter.matches(book, longInactiveCutoff: input.longInactiveCutoff) == false {
+                    return false
+                }
+
                 if hasSearch {
                     return book.searchTokens.contains { token in
                         token.contains(input.normalizedSearchText)
@@ -130,6 +143,17 @@ extension LibraryView {
             input: LibraryDerivedInput
         ) -> [LibrarySourceSnapshot.BookSnapshot] {
             switch input.sortField {
+            case .activity:
+                return books.sorted { a, b in
+                    let da = activityKeyDate(a)
+                    let db = activityKeyDate(b)
+
+                    if da != db {
+                        return input.sortAscending ? (da < db) : (da > db)
+                    }
+                    return a.id.uuidString < b.id.uuidString
+                }
+
             case .createdAt:
                 return books.sorted { a, b in
                     if a.createdAt != b.createdAt {
@@ -248,6 +272,10 @@ extension LibraryView {
         static func readKeyDate(_ book: LibrarySourceSnapshot.BookSnapshot) -> Date? {
             guard book.status == .finished else { return nil }
             return book.readTo ?? book.readFrom
+        }
+
+        static func activityKeyDate(_ book: LibrarySourceSnapshot.BookSnapshot) -> Date {
+            book.lastSessionAt ?? book.readTo ?? book.readFrom ?? book.createdAt
         }
 
         static func alphaKey(for title: String) -> String {

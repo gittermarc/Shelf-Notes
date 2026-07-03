@@ -33,6 +33,7 @@ struct LibraryView: View {
     @State var selectedStatus: ReadingStatus? = nil
     @State var selectedTag: String? = nil
     @State var onlyWithNotes: Bool = false
+    @State var selectedSmartFilter: LibrarySmartFilter? = nil
 
     // Multi-select (bulk actions)
     // Note: Must be non-private to be accessible from the split extension files.
@@ -103,6 +104,7 @@ struct LibraryView: View {
             selectedStatus: selectedStatus,
             selectedTag: selectedTag,
             onlyWithNotes: onlyWithNotes,
+            smartFilter: selectedSmartFilter,
             sortField: sortField,
             sortAscending: sortAscending,
             buildsAlphaSections: shouldBuildAlphaSections

@@ -22,6 +22,8 @@ extension LibraryView {
             selectedStatus: ReadingStatus?,
             selectedTag: String?,
             onlyWithNotes: Bool,
+            smartFilter: LibrarySmartFilter? = nil,
+            longInactiveCutoff: Date? = nil,
             sortField: SortField,
             sortAscending: Bool,
             buildsAlphaSections: Bool
@@ -31,6 +33,8 @@ extension LibraryView {
                 selectedStatus: selectedStatus,
                 selectedTag: selectedTag,
                 onlyWithNotes: onlyWithNotes,
+                smartFilter: smartFilter,
+                longInactiveCutoff: longInactiveCutoff,
                 sortField: sortField,
                 sortAscending: sortAscending,
                 buildsAlphaSections: buildsAlphaSections

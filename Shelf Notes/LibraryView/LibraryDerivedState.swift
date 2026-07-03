@@ -53,10 +53,31 @@ extension LibraryView {
             let isbn13: String?
             let readFrom: Date?
             let readTo: Date?
+            let pageCount: Int?
+            let pagesReadTotal: Int
+            let readingProgressFraction: Double?
+            let lastSessionAt: Date?
+            let hasCover: Bool
+            let coverRevision: Int
+            let hasUserRating: Bool
             let userRatingAverage1: Double?
+            let isRereading: Bool
+            let completedReadingAttemptCount: Int
+            let currentReadingAttemptDisplayName: String?
+            let collectionNames: [String]
             let searchTokens: [String]
 
             @MainActor init(book: Book) {
+                let allSessions = book.readingSessionsSafe
+                let progressSessions = ReadingAttemptSessionCoordinator.progressSessions(
+                    for: book,
+                    allSessions: allSessions
+                )
+                let pagesReadTotal = ReadingSessionLogging.pagesReadTotal(in: progressSessions)
+                let pageCount = LibrarySourceSnapshot.normalizedPositiveInt(book.pageCount)
+                let coverRevision = LibrarySourceSnapshot.coverRevision(for: book)
+                let ratingAverage = LibrarySourceSnapshot.normalizedUserRatingAverage1(for: book)
+
                 id = book.id
                 title = book.title
                 author = book.author
@@ -67,7 +88,22 @@ extension LibraryView {
                 isbn13 = book.isbn13
                 readFrom = book.readFrom
                 readTo = book.readTo
-                userRatingAverage1 = LibrarySourceSnapshot.normalizedUserRatingAverage1(for: book)
+                self.pageCount = pageCount
+                self.pagesReadTotal = pagesReadTotal
+                readingProgressFraction = ReadingSessionLogging.progressFraction(
+                    status: book.status,
+                    totalPages: pageCount,
+                    sessions: progressSessions
+                )
+                lastSessionAt = LibrarySourceSnapshot.lastSessionDate(in: allSessions)
+                hasCover = coverRevision > 0
+                self.coverRevision = coverRevision
+                hasUserRating = ratingAverage != nil
+                userRatingAverage1 = ratingAverage
+                isRereading = book.isRereading
+                completedReadingAttemptCount = book.completedReadingAttemptCount
+                currentReadingAttemptDisplayName = book.currentReadingAttemptDisplayName
+                collectionNames = LibrarySourceSnapshot.normalizedCollectionNames(from: book.collectionsSafe)
                 searchTokens = LibrarySourceSnapshot.makeSearchTokens(
                     title: book.title,
                     author: book.author,
@@ -87,7 +123,18 @@ extension LibraryView {
                 isbn13: String? = nil,
                 readFrom: Date? = nil,
                 readTo: Date? = nil,
+                pageCount: Int? = nil,
+                pagesReadTotal: Int = 0,
+                readingProgressFraction: Double? = nil,
+                lastSessionAt: Date? = nil,
+                hasCover: Bool = false,
+                coverRevision: Int = 0,
+                hasUserRating: Bool? = nil,
                 userRatingAverage1: Double? = nil,
+                isRereading: Bool = false,
+                completedReadingAttemptCount: Int = 0,
+                currentReadingAttemptDisplayName: String? = nil,
+                collectionNames: [String] = [],
                 searchTokens: [String]? = nil
             ) {
                 self.id = id
@@ -100,7 +147,21 @@ extension LibraryView {
                 self.isbn13 = isbn13
                 self.readFrom = readFrom
                 self.readTo = readTo
+                self.pageCount = LibrarySourceSnapshot.normalizedPositiveInt(pageCount)
+                self.pagesReadTotal = max(0, pagesReadTotal)
+                self.readingProgressFraction = LibrarySourceSnapshot.normalizedProgressFraction(readingProgressFraction)
+                self.lastSessionAt = lastSessionAt
+                self.hasCover = hasCover || coverRevision > 0
+                self.coverRevision = max(0, coverRevision)
+                self.hasUserRating = hasUserRating ?? (userRatingAverage1 != nil)
                 self.userRatingAverage1 = userRatingAverage1
+                self.isRereading = isRereading
+                self.completedReadingAttemptCount = max(0, completedReadingAttemptCount)
+                self.currentReadingAttemptDisplayName = currentReadingAttemptDisplayName
+                self.collectionNames = collectionNames
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                    .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
                 if let searchTokens {
                     self.searchTokens = LibrarySourceSnapshot.normalizedSearchTokens(searchTokens)
                 } else {
@@ -133,37 +194,9 @@ extension LibraryView {
 
         static let empty = LibrarySourceSnapshot(signature: 0, books: [])
 
-        static func taskSignature(books: [Book]) -> Int {
-            var xorAggregate = 0
-            var sumAggregate = 0
-
-            for book in books {
-                var hasher = Hasher()
-                hasher.combine(book.id)
-                hasher.combine(book.title)
-                hasher.combine(book.author)
-                hasher.combine(dayStamp(book.createdAt))
-                hasher.combine(book.statusRawValue)
-                hasher.combine(book.tags.count)
-                for tag in book.tags {
-                    hasher.combine(tag.lowercased())
-                }
-                hasher.combine(book.notes.contains(where: { !$0.isWhitespace }))
-                hasher.combine(book.isbn13)
-                hasher.combine(dayStamp(book.readFrom))
-                hasher.combine(dayStamp(book.readTo))
-                hasher.combine(ratingBucket(normalizedUserRatingAverage1(for: book)))
-
-                let bookHash = hasher.finalize()
-                xorAggregate ^= bookHash
-                sumAggregate &+= bookHash
-            }
-
-            var signatureHasher = Hasher()
-            signatureHasher.combine(books.count)
-            signatureHasher.combine(xorAggregate)
-            signatureHasher.combine(sumAggregate)
-            return signatureHasher.finalize()
+        @MainActor static func taskSignature(books: [Book]) -> Int {
+            let snapshots = books.map(BookSnapshot.init(book:))
+            return computeSignature(snapshot: snapshots)
         }
 
         static func computeSignature(snapshot: [BookSnapshot]) -> Int {
@@ -185,7 +218,20 @@ extension LibraryView {
                 hasher.combine(book.isbn13)
                 hasher.combine(dayStamp(book.readFrom))
                 hasher.combine(dayStamp(book.readTo))
+                hasher.combine(book.pageCount)
+                hasher.combine(book.pagesReadTotal)
+                hasher.combine(progressBucket(book.readingProgressFraction))
+                hasher.combine(timestampStamp(book.lastSessionAt))
+                hasher.combine(book.hasCover)
+                hasher.combine(book.coverRevision)
+                hasher.combine(book.hasUserRating)
                 hasher.combine(ratingBucket(book.userRatingAverage1))
+                hasher.combine(book.isRereading)
+                hasher.combine(book.completedReadingAttemptCount)
+                hasher.combine(book.currentReadingAttemptDisplayName)
+                for collectionName in book.collectionNames {
+                    hasher.combine(collectionName.lowercased())
+                }
 
                 let bookHash = hasher.finalize()
                 xorAggregate ^= bookHash
@@ -208,9 +254,89 @@ extension LibraryView {
             return dayStamp(date)
         }
 
+        private static func timestampStamp(_ date: Date?) -> Int {
+            guard let date else { return -1 }
+            return Int(date.timeIntervalSince1970.rounded())
+        }
+
         private static func ratingBucket(_ value: Double?) -> Int {
             guard let value else { return -1 }
             return Int((value * 10).rounded())
+        }
+
+        private static func progressBucket(_ value: Double?) -> Int {
+            guard let value else { return -1 }
+            return Int((value * 1_000).rounded())
+        }
+
+        static func normalizedPositiveInt(_ rawValue: Int?) -> Int? {
+            guard let rawValue, rawValue > 0 else { return nil }
+            return rawValue
+        }
+
+        static func normalizedProgressFraction(_ rawValue: Double?) -> Double? {
+            guard let rawValue else { return nil }
+            return min(1.0, max(0.0, rawValue))
+        }
+
+        static func lastSessionDate(in sessions: [ReadingSession]) -> Date? {
+            sessions.map(\.startedAt).max()
+        }
+
+        static func normalizedCollectionNames(from collections: [BookCollection]) -> [String] {
+            collections
+                .map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        }
+
+        static func coverRevision(for book: Book) -> Int {
+            var hasher = Hasher()
+            var hasAnyCover = false
+
+            if let data = book.userCoverData, data.isEmpty == false {
+                hasAnyCover = true
+                hasher.combine("userCoverData")
+                hasher.combine(data.count)
+                hasher.combine(data)
+            }
+
+            if let fileName = normalizedNonEmptyString(book.userCoverFileName) {
+                hasAnyCover = true
+                hasher.combine("userCoverFileName")
+                hasher.combine(fileName)
+            }
+
+            if let thumbnailURL = normalizedNonEmptyString(book.thumbnailURL) {
+                hasAnyCover = true
+                hasher.combine("thumbnailURL")
+                hasher.combine(thumbnailURL)
+            }
+
+            let candidates = book.coverURLCandidates
+                .compactMap(normalizedNonEmptyString)
+                .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+
+            if candidates.isEmpty == false {
+                hasAnyCover = true
+                hasher.combine("coverURLCandidates")
+                for candidate in candidates {
+                    hasher.combine(candidate)
+                }
+            }
+
+            guard hasAnyCover else { return 0 }
+            let finalized = hasher.finalize()
+            if finalized == Int.min {
+                return Int.max
+            }
+            return max(1, abs(finalized))
+        }
+
+        private static func normalizedNonEmptyString(_ rawValue: String?) -> String? {
+            guard let rawValue else { return nil }
+            let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
         }
 
         static func makeSearchTokens(
@@ -277,6 +403,8 @@ extension LibraryView {
         let selectedStatusRawValue: String?
         let selectedTag: String?
         let onlyWithNotes: Bool
+        let smartFilter: LibrarySmartFilter?
+        let longInactiveCutoff: Date?
         let sortField: SortField
         let sortAscending: Bool
         let buildsAlphaSections: Bool
@@ -303,6 +431,8 @@ extension LibraryView {
                     selectedStatusRawValue: nil,
                     selectedTag: nil,
                     onlyWithNotes: false,
+                    smartFilter: nil,
+                    longInactiveCutoff: nil,
                     sortField: .createdAt,
                     sortAscending: false,
                     buildsAlphaSections: false

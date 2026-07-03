@@ -65,7 +65,7 @@ struct LibraryBooksIndexTests {
         #expect(store.currentIndex.source.books.map(\.title) == ["Alpha", "Beta Revised"])
     }
 
-    @Test @MainActor func sourceStoreIgnoresAppearanceOnlyBookFields() {
+    @Test @MainActor func sourceStoreIgnoresNonLibrarySnapshotFields() {
         let first = makeBook(id: fixedID(1), title: "Alpha")
         let second = makeBook(id: fixedID(2), title: "Beta")
         let store = LibraryView.LibrarySourceStore()
@@ -73,12 +73,25 @@ struct LibraryBooksIndexTests {
         store.refreshSourceAndTrack(books: [first, second])
         let originalSignature = store.sourceSignature
         first.subtitle = "Shown only outside library indexing"
-        first.thumbnailURL = "https://example.com/cover.jpg"
-        first.userCoverFileName = "local-cover.jpg"
         store.refreshSourceAndTrack(books: [first, second])
 
         #expect(store.completedIndexBuildCount == 1)
         #expect(store.sourceSignature == originalSignature)
+    }
+
+    @Test @MainActor func sourceStoreInvalidatesWhenCoverChanges() {
+        let first = makeBook(id: fixedID(1), title: "Alpha")
+        let second = makeBook(id: fixedID(2), title: "Beta")
+        let store = LibraryView.LibrarySourceStore()
+
+        store.refreshSourceAndTrack(books: [first, second])
+        let originalSignature = store.sourceSignature
+        first.thumbnailURL = "https://example.com/cover.jpg"
+        store.refreshSourceAndTrack(books: [first, second])
+
+        #expect(store.completedIndexBuildCount == 2)
+        #expect(store.sourceSignature != originalSignature)
+        #expect(store.currentIndex.source.books.first?.hasCover == true)
     }
 
     @Test @MainActor func alphaSectionsResolveDescriptorIDsThroughIndex() {
