@@ -11,6 +11,17 @@ import SwiftUI
 struct BookRowView: View {
     let book: Book
     let appearance: LibraryRowAppearanceSnapshot
+    let presentation: LibraryBookPresentation?
+
+    init(
+        book: Book,
+        appearance: LibraryRowAppearanceSnapshot,
+        presentation: LibraryBookPresentation? = nil
+    ) {
+        self.book = book
+        self.appearance = appearance
+        self.presentation = presentation
+    }
 
     private enum MetaPart {
         case status(String)
@@ -65,6 +76,13 @@ struct BookRowView: View {
                             }
                         }
                     }
+                }
+
+                if appearance.showReadingProgress,
+                   let presentation,
+                   presentation.shouldShowReadingProgress {
+                    LibraryRowProgressView(presentation: presentation, style: .list)
+                        .padding(.top, 2)
                 }
 
                 // Tags eine Zeile tiefer

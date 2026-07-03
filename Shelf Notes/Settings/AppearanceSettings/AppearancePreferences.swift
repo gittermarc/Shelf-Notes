@@ -43,6 +43,7 @@ enum AppearanceStorageKey {
     static let libraryRowShowStatus = "appearance_library_row_show_status_v1"
     static let libraryRowShowReadDate = "appearance_library_row_show_read_date_v1"
     static let libraryRowShowRating = "appearance_library_row_show_rating_v1"
+    static let libraryRowShowReadingProgress = "appearance_library_row_show_reading_progress_v1"
     static let libraryRowShowTags = "appearance_library_row_show_tags_v1"
     static let libraryRowMaxTags = "appearance_library_row_max_tags_v1"
 

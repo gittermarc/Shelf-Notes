@@ -10,6 +10,7 @@ struct LibraryRowAppearanceSettingsPreviewSection: View {
     let showStatus: Bool
     let showReadDate: Bool
     let showRating: Bool
+    let showReadingProgress: Bool
     let showTags: Bool
     let tagStyle: LibraryTagStyleOption
     let maxTags: Int
@@ -31,6 +32,7 @@ struct LibraryRowAppearanceSettingsPreviewSection: View {
                 showStatus: showStatus,
                 showReadDate: showReadDate,
                 showRating: showRating,
+                showReadingProgress: showReadingProgress,
                 showTags: showTags,
                 tagStyle: tagStyle,
                 maxTags: maxTags,
@@ -56,6 +58,7 @@ private struct LibraryRowSettingsPreview: View {
     let showStatus: Bool
     let showReadDate: Bool
     let showRating: Bool
+    let showReadingProgress: Bool
     let showTags: Bool
     let tagStyle: LibraryTagStyleOption
     let maxTags: Int
@@ -89,6 +92,21 @@ private struct LibraryRowSettingsPreview: View {
 
     private var tagsRemainingCount: Int {
         max(0, ["thriller", "nyc", "crime", "biografie"].count - tagsList.count)
+    }
+
+    private var progressPresentation: LibraryBookPresentation {
+        LibraryBookPresentation(
+            snapshot: LibraryView.LibrarySourceSnapshot.BookSnapshot(
+                title: "Beispielbuch",
+                statusRawValue: ReadingStatus.reading.rawValue,
+                pageCount: 300,
+                pagesReadTotal: 126,
+                readingProgressFraction: 0.42,
+                isRereading: true,
+                completedReadingAttemptCount: 1,
+                currentReadingAttemptDisplayName: "2. Durchgang"
+            )
+        )
     }
 
     var body: some View {
@@ -137,6 +155,11 @@ private struct LibraryRowSettingsPreview: View {
                             }
                         }
                     }
+                }
+
+                if showReadingProgress {
+                    LibraryRowProgressView(presentation: progressPresentation, style: .list)
+                        .padding(.top, 2)
                 }
 
                 if showTags {

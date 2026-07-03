@@ -11,6 +11,7 @@ extension LibraryView {
     struct LibraryDisplayState {
         let derivedState: LibraryDerivedState
         let displayedBooks: [Book]
+        let presentationsByBookID: [UUID: LibraryBookPresentation]
         let alphaSections: [AlphaSection]
         let alphaLetters: [String]
 
@@ -34,6 +35,7 @@ extension LibraryView {
             LibraryDisplayState(
                 derivedState: .empty,
                 displayedBooks: [],
+                presentationsByBookID: [:],
                 alphaSections: [],
                 alphaLetters: []
             )
@@ -45,6 +47,7 @@ extension LibraryView {
         ) {
             self.derivedState = derivedState
             displayedBooks = index.books(matching: derivedState.displayedBookIDs)
+            presentationsByBookID = index.presentations(matching: derivedState.displayedBookIDs)
             alphaSections = index.alphaSections(for: derivedState.alphaSections)
             alphaLetters = derivedState.alphaLetters
         }
@@ -52,13 +55,19 @@ extension LibraryView {
         init(
             derivedState: LibraryDerivedState,
             displayedBooks: [Book],
+            presentationsByBookID: [UUID: LibraryBookPresentation],
             alphaSections: [AlphaSection],
             alphaLetters: [String]
         ) {
             self.derivedState = derivedState
             self.displayedBooks = displayedBooks
+            self.presentationsByBookID = presentationsByBookID
             self.alphaSections = alphaSections
             self.alphaLetters = alphaLetters
+        }
+
+        func presentation(for book: Book) -> LibraryBookPresentation? {
+            presentationsByBookID[book.id]
         }
     }
 }

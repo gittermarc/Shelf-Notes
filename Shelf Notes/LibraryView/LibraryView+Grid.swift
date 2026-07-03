@@ -5,13 +5,17 @@
 //  Grid layout for the library (List vs Grid).
 //
 
+import Foundation
 import SwiftUI
 
 extension LibraryView {
 
     // MARK: - Grid
 
-    func gridView(displayedBooks: [Book]) -> some View {
+    func gridView(
+        displayedBooks: [Book],
+        presentationsByBookID: [UUID: LibraryBookPresentation]
+    ) -> some View {
         GeometryReader { geo in
             let sidePadding: CGFloat = 16
             let spacing: CGFloat = 16
@@ -33,6 +37,7 @@ extension LibraryView {
                             } label: {
                                 LibraryGridItemView(
                                     book: book,
+                                    presentation: presentationsByBookID[book.id],
                                     itemWidth: itemWidth,
                                     appearance: rowAppearance,
                                     isSelectionMode: true,
@@ -49,6 +54,7 @@ extension LibraryView {
                             } label: {
                                 LibraryGridItemView(
                                     book: book,
+                                    presentation: presentationsByBookID[book.id],
                                     itemWidth: itemWidth,
                                     appearance: rowAppearance,
                                     isSelectionMode: false,
@@ -71,6 +77,7 @@ extension LibraryView {
 
 private struct LibraryGridItemView: View {
     let book: Book
+    let presentation: LibraryBookPresentation?
     let itemWidth: CGFloat
     let appearance: LibraryRowAppearanceSnapshot
     let isSelectionMode: Bool
@@ -197,6 +204,19 @@ private struct LibraryGridItemView: View {
                 x: 0,
                 y: appearance.coverShadowEnabled ? 2 : 0
             )
+            .overlay(alignment: .bottom) {
+                gridProgressOverlay
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var gridProgressOverlay: some View {
+        if appearance.showReadingProgress,
+           let presentation,
+           presentation.shouldShowReadingProgress {
+            LibraryRowProgressView(presentation: presentation, style: .grid)
+                .padding(6)
         }
     }
 
@@ -284,7 +304,14 @@ private struct LibraryGridItemView: View {
 
     @ViewBuilder
     private var tagsBlock: some View {
-        if let text = tagsText, !text.isEmpty {
+        if let text = gridInlineProgressText, !text.isEmpty {
+            Text(text)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .monospacedDigit()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let text = tagsText, !text.isEmpty {
             Text(text)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -336,6 +363,20 @@ private struct LibraryGridItemView: View {
         }
 
         guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " • ")
+    }
+
+    private var gridInlineProgressText: String? {
+        guard appearance.showCovers == false else { return nil }
+        guard appearance.showReadingProgress else { return nil }
+        guard let presentation, presentation.shouldShowReadingProgress else { return nil }
+
+        let parts = [
+            presentation.progressText,
+            presentation.pageProgressText
+        ].compactMap { $0 }
+
+        guard parts.isEmpty == false else { return nil }
         return parts.joined(separator: " • ")
     }
 

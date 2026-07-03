@@ -13,6 +13,7 @@ struct LibraryRowAppearanceSnapshotTests {
             showStatus: false,
             showReadDate: false,
             showRating: false,
+            showReadingProgress: false,
             showTags: false,
             maxTags: -4,
             tagStyleRaw: "unknown-tag-style",
@@ -28,6 +29,7 @@ struct LibraryRowAppearanceSnapshotTests {
         #expect(!snapshot.showStatus)
         #expect(!snapshot.showReadDate)
         #expect(!snapshot.showRating)
+        #expect(!snapshot.showReadingProgress)
         #expect(!snapshot.showTags)
         #expect(snapshot.maxTags == 0)
         #expect(snapshot.tagStyle.rawValue == LibraryTagStyleOption.hashtags.rawValue)
@@ -45,6 +47,7 @@ struct LibraryRowAppearanceSnapshotTests {
             showStatus: false,
             showReadDate: true,
             showRating: false,
+            showReadingProgress: true,
             showTags: true,
             maxTags: 4,
             tagStyle: .chips,
@@ -60,9 +63,16 @@ struct LibraryRowAppearanceSnapshotTests {
         #expect(!snapshot.showStatus)
         #expect(snapshot.showReadDate)
         #expect(!snapshot.showRating)
+        #expect(snapshot.showReadingProgress)
         #expect(snapshot.showTags)
         #expect(snapshot.maxTags == 4)
         #expect(snapshot.tagStyle.rawValue == LibraryTagStyleOption.chips.rawValue)
         #expect(snapshot.rowContentSpacing == 3)
+    }
+
+    @Test func explicitInitializerShowsReadingProgressByDefault() {
+        let snapshot = LibraryRowAppearanceSnapshot()
+
+        #expect(snapshot.showReadingProgress)
     }
 }

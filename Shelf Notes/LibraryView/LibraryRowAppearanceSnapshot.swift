@@ -10,6 +10,7 @@ struct LibraryRowAppearanceSnapshot {
     let showStatus: Bool
     let showReadDate: Bool
     let showRating: Bool
+    let showReadingProgress: Bool
     let showTags: Bool
     let maxTags: Int
     let tagStyle: LibraryTagStyleOption
@@ -25,6 +26,7 @@ struct LibraryRowAppearanceSnapshot {
         showStatus: Bool = true,
         showReadDate: Bool = true,
         showRating: Bool = true,
+        showReadingProgress: Bool = true,
         showTags: Bool = true,
         maxTags: Int = 2,
         tagStyle: LibraryTagStyleOption = .hashtags,
@@ -39,6 +41,7 @@ struct LibraryRowAppearanceSnapshot {
         self.showStatus = showStatus
         self.showReadDate = showReadDate
         self.showRating = showRating
+        self.showReadingProgress = showReadingProgress
         self.showTags = showTags
         self.maxTags = max(0, maxTags)
         self.tagStyle = tagStyle
@@ -55,6 +58,7 @@ struct LibraryRowAppearanceSnapshot {
         showStatus: Bool,
         showReadDate: Bool,
         showRating: Bool,
+        showReadingProgress: Bool = true,
         showTags: Bool,
         maxTags: Int,
         tagStyleRaw: String,
@@ -70,6 +74,7 @@ struct LibraryRowAppearanceSnapshot {
             showStatus: showStatus,
             showReadDate: showReadDate,
             showRating: showRating,
+            showReadingProgress: showReadingProgress,
             showTags: showTags,
             maxTags: maxTags,
             tagStyle: LibraryTagStyleOption(rawValue: tagStyleRaw) ?? .hashtags,
@@ -105,6 +110,7 @@ struct LibraryRowAppearanceReader<Content: View>: View {
     @AppStorage(AppearanceStorageKey.libraryRowShowStatus) private var showStatus: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowShowReadDate) private var showReadDate: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowShowRating) private var showRating: Bool = true
+    @AppStorage(AppearanceStorageKey.libraryRowShowReadingProgress) private var showReadingProgress: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowShowTags) private var showTags: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowMaxTags) private var maxTags: Int = 2
     @AppStorage(AppearanceStorageKey.libraryTagStyle) private var tagStyleRaw: String = LibraryTagStyleOption.hashtags.rawValue
@@ -131,6 +137,7 @@ struct LibraryRowAppearanceReader<Content: View>: View {
             showStatus: showStatus,
             showReadDate: showReadDate,
             showRating: showRating,
+            showReadingProgress: showReadingProgress,
             showTags: showTags,
             maxTags: maxTags,
             tagStyleRaw: tagStyleRaw,

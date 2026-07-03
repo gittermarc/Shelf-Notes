@@ -73,6 +73,7 @@ struct LibraryView: View {
     @AppStorage(AppearanceStorageKey.libraryRowShowStatus) var libraryRowShowStatus: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowShowReadDate) var libraryRowShowReadDate: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowShowRating) var libraryRowShowRating: Bool = true
+    @AppStorage(AppearanceStorageKey.libraryRowShowReadingProgress) var libraryRowShowReadingProgress: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowShowTags) var libraryRowShowTags: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowMaxTags) var libraryRowMaxTags: Int = 2
     @AppStorage(AppearanceStorageKey.libraryTagStyle) var libraryTagStyleRaw: String = LibraryTagStyleOption.hashtags.rawValue
@@ -149,6 +150,7 @@ struct LibraryView: View {
         let activeToken: LibraryDerivedInputToken = activeDerivedTaskToken(using: booksIndex)
         let displayState: LibraryDisplayState = currentDisplayStateForUI(using: activeToken)
         let displayed: [Book] = displayState.displayedBooks
+        let presentationsByBookID: [UUID: LibraryBookPresentation] = displayState.presentationsByBookID
         let counts: LibraryStatusCounts = displayState.counts
         let alphaSections: [AlphaSection] = displayState.alphaSections
         let alphaLetters: [String] = displayState.alphaLetters
@@ -166,12 +168,16 @@ struct LibraryView: View {
                     emptyState
                 } else {
                     if libraryLayoutMode == .grid {
-                        gridView(displayedBooks: displayed)
+                        gridView(displayedBooks: displayed, presentationsByBookID: presentationsByBookID)
                     } else {
                         if sortField == .title {
-                            alphaIndexedList(sections: alphaSections, letters: alphaLetters)
+                            alphaIndexedList(
+                                sections: alphaSections,
+                                letters: alphaLetters,
+                                presentationsByBookID: presentationsByBookID
+                            )
                         } else {
-                            plainList(displayedBooks: displayed)
+                            plainList(displayedBooks: displayed, presentationsByBookID: presentationsByBookID)
                         }
                     }
                 }
@@ -356,6 +362,7 @@ struct LibraryView: View {
             showStatus: libraryRowShowStatus,
             showReadDate: libraryRowShowReadDate,
             showRating: libraryRowShowRating,
+            showReadingProgress: libraryRowShowReadingProgress,
             showTags: libraryRowShowTags,
             maxTags: libraryRowMaxTags,
             tagStyleRaw: libraryTagStyleRaw,

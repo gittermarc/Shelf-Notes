@@ -110,6 +110,32 @@ struct LibraryBooksIndexTests {
         #expect(sections[1].books.map(\.id) == [first.id])
     }
 
+    @Test func resolvesPreparedPresentationsFromSourceSnapshots() {
+        let snapshot = LibraryView.LibrarySourceSnapshot.BookSnapshot(
+            id: fixedID(1),
+            title: "Active",
+            statusRawValue: ReadingStatus.reading.rawValue,
+            pageCount: 200,
+            pagesReadTotal: 80,
+            readingProgressFraction: 0.4
+        )
+        let source = LibraryView.LibrarySourceSnapshot(
+            signature: LibraryView.LibrarySourceSnapshot.computeSignature(snapshot: [snapshot]),
+            books: [snapshot]
+        )
+        let index = LibraryView.LibraryBooksIndex(
+            source: source,
+            orderedBookIDs: [snapshot.id],
+            booksByID: [:]
+        )
+
+        let presentation = index.presentation(for: snapshot.id)
+
+        #expect(presentation?.shouldShowReadingProgress == true)
+        #expect(presentation?.progressText == "40 %")
+        #expect(index.presentations(matching: [snapshot.id, fixedID(99)]).count == 1)
+    }
+
     private func makeBook(
         id: UUID,
         title: String,

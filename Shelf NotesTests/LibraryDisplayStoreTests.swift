@@ -34,6 +34,7 @@ struct LibraryDisplayStoreTests {
         #expect(state.alphaLetters == expected.alphaLetters)
         #expect(state.alphaSections.map(\.key) == expected.alphaSections.map(\.key))
         #expect(state.alphaSections.map { $0.books.map(\.id) } == expected.alphaSections.map(\.bookIDs))
+        #expect(state.presentationsByBookID.keys.count == expected.displayedBookIDs.count)
     }
 
     @Test @MainActor func keepsLastStableDisplayStateUntilNewTokenResolves() {

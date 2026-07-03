@@ -30,6 +30,7 @@ struct LibraryRowAppearanceSettingsSection: View {
     @AppStorage(AppearanceStorageKey.libraryRowShowStatus) private var showStatus: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowShowReadDate) private var showReadDate: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowShowRating) private var showRating: Bool = true
+    @AppStorage(AppearanceStorageKey.libraryRowShowReadingProgress) private var showReadingProgress: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowShowTags) private var showTags: Bool = true
     @AppStorage(AppearanceStorageKey.libraryRowMaxTags) private var maxTags: Int = 2
 
@@ -143,6 +144,7 @@ struct LibraryRowAppearanceSettingsSection: View {
                 showStatus: $showStatus,
                 showReadDate: $showReadDate,
                 showRating: $showRating,
+                showReadingProgress: $showReadingProgress,
                 showTags: $showTags,
                 tagStyle: tagStyleBinding,
                 maxTags: $maxTags
@@ -158,6 +160,7 @@ struct LibraryRowAppearanceSettingsSection: View {
                 showStatus: showStatus,
                 showReadDate: showReadDate,
                 showRating: showRating,
+                showReadingProgress: showReadingProgress,
                 showTags: showTags,
                 tagStyle: resolvedTagStyle,
                 maxTags: maxTags,
@@ -191,6 +194,7 @@ struct LibraryRowAppearanceSettingsSection: View {
         showStatus = true
         showReadDate = true
         showRating = true
+        showReadingProgress = true
         showTags = true
         tagStyleRaw = LibraryTagStyleOption.hashtags.rawValue
         maxTags = 2

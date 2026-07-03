@@ -5,6 +5,7 @@ struct LibraryRowAppearanceSettingsRowDetailsSection: View {
     let showStatus: Binding<Bool>
     let showReadDate: Binding<Bool>
     let showRating: Binding<Bool>
+    let showReadingProgress: Binding<Bool>
     let showTags: Binding<Bool>
     let tagStyle: Binding<LibraryTagStyleOption>
     let maxTags: Binding<Int>
@@ -24,6 +25,10 @@ struct LibraryRowAppearanceSettingsRowDetailsSection: View {
 
         Toggle(isOn: showRating) {
             Label("Bewertung anzeigen", systemImage: "star")
+        }
+
+        Toggle(isOn: showReadingProgress) {
+            Label("Lesefortschritt anzeigen", systemImage: "chart.bar.xaxis")
         }
 
         Toggle(isOn: showTags) {

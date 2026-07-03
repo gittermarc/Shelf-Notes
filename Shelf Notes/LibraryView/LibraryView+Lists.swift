@@ -5,19 +5,27 @@
 //  Extracted from LibraryView.swift to reduce file size and improve maintainability.
 //
 
+import Foundation
 import SwiftUI
 
 extension LibraryView {
 
     // MARK: - Lists
 
-    func plainList(displayedBooks: [Book]) -> some View {
+    func plainList(
+        displayedBooks: [Book],
+        presentationsByBookID: [UUID: LibraryBookPresentation]
+    ) -> some View {
         let rowAppearance = libraryRowAppearance
 
         return List {
             if isSelectionMode {
                 ForEach(displayedBooks) { book in
-                    selectableListRow(book, appearance: rowAppearance)
+                    selectableListRow(
+                        book,
+                        appearance: rowAppearance,
+                        presentation: presentationsByBookID[book.id]
+                    )
                         .listRowInsets(
                             EdgeInsets(
                                 top: CGFloat(libraryRowVerticalInset),
@@ -32,7 +40,11 @@ extension LibraryView {
                     NavigationLink {
                         BookDetailView(book: book)
                     } label: {
-                        BookRowView(book: book, appearance: rowAppearance)
+                        BookRowView(
+                            book: book,
+                            appearance: rowAppearance,
+                            presentation: presentationsByBookID[book.id]
+                        )
                     }
                     .listRowInsets(
                         EdgeInsets(

@@ -36,10 +36,18 @@ extension LibraryView {
         let descriptors = LibraryDerivedStateBuilder.buildAlphaSections(from: index.source.books)
         let sections = index.alphaSections(for: descriptors)
         let letters = descriptors.map(\.key)
-        return alphaIndexedList(sections: sections, letters: letters)
+        return alphaIndexedList(
+            sections: sections,
+            letters: letters,
+            presentationsByBookID: index.presentations(matching: displayedBooks.map(\.id))
+        )
     }
 
-    func alphaIndexedList(sections: [AlphaSection], letters: [String]) -> some View {
+    func alphaIndexedList(
+        sections: [AlphaSection],
+        letters: [String],
+        presentationsByBookID: [UUID: LibraryBookPresentation]
+    ) -> some View {
         let rowAppearance = libraryRowAppearance
 
         return ScrollViewReader { proxy in
@@ -49,7 +57,11 @@ extension LibraryView {
                         Section {
                             if isSelectionMode {
                                 ForEach(section.books) { book in
-                                    selectableListRow(book, appearance: rowAppearance)
+                                    selectableListRow(
+                                        book,
+                                        appearance: rowAppearance,
+                                        presentation: presentationsByBookID[book.id]
+                                    )
                                         .listRowInsets(
                                             EdgeInsets(
                                                 top: CGFloat(libraryRowVerticalInset),
@@ -64,7 +76,11 @@ extension LibraryView {
                                     NavigationLink {
                                         BookDetailView(book: book)
                                     } label: {
-                                        BookRowView(book: book, appearance: rowAppearance)
+                                        BookRowView(
+                                            book: book,
+                                            appearance: rowAppearance,
+                                            presentation: presentationsByBookID[book.id]
+                                        )
                                     }
                                     .listRowInsets(
                                         EdgeInsets(
