@@ -67,6 +67,25 @@ struct LibraryWidgetSnapshotStoreTests {
         #expect(store.load() == nil)
     }
 
+    @Test func storeReturnsNilForFutureSnapshotSchema() {
+        let directory = temporaryDirectory()
+        let store = LibraryWidgetSnapshotStore(directoryURL: directory)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let snapshot = LibraryWidgetSnapshot(
+            schemaVersion: LibraryWidgetSnapshot.currentSchemaVersion + 1,
+            generatedAt: Date(timeIntervalSince1970: 1_000),
+            state: .ready,
+            totalBooks: 1,
+            readBooks: 0,
+            readingBooks: 1,
+            wantToReadBooks: 0
+        )
+
+        #expect(store.save(snapshot))
+        #expect(store.load() == nil)
+    }
+
     @Test func renderableContentComparisonIgnoresGeneratedAtOnly() {
         let first = LibraryWidgetSnapshot(
             generatedAt: Date(timeIntervalSince1970: 1_000),

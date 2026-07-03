@@ -118,13 +118,18 @@ final class LibraryWidgetSnapshotSyncService {
             calendar: calendar
         ).recentActivity
 
-        return LibraryWidgetSnapshotBuilder.make(
+        let rawSnapshot = LibraryWidgetSnapshotBuilder.make(
             books: LibraryWidgetSnapshotInputMapper.bookRecords(from: books),
             goals: LibraryWidgetSnapshotInputMapper.goalRecords(from: goals),
             recentActivity: recentActivity,
             activeBookID: activeTimerBookID(),
             generatedAt: generatedAt,
             calendar: calendar
+        )
+
+        return LibraryWidgetCoverExporter.exportCoversAndUpdateAvailability(
+            in: rawSnapshot,
+            books: books
         )
     }
 

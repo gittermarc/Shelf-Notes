@@ -10,5 +10,6 @@ import SwiftUI
 struct ShelfNotesLiveActivityBundle: WidgetBundle {
     var body: some Widget {
         ShelfNotesLiveActivityLiveActivity()
+        LibraryOverviewWidget()
     }
 }
