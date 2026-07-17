@@ -7,13 +7,14 @@ import UIKit
 #endif
 
 struct LibraryWidgetCoverExporterTests {
-    @Test @MainActor func exporterWritesDisplayedCoverAndMarksItAvailable() throws {
+    #if canImport(UIKit)
+    @Test @MainActor func exporterWritesDisplayedCoverAndMarksItAvailable() {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let book = Book(title: "Covered", author: "Author", status: .reading)
         book.id = fixedID(1)
-        book.userCoverData = try #require(testJPEGData())
+        book.userCoverData = testJPEGData()
 
         let snapshot = LibraryWidgetSnapshot(
             generatedAt: Date(timeIntervalSince1970: 1_000),
@@ -44,6 +45,7 @@ struct LibraryWidgetCoverExporterTests {
         #expect(normalized.currentBook?.hasCover == true)
         #expect(normalized.currentBook?.coverRevision == 1)
     }
+    #endif
 
     @Test @MainActor func exporterTurnsMissingCoverIntoWidgetFallback() {
         let directory = temporaryDirectory()
@@ -151,15 +153,13 @@ struct LibraryWidgetCoverExporterTests {
         UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", value)) ?? UUID()
     }
 
-    private func testJPEGData() -> Data? {
-        #if canImport(UIKit)
+    #if canImport(UIKit)
+    private func testJPEGData() -> Data {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 12, height: 18))
         return renderer.jpegData(withCompressionQuality: 0.9) { context in
             context.cgContext.setFillColor(UIColor.systemBrown.cgColor)
             context.cgContext.fill(CGRect(x: 0, y: 0, width: 12, height: 18))
         }
-        #else
-        return nil
-        #endif
     }
+    #endif
 }

@@ -76,7 +76,7 @@ struct BookReadingProgressTests {
         #expect(book.currentReadingProgressSnapshot.hasMeasurableProgress == false)
     }
 
-    @Test @MainActor func activeRereadDoesNotReuseEarlierAttemptProgress() throws {
+    @Test @MainActor func activeRereadDoesNotReuseEarlierAttemptProgress() {
         let book = Book(title: "Reread", status: .reading)
         book.pageCount = 100
         let completed = ReadingAttempt(
@@ -97,12 +97,14 @@ struct BookReadingProgressTests {
         currentSession.readingAttempt = active
 
         completed.sessionsSafe = [oldSession]
-        active.sessionsSafe = [currentSession, oldSession]
+        active.sessionsSafe = [currentSession]
         book.readingAttemptsSafe = [completed, active]
         book.readingSessionsSafe = [oldSession, currentSession]
 
         let snapshot = active.readingProgressSnapshot
 
+        #expect(oldSession.readingAttempt?.id == completed.id)
+        #expect(currentSession.readingAttempt?.id == active.id)
         #expect(snapshot.pagesRead == 20)
         #expect(snapshot.remainingPages == 80)
         #expect(book.readingProgressFraction == 0.2)
