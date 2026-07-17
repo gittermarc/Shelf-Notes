@@ -1,10 +1,10 @@
 # PROJECT_CONTEXT.md
 
-Stand: E-Book-Erweiterung PR 1 vom 2026-07-17 auf Basis des aktuellen Projektarchivs. Der aktuelle Code ist die Quelle der Wahrheit.
+Stand: E-Book-Erweiterung PR 2 vom 2026-07-17 auf Basis des aktuellen Projektarchivs. Der aktuelle Code ist die Quelle der Wahrheit.
 
 ## TL;DR
 
-Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlichen Buchbibliothek mit Lesestatus, Lesesessions, Zielen, Challenges, Statistiken, Tags, Listen/Sammlungen, CSV-Import/-Export, Google-Books-Import, Cover-Caching und Live-Activity-Unterstützung. Das Persistenzmodell besitzt zusätzlich ein formatneutrales Fundament für physische Bücher, externe E-Books und später lokal gelesene EPUBs/PDFs. Persistenz läuft über SwiftData; die primäre Store-Konfiguration nutzt CloudKit über `ModelConfiguration(cloudKitDatabase: .automatic)`. Das Deployment Target ist laut `Shelf Notes.xcodeproj/project.pbxproj` iOS 26.0.
+Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlichen Buchbibliothek mit Lesestatus, Lesesessions, Zielen, Challenges, Statistiken, Tags, Listen/Sammlungen, CSV-Import/-Export, Google-Books-Import, Cover-Caching und Live-Activity-Unterstützung. Das Persistenzmodell besitzt zusätzlich ein formatneutrales Fundament für physische Bücher, externe E-Books und später lokal gelesene EPUBs/PDFs. Eine zentrale value-basierte Fortschritts-Engine berechnet Seiten-, Prozent- und Locator-Fortschritt pro `ReadingAttempt`; ein idempotenter Startup-Repair klassifiziert Legacy-Daten und pflegt stabile Baseline-Events nach. Persistenz läuft über SwiftData; die primäre Store-Konfiguration nutzt CloudKit über `ModelConfiguration(cloudKitDatabase: .automatic)`. Das Deployment Target ist laut `Shelf Notes.xcodeproj/project.pbxproj` iOS 26.0.
 
 ## Key Concepts / Domänenbegriffe
 
@@ -14,6 +14,8 @@ Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlic
 - `ReadingSession`: Einzelne Leseeinheit mit Start, Ende, Dauer, Seiten und optionaler Notiz sowie formatneutralen Source-Snapshots. Pfad: `Shelf Notes/ReadingSession.swift`.
 - Reading-Source Raw Values: `ReadingMedium`, `ReadingProvider`, `ReadingProgressUnit`, `ReadingSessionOrigin` und `ReadingAnnotationKind` besitzen stabile englische Raw Values und sichere Fallbacks. Pfad: `Shelf Notes/ReadingSources/*`.
 - `ReadingProgressEvent`: Provider- und formatneutrales Fortschrittsereignis mit nativen und optional normalisierten Werten. Pfad: `Shelf Notes/ReadingSources/ReadingProgressEvent.swift`.
+- `ReadingProgressEngine`: Pure, formatneutrale Berechnung für genau einen Lesedurchgang auf Basis von `ReadingProgressAttemptSnapshot` und `ReadingProgressUpdate`. Pfad: `Shelf Notes/ReadingProgress/*`.
+- `ReadingProgressRepair`: Idempotenter Backfill ohne einmaligen Migrationsschalter; läuft nach `ReadingAttemptRepair`, repariert Beziehungen und hält pro Legacy-Attempt höchstens ein deterministisches Seiten-Baseline-Event aktuell. Pfad: `Shelf Notes/ReadingProgress/ReadingProgressRepair*.swift`.
 - `BookExternalReference`: Provider-spezifische Referenz eines Bibliothekseintrags ohne Tokens, Zugangsdaten oder lokale Dateipfade. Pfad: `Shelf Notes/ReadingSources/BookExternalReference.swift`.
 - `ReadingAnnotation`: Provider-neutrales Modell für Highlight, Notiz oder Lesezeichen. Pfad: `Shelf Notes/ReadingSources/ReadingAnnotation.swift`.
 - `ReadingGoal`: Jahresziel für gelesene Bücher. Pfad: `Shelf Notes/ReadingGoal.swift`.
@@ -38,7 +40,7 @@ Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlic
   - Hält `AppBootstrapper` als `@StateObject`.
   - Zeigt Loading, Ready oder Failure UI.
   - Injiziert `ModelContainer` über `.modelContainer(container)` in `RootView()`.
-  - Startet nach Container-Ready Reparatur- und Challenge-Vorbereitung.
+  - Startet nach Container-Ready zuerst `ReadingAttemptRepair`, danach `ReadingProgressRepair` und anschließend die Challenge-Vorbereitung.
 - `Shelf Notes/AppBootstrap/AppBootstrapper.swift`
   - Baut den SwiftData-Container.
   - Versucht zuerst `.cloudKit`.
@@ -106,6 +108,7 @@ Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlic
 - `Shelf Notes/BookDetail/Sessions`: Session-UI, Session-Formulare, Timer-Manager, Live-Activity-Brücke.
 - `Shelf Notes/ReadingAttempts`: Reading-Attempt-Modell, Repair-Logik und Session-Zuordnung für Lesedurchgänge und Rereads.
 - `Shelf Notes/ReadingSources`: Stabile Reading-Source Raw Values, formatneutrale Fortschrittsereignisse, externe Buchreferenzen, Annotationen und typisierte Modellzugriffe.
+- `Shelf Notes/ReadingProgress`: Value-Snapshots, zentrale Fortschritts-Engine, SwiftData-Adapter, deterministische Event-Fingerprints und idempotenter Legacy-Repair.
 - `Shelf Notes/AddBook`: Klassischer Buch-Hinzufügen-Flow mit Google-Books-Suche und Formularlogik.
 - `Shelf Notes/BookImport`: Moderner Import-Flow mit Query Builder, Filter Engine, Result Views und Seed Queries.
 - `Shelf Notes/CSVImportExport`: CSV-Import/-Export und Import-Ausführung.
@@ -165,6 +168,7 @@ Pfad: `Shelf Notes/ReadingAttempts/ReadingAttempt.swift`
 - Externe Metadaten: `totalValueSnapshot`, `providerItemIdentifier`, `lastExternalSyncAt`
 - Beziehungen: `book`, `sessions`, `progressEvents`, `annotations`
 - Delete Rules: Session-, Event- und Annotation-Beziehungen werden beim Löschen eines Attempts nullifiziert, damit Historie erhalten bleibt
+- Derived Progress: `progressInputSnapshot` bildet nur zugehörige Sessions und Events in Value-Typen ab; `readingProgressSnapshot` delegiert an die zentrale Engine
 
 ### `ReadingSession`
 
@@ -192,6 +196,18 @@ Pfad: `Shelf Notes/ReadingSources/ReadingProgressEvent.swift`
 - Fortschritt: `nativeValue`, optional `totalValue`, `normalizedProgress`, `locator`
 - Import/Deduplizierung: `externalIdentifier`, `deduplicationKey`, `sourceSessionID`, `importedAt`
 - Audit: `createdAt`, `updatedAt`
+- Legacy-Baseline: `ReadingProgressRepair` verwendet `legacy-pages-baseline:<attempt-id>` und aktualisiert dieses Event bei später eintreffenden Legacy-Sessions, statt neue Events anzulegen
+
+### Formatneutrale Fortschrittsberechnung
+
+Pfade: `Shelf Notes/ReadingProgress/*`, `Shelf Notes/BookModel/Book+ReadingProgress.swift`, `Shelf Notes/BookDetail/Sessions/ReadingSessionLogging.swift`
+
+- Seitenfortschritt summiert ausschließlich positive `pagesRead`-Werte der betrachteten Attempt-Sessions. Gesamtwerte stammen bevorzugt aus `pageCountSnapshot`, danach aus belastbaren ganzzahligen Total-Snapshots.
+- Prozentfortschritt wählt den neuesten gültigen absoluten Stand. Gleich datierte Updates werden über einen stabilen Identifier deterministisch entschieden. Es werden keine Seitenwerte erfunden.
+- Locator-Fortschritt bewahrt den nativen Locator. Ein Prozentwert wird nur aus einem explizit gespeicherten normalisierten Wert übernommen; unbekannte Locator-Formate werden nicht interpretiert.
+- Fehlender Fortschritt bleibt unbekannt (`nil`) und wird nicht automatisch als null Prozent dargestellt. Reine Zeit- oder Notiz-Sessions sind damit zulässig.
+- Ein abgeschlossener Attempt liefert vollständig. Aktive Wiederholungslesungen verwenden ausschließlich den aktiven Attempt und übernehmen keinen Fortschritt früherer Durchgänge.
+- Bestehende Aufrufer bleiben über `Book+ReadingProgress` und `ReadingSessionLogging` kompatibel; ein großer UI-Callsite-Umbau ist nicht erfolgt.
 
 ### `BookExternalReference`
 
@@ -283,6 +299,8 @@ Schema enthält:
 - Migration:
   - Status-Legacy-Werte werden über `Shelf Notes/BookModel/Book+Status.swift` und `Shelf Notes/Persistence/ReadingStatusMigrator.swift` behandelt.
   - Reading-Source-Erweiterungen sind additiv. Neue nicht-optionale Raw-Value-Felder besitzen migrationssichere Defaults; unbekannte persistierte Werte werden typisiert auf sichere Fallbacks abgebildet.
+  - `ReadingProgressRepair` läuft bei jedem Startup nach `ReadingAttemptRepair`. Es gibt bewusst keinen `UserDefaults`-Migrationsschalter, damit später eintreffende CloudKit-Legacy-Daten erneut klassifiziert und eingegliedert werden können.
+  - Der Repair repariert fehlende Book-/Attempt-Beziehungen, klassifiziert leere Source-Felder als `physical`, `none`, `pages` und `legacy`, entfernt nur exakt identische Events mit stabiler Identität und aktualisiert ein deterministisches Seiten-Baseline-Event pro Attempt.
   - Eine explizite SwiftData-Versionierung oder umfassende Migration Strategy wurde im Scan nicht als zentrale Policy gefunden: **UNKNOWN**.
 
 ## UI Map
@@ -389,6 +407,9 @@ Root-Level AppStorage/SceneStorage:
   - `Challenge*Tests`
   - `Tag*Tests`
   - `Collection*Tests`
+  - `ReadingProgressEngineTests`
+  - `ReadingProgressRepairTests`
+  - `BookReadingProgressTests`
 
 ### Projektstruktur
 
@@ -412,6 +433,7 @@ Root-Level AppStorage/SceneStorage:
 
 - App-Start: `Shelf Notes/Shelf_NotesApp.swift`, `Shelf Notes/AppContainerHostView.swift`, `Shelf Notes/RootView.swift`
 - Persistenz: `Shelf Notes/Persistence/ModelContainerFactory.swift`, `Shelf Notes/BookModel/Book.swift`
+- Fortschritt: `Shelf Notes/ReadingProgress/*`, `Shelf Notes/BookModel/Book+ReadingProgress.swift`, `Shelf Notes/ReadingAttempts/ReadingAttemptSessionCoordinator.swift`
 - Library-Hotpath: `Shelf Notes/LibraryView/LibraryView.swift`, `Shelf Notes/LibraryView/LibraryDerivedStateBuilder.swift`
 - Stats-Hotpath: `Shelf Notes/Stats/StatisticsSourceStore.swift`, `Shelf Notes/Stats/StatisticsComputePipeline.swift`
 - Cover-Hotpath: `Shelf Notes/CoverImageLoader.swift`, `Shelf Notes/CoverThumbnailer/CoverThumbnailer.swift`, `Shelf Notes/ImageViews/LibraryRowCoverView.swift`

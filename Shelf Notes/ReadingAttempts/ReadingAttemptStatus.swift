@@ -5,7 +5,7 @@
 
 import Foundation
 
-nonisolated enum ReadingAttemptStatus: String, Codable, CaseIterable, Identifiable {
+nonisolated enum ReadingAttemptStatus: String, Codable, CaseIterable, Identifiable, Hashable, Sendable {
     case active = "active"
     case finished = "finished"
     case abandoned = "abandoned"

@@ -30,6 +30,7 @@ struct AppContainerHostView: View {
                     }
 
                     await ReadingAttemptRepair.repairIfNeeded(modelContext: container.mainContext)
+                    await ReadingProgressRepair.repairIfNeeded(modelContext: container.mainContext)
 
                     // Challenges: ensure current user-enabled challenge cadences exist.
                     await ChallengeRefreshCoordinator.prepareCurrentChallenges(modelContext: container.mainContext)

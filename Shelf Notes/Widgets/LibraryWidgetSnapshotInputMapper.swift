@@ -12,7 +12,11 @@ enum LibraryWidgetSnapshotInputMapper {
     static func bookRecords(from books: [Book]) -> [LibraryWidgetBookRecord] {
         books.map { book in
             let sessions = book.readingSessionsSafe
-            let pagesRead = ReadingSessionLogging.pagesReadTotal(in: sessions)
+            let progressSessions = ReadingAttemptSessionCoordinator.progressSessions(
+                for: book,
+                allSessions: sessions
+            )
+            let pagesRead = ReadingSessionLogging.pagesReadTotal(in: progressSessions)
             let lastSessionAt = sessions.map(\.startedAt).max()
             let completions = ReadingCompletionRecordBuilder.records(from: book).map { completion in
                 LibraryWidgetCompletionRecord(

@@ -127,16 +127,37 @@ struct ReadingSessionLogging {
     }
 
     static func remainingPages(totalPages: Int?, sessions: [ReadingSession]) -> Int? {
-        guard let total = normalizedTotalPages(totalPages) else { return nil }
-        let already = pagesReadTotal(in: sessions)
-        return max(0, total - already)
+        ReadingProgressEngine.snapshot(
+            for: pageProgressInput(
+                status: .reading,
+                totalPages: totalPages,
+                sessions: sessions
+            )
+        ).remainingPages
     }
 
     static func progressFraction(status: ReadingStatus, totalPages: Int?, sessions: [ReadingSession]) -> Double? {
-        if status == .finished { return 1.0 }
-        guard let total = normalizedTotalPages(totalPages) else { return nil }
-        let read = max(0, pagesReadTotal(in: sessions))
-        return min(1.0, max(0.0, Double(read) / Double(total)))
+        ReadingProgressEngine.snapshot(
+            for: pageProgressInput(
+                status: status,
+                totalPages: totalPages,
+                sessions: sessions
+            )
+        ).normalizedProgress
+    }
+
+    private static func pageProgressInput(
+        status: ReadingStatus,
+        totalPages: Int?,
+        sessions: [ReadingSession]
+    ) -> ReadingProgressAttemptSnapshot {
+        ReadingProgressAttemptSnapshot(
+            attemptID: UUID(),
+            status: status == .finished ? .finished : .active,
+            unit: .pages,
+            pageCountSnapshot: totalPages,
+            sessionPageValues: sessions.compactMap(\.pagesRead)
+        )
     }
 
     // MARK: - Main entry

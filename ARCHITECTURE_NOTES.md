@@ -1,6 +1,6 @@
 # ARCHITECTURE_NOTES.md
 
-Stand: E-Book-Erweiterung PR 1 vom 2026-07-17 auf Basis des aktuellen Projektarchivs. Aussagen beziehen sich auf den geprüften Codebestand. Unklare Punkte sind als **UNKNOWN** markiert.
+Stand: E-Book-Erweiterung PR 2 vom 2026-07-17 auf Basis des aktuellen Projektarchivs. Aussagen beziehen sich auf den geprüften Codebestand. Unklare Punkte sind als **UNKNOWN** markiert.
 
 ## Scope und Methode
 
@@ -11,14 +11,15 @@ Geprüft wurden:
 - SwiftData-Modelle und Container-Konfiguration
 - CloudKit-/Entitlement-Konfiguration
 - Root Navigation, Tabs, Sheets und Startup-Maintenance
+- Formatneutrale Fortschrittsberechnung, Reading-Attempt-Isolation und Legacy-Backfill
 - Große Dateien nach Zeilenzahl
 - Hot Paths für Rendering, Scroll, Sync, Storage, Concurrency und Caching
 - Tests und Testpläne
 
 Nicht durchgeführt:
 
-- Kein Xcode Build
-- Keine Unit-Test-Ausführung
+- Kein Xcode Build in der Linux-Arbeitsumgebung
+- Keine Ausführung des vollständigen Xcode-Testplans
 - Keine CloudKit-Laufzeitprüfung
 - Keine App-Store-/Provisioning-Prüfung
 
@@ -455,23 +456,37 @@ Betroffene Dateien:
 - `Shelf Notes/CollectionMembershipRepair.swift`
 - `Shelf Notes/AppLifecycle/AppStartupMaintenanceService.swift`
 - `Shelf Notes/AppLifecycle/AppStartupMaintenanceState.swift`
+- `Shelf Notes/ReadingAttempts/ReadingAttemptRepair.swift`
+- `Shelf Notes/ReadingProgress/ReadingProgressRepair.swift`
+- `Shelf Notes/ReadingProgress/ReadingProgressRepair+Relationships.swift`
+- `Shelf Notes/ReadingProgress/ReadingProgressRepair+Baseline.swift`
+- `Shelf Notes/ReadingProgress/ReadingProgressRepair+Dedupe.swift`
+- `Shelf Notes/AppContainerHostView.swift`
 
 Beobachtung:
 
 - Es gibt konkrete Reparatur-/Migration-Jobs für Status und Collection Membership.
 - Cover-Backfill wird beim Startup geplant.
+- `ReadingAttemptRepair` stellt zuerst Lesedurchgänge und Session-Zuordnungen her.
+- `ReadingProgressRepair` läuft direkt danach und bewusst ohne einmaligen `UserDefaults`-Schalter, damit später eintreffende CloudKit-Legacy-Daten erneut verarbeitet werden.
+- Leere Legacy-Source-Felder werden auf `physical`, `none`, `pages` und `legacy` klassifiziert; unbekannte nicht-leere Raw Values bleiben unangetastet.
+- Fehlende Book-/Attempt-Beziehungen von Sessions und Progress Events werden anhand vorhandener Beziehungen, Source-Session-IDs und deterministischer Baseline-Keys repariert.
+- Pro Reading Attempt wird höchstens ein Baseline-Event mit dem Key `legacy-pages-baseline:<attempt-id>` geführt. Neue Legacy-Sessions aktualisieren dieses Event idempotent.
+- Exakte Event-Dubletten werden nur bei stabiler Identität entfernt. Semantisch unterschiedliche Nutzerereignisse bleiben erhalten.
 - Eine zentrale Modellversions- oder Migration-Policy wurde nicht gefunden.
 
 Risiko:
 
 - SwiftData/CloudKit-Schemaänderungen sind besonders sensibel.
 - Unkoordinierte Modelländerungen können CloudKit-Sync oder bestehende Stores beschädigen.
+- Der Repair ist absichtlich wiederholbar und läuft bei jedem App-Start. Sein Fetch- und Vergleichsaufwand wächst damit mit Bibliothek, Sessions und Progress Events.
 
 Empfehlung:
 
 - `MIGRATIONS.md` einführen.
 - Jede Modelländerung mit Migration/Repair/Backfill-Plan dokumentieren.
 - Tests für Migration-Helfer ergänzen.
+- Bei wachsendem Eventvolumen Repair-Laufzeit und Speicherdruck beobachten; erst dann gezielt indexieren oder in sichere Batches teilen.
 
 ### Formatneutrales Reading-Source-Fundament
 
@@ -487,6 +502,7 @@ Betroffene Dateien:
 - `Shelf Notes/ReadingSources/ReadingAnnotation.swift`
 - `Shelf Notes/ReadingAttempts/ReadingAttempt.swift`
 - `Shelf Notes/ReadingSession.swift`
+- `Shelf Notes/ReadingProgress/*`
 
 Architekturentscheidung:
 
@@ -494,7 +510,7 @@ Architekturentscheidung:
 - Typisierte Computed Properties bilden unbekannte Raw Values auf sichere Defaults ab.
 - Bestehende Reading Attempts migrieren semantisch auf `physical`, `none` und `pages`.
 - Bestehende Reading Sessions migrieren semantisch auf `physical`, `none`, `legacy` und `pages`.
-- `ReadingProgressEvent` speichert native Fortschrittswerte und optional normalisierte Werte, ohne bestehende Seitenlogik zu ersetzen.
+- `ReadingProgressEvent` speichert native Fortschrittswerte und optional normalisierte Werte. Die Ableitung erfolgt zentral über die formatneutrale Engine.
 - `BookExternalReference` trennt Bibliotheksmetadaten von provider-spezifischen Identifikatoren.
 - `ReadingAnnotation` hält Highlights, Notizen und Lesezeichen providerunabhängig.
 - Tokens, Zugangsdaten und lokale Dateipfade gehören ausdrücklich nicht in SwiftData oder CloudKit.
@@ -505,7 +521,41 @@ Noch nicht Teil dieser Stufe:
 - Keine lokale EPUB-/PDF-Dateiverwaltung
 - Kein Readium und kein integrierter Reader
 - Keine neue Oberfläche
-- Keine Änderung an der bestehenden Fortschrittsberechnung
+- Keine externen Provider-Imports
+- Kein großer Umbau bestehender UI-Callsites
+
+### Formatneutrale Fortschritts-Engine
+
+Betroffene Dateien:
+
+- `Shelf Notes/ReadingProgress/ReadingProgressUpdate.swift`
+- `Shelf Notes/ReadingProgress/ReadingProgressSnapshot.swift`
+- `Shelf Notes/ReadingProgress/ReadingProgressAttemptSnapshot.swift`
+- `Shelf Notes/ReadingProgress/ReadingProgressEngine.swift`
+- `Shelf Notes/ReadingProgress/ReadingAttempt+Progress.swift`
+- `Shelf Notes/BookModel/Book+ReadingProgress.swift`
+- `Shelf Notes/BookDetail/Sessions/ReadingSessionLogging.swift`
+- `Shelf Notes/Widgets/LibraryWidgetSnapshotInputMapper.swift`
+
+Architekturentscheidung:
+
+- Die eigentliche Berechnung arbeitet ausschließlich auf `Sendable` Value-Snapshots. SwiftData-Modelle werden nur in schmalen Adaptern in diese Werte überführt.
+- Jeder Engine-Aufruf betrachtet genau einen Reading Attempt. Sessions und Events mit explizit abweichender Attempt-ID werden ausgeschlossen.
+- Seitenfortschritt summiert nur positive Session-Seiten. Die Gesamtzahl wird aus `pageCountSnapshot`, einem belastbaren ganzzahligen Total-Snapshot oder einem passenden Seiten-Update gewählt.
+- Prozentfortschritt verwendet den neuesten gültigen absoluten Stand. Bei identischen Zeitpunkten entscheidet ein stabiler Identifier deterministisch.
+- Ein expliziter normalisierter Prozentwert hat Vorrang. Fehlt er, wird ein nicht-negativer nativer Wert gegen einen belastbaren Totalwert oder fachlich gegen 100 normalisiert, ohne Seitenwerte zu erzeugen.
+- Locator werden getrimmt, aber nicht interpretiert. Ein normalisierter Fortschritt entsteht nur aus einem explizit gespeicherten Wert.
+- Fehlende Messwerte bleiben `nil`. Damit können Sessions nur Zeit und Notizen enthalten, ohne fälschlich null Prozent zu behaupten.
+- Ein abgeschlossener Attempt wird unabhängig von der Einheit als vollständig behandelt.
+- `Book+ReadingProgress` erhält bestehende Aufrufer und Status-Semantik. Ein aktiver Reread übernimmt keinen Fortschritt früherer Attempts; ein bereits als finished markiertes Book bleibt für bestehende Anzeigen vollständig.
+- `ReadingSessionLogging` delegiert seine bisherigen Seiten-Helfer an die Engine. Das Widget verwendet für Seitenfortschritt die bereits vorhandene Attempt-Selektion.
+
+Risiken und Tradeoffs:
+
+- Der 100er-Fallback bei prozentbasierten nativen Werten ist eine fachliche Konvention für Prozentangaben, kein erfundener Gesamtwert; `snapshot.totalValue` bleibt dabei `nil`.
+- Gleich datierte Events benötigen dauerhaft stabile Identifier, damit die deterministische Auswahl geräteübergreifend reproduzierbar bleibt.
+- Baseline-Events sind abgeleitete Legacy-Artefakte. Zukünftige Schreibpfade müssen echte Nutzer- oder Provider-Events weiterhin getrennt persistieren.
+- Neue UI für Prozent- oder Locator-Fortschritt ist noch nicht vorhanden; bestehende Oberflächen nutzen überwiegend die kompatiblen Seiten- und Normalized-Progress-Zugriffe.
 
 ### Secrets und Konfiguration
 
