@@ -1,6 +1,6 @@
 # ARCHITECTURE_NOTES.md
 
-Stand: E-Book-Erweiterung PR 2 vom 2026-07-17 auf Basis des aktuellen Projektarchivs. Aussagen beziehen sich auf den geprüften Codebestand. Unklare Punkte sind als **UNKNOWN** markiert.
+Stand: E-Book-Erweiterung PR 3 vom 2026-07-17 auf Basis des aktuellen Projektarchivs. Aussagen beziehen sich auf den geprüften Codebestand. Unklare Punkte sind als **UNKNOWN** markiert.
 
 ## Scope und Methode
 
@@ -11,7 +11,7 @@ Geprüft wurden:
 - SwiftData-Modelle und Container-Konfiguration
 - CloudKit-/Entitlement-Konfiguration
 - Root Navigation, Tabs, Sheets und Startup-Maintenance
-- Formatneutrale Fortschrittsberechnung, Reading-Attempt-Isolation und Legacy-Backfill
+- Formatneutrale Fortschrittsberechnung, Reading-Attempt-Isolation, Session-/Import-Mutationen und Legacy-Backfill
 - Große Dateien nach Zeilenzahl
 - Hot Paths für Rendering, Scroll, Sync, Storage, Concurrency und Caching
 - Tests und Testpläne
@@ -521,7 +521,7 @@ Noch nicht Teil dieser Stufe:
 - Keine lokale EPUB-/PDF-Dateiverwaltung
 - Kein Readium und kein integrierter Reader
 - Keine neue Oberfläche
-- Keine externen Provider-Imports
+- Keine konkrete Provider-Integration; vorhanden ist nur ein providerneutraler Progress-Import-Mutationspfad
 - Kein großer Umbau bestehender UI-Callsites
 
 ### Formatneutrale Fortschritts-Engine
@@ -556,6 +556,50 @@ Risiken und Tradeoffs:
 - Gleich datierte Events benötigen dauerhaft stabile Identifier, damit die deterministische Auswahl geräteübergreifend reproduzierbar bleibt.
 - Baseline-Events sind abgeleitete Legacy-Artefakte. Zukünftige Schreibpfade müssen echte Nutzer- oder Provider-Events weiterhin getrennt persistieren.
 - Neue UI für Prozent- oder Locator-Fortschritt ist noch nicht vorhanden; bestehende Oberflächen nutzen überwiegend die kompatiblen Seiten- und Normalized-Progress-Zugriffe.
+
+### Formatneutrale Session- und Progress-Mutationen
+
+Betroffene Dateien:
+
+- `Shelf Notes/BookDetail/Sessions/ReadingSessionContext.swift`
+- `Shelf Notes/BookDetail/Sessions/ReadingSessionLogging.swift`
+- `Shelf Notes/BookDetail/Sessions/ReadingSessionMutationModels.swift`
+- `Shelf Notes/BookDetail/Sessions/ReadingSessionMutationService.swift`
+- `Shelf Notes/BookDetail/Sessions/ReadingSessionDeletionService.swift`
+- `Shelf Notes/ReadingProgress/ReadingProgressMutationModels.swift`
+- `Shelf Notes/ReadingProgress/ReadingProgressMutationPlanning.swift`
+- `Shelf Notes/ReadingProgress/ReadingProgressEventMutationService.swift`
+- `Shelf Notes/ReadingProgress/ReadingProgressImportMutationService.swift`
+- `Shelf Notes/ReadingProgress/ReadingProgressEventFingerprint.swift`
+- `Shelf Notes/ReadingAttempts/ReadingAttemptSessionCoordinator.swift`
+
+Architekturentscheidung:
+
+- `ReadingSessionSource` ist der providerneutrale Eingabewert für Medium, Provider, Fortschrittseinheit, Origin und optionalen Gesamtwert. `ReadingSessionContext` verbindet diese Quelle mit dem tatsächlich verwendeten `ReadingAttempt`.
+- `ReadingSessionLogging` plant nicht mehr ausschließlich `pages: Int?`, sondern ein optionales `ReadingProgressUpdate`. Der alte Seitenaufruf bleibt als dünner Kompatibilitätsadapter bestehen.
+- `ReadingProgressMutationPlanner` trennt reine Validierung und Berechnung von SwiftData. Unterstützt werden positive Seitendifferenzen, absolute Prozentstände, native Locator mit optionalem Normalized Progress, explizite Abschlüsse und Sessions ohne Fortschritt.
+- Standardmutationen dürfen einen bekannten absoluten Fortschritt nicht reduzieren. Ein niedrigerer Stand ist nur über `ReadingProgressMutationMode.correction` zulässig.
+- Seitenmutationen bleiben Differenzen in `ReadingSession.pagesRead`; das zugehörige `ReadingProgressEvent` speichert den daraus resultierenden absoluten Stand. Prozent- und Locator-Updates werden als absolute Beobachtungen persistiert.
+- `ReadingSessionMutationService` mutiert Session, Progress Event, Reading Attempt und Book vor genau einem `ModelContext.saveWithDiagnostics()`-Aufruf. Der Event-Key `session-progress:<session-id>` und `sourceSessionID` garantieren ein idempotentes Re-Save derselben Session.
+- `ReadingProgressImportMutationService` speichert reine, deduplizierte Progress Events ohne `ReadingSession`. Es entstehen weder Lesezeit noch Session-basierter Lesetag; `Book.readFrom` und `readTo` bleiben unverändert.
+- Konkrete Provider-Clients sind nicht Teil dieser Stufe. Der Importdienst akzeptiert providerneutrale Requests und kann später von Google Books oder weiteren Adaptern aufgerufen werden.
+- `ReadingSessionDeletionService` ist der einzige UI-nahe Löschpfad für Sessions. Er entfernt zuerst alle über `sourceSessionID` oder den Session-Key gebundenen Progress Events und speichert anschließend Session- und Event-Löschung gemeinsam.
+- Quick Log und Timer verwenden weiterhin ihre bisherigen Oberflächen, persistieren aber jetzt die korrekten Origins `.quickLog` beziehungsweise `.timer`.
+
+Fachliche Invarianten:
+
+- Ein aktiver Reread verwendet ausschließlich Sessions und Events seines aktiven Attempts.
+- Ein Seitenupdate darf die verbleibenden Seiten nicht überschreiten. Ein Legacy-Supplement eines abgeschlossenen Books bleibt weiterhin zulässig und verändert den historischen Lesezeitraum nicht.
+- Locator werden gespeichert, aber nicht interpretiert. Fehlt ein belastbarer normalisierter Stand, bleibt er unbekannt.
+- Ein normales Prozent- oder Locator-Update ohne neuen Normalized Progress darf einen bereits bekannten Stand nicht versehentlich auf `nil` oder einen niedrigeren Wert zurücksetzen.
+- 100 Prozent, letzte Seite oder expliziter Abschluss beendet den aktiven Attempt und setzt das Book auf `finished`.
+
+Risiken und Tradeoffs:
+
+- Session- und Import-Upserts laden aktuell Progress Events zur robusten Deduplizierung aus dem `ModelContext`. Das ist korrekt und CloudKit-tolerant, kann bei sehr großen Eventmengen aber ein späterer Performance-Hotspot werden.
+- `sourceSessionID` ist absichtlich nur eine UUID und keine zweite SwiftData-Beziehung. Dadurch bleibt das Schema einfacher, die referenzielle Bereinigung muss jedoch zentral im Löschservice erhalten bleiben.
+- Ein fehlgeschlagener Save lässt wie bei bestehenden Mutationsdiensten Änderungen im aktuellen `ModelContext` zurück. Der persistente Store bleibt atomar, die UI sollte den Fehler anzeigen und gegebenenfalls den Context neu laden.
+- Die sichtbaren Eingabeoberflächen bleiben in PR 3 seitenorientiert. Prozent- und Locator-Pfade sind über Services und Tests vorbereitet, aber noch nicht als allgemeine manuelle UI exponiert.
 
 ### Secrets und Konfiguration
 
@@ -905,14 +949,18 @@ Erwarteter Effekt:
 
 ### Mutation Services
 
-Problem:
+Ist-Zustand:
 
-- Mutationen liegen in Views, Bindings, Sheets und einzelnen Helpern verteilt.
+- Session-Erstellung, sessiongebundene Progress Events und Session-Löschung sind über `ReadingSessionMutationService`, `ReadingProgressEventMutationService` und `ReadingSessionDeletionService` zentralisiert.
+- Reine Fortschrittsimporte besitzen mit `ReadingProgressImportMutationService` einen eigenen Pfad ohne Session-Side-Effects.
+- Andere Buch-, Collection- und allgemeine Detailmutationen liegen weiterhin teilweise in Views, Bindings, Sheets und einzelnen Helpern verteilt.
 
 Vorschlag:
 
 - `BookMutationService`
-- `ReadingSessionMutationService`
+- `ReadingSessionMutationService` ist vorhanden
+- `ReadingProgressImportMutationService` ist vorhanden
+- `ReadingSessionDeletionService` ist vorhanden
 - `CollectionMutationService`
 - `TagMutationService` existiert fachlich bereits teilweise über `TagLibraryMutation`
 

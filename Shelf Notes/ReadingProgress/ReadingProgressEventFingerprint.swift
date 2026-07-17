@@ -27,6 +27,20 @@ nonisolated struct ReadingProgressEventFingerprint: Hashable, Sendable {
         "legacy-pages-baseline:\(attemptID.uuidString.lowercased())"
     }
 
+    static func sessionProgressKey(sessionID: UUID) -> String {
+        "session-progress:\(sessionID.uuidString.lowercased())"
+    }
+
+    static func importedProgressKey(
+        provider: ReadingProvider,
+        externalIdentifier: String
+    ) -> String {
+        let normalizedIdentifier = externalIdentifier
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return "provider-progress:\(provider.rawValue):\(normalizedIdentifier)"
+    }
+
     static func attemptID(fromLegacyBaselineKey key: String) -> UUID? {
         let prefix = "legacy-pages-baseline:"
         guard key.hasPrefix(prefix) else { return nil }

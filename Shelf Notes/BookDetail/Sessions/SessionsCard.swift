@@ -487,7 +487,8 @@ struct SessionsCard: View {
             pages: pages,
             note: note,
             allSessions: sessions,
-            now: end
+            now: end,
+            origin: .quickLog
         )
 
         switch saveResult {
@@ -504,18 +505,21 @@ struct SessionsCard: View {
 
     @MainActor
     private func delete(_ session: ReadingSession) {
-        let sessionSnapshot = SavedReadingSessionSnapshot(bookID: book.id, session: session)
-        ReadingAttemptSessionCoordinator.detachBeforeDeleting(session)
-        modelContext.delete(session)
-        if let error = modelContext.saveWithDiagnostics() {
-            lastError = "Konnte Session nicht löschen: " + error.localizedDescription
-        } else {
+        switch ReadingSessionDeletionService.delete(
+            session: session,
+            modelContext: modelContext
+        ) {
+        case .failure(let error):
+            lastError = error.message
+        case .success(let result):
             lastError = nil
             latestChallengeImpact = nil
-            ChallengeRefreshCoordinator.requestRefreshAfterReadingSessionDelete(
-                modelContext: modelContext,
-                sessionSnapshot: sessionSnapshot
-            )
+            for snapshot in result.snapshots {
+                ChallengeRefreshCoordinator.requestRefreshAfterReadingSessionDelete(
+                    modelContext: modelContext,
+                    sessionSnapshot: snapshot
+                )
+            }
         }
     }
 

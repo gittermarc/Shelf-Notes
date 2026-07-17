@@ -2,11 +2,7 @@
 //  ReadingSessionLogging.swift
 //  Shelf Notes
 //
-//  Centralized rules for logging reading sessions:
-//  - page validation (remaining pages)
-//  - "session implies reading"
-//  - auto-finish + readFrom/readTo policy
-//  - session creation (start/end/duration)
+//  Centralized rules for logging format-neutral reading sessions.
 //
 
 import Foundation
@@ -29,8 +25,6 @@ struct ReadingSessionLogging {
         }
 
         func applying(to book: Book) {
-            // Important: setting status can clear readFrom/readTo for non-finished statuses.
-            // Therefore set `status` first, then write the read range.
             if book.status != status {
                 book.status = status
             }
@@ -54,48 +48,58 @@ struct ReadingSessionLogging {
         }
 
         init(endedAt: Date, durationSeconds: Int) {
-            let dur = max(0, durationSeconds)
+            let duration = max(0, durationSeconds)
             self.endedAt = endedAt
-            self.durationSeconds = dur
-            self.startedAt = endedAt.addingTimeInterval(-TimeInterval(dur))
+            self.durationSeconds = duration
+            self.startedAt = endedAt.addingTimeInterval(-TimeInterval(duration))
         }
     }
 
-    // MARK: - Validation
-
-    enum ValidationError: Error, Equatable {
-        case noRemainingPages(total: Int)
-        case pagesExceedRemaining(remaining: Int, total: Int)
-
-        var message: String {
-            switch self {
-            case .noRemainingPages(let total):
-                return "Dieses Buch hat bereits alle \(total) Seiten erreicht – du kannst keine weiteren Seiten loggen."
-            case .pagesExceedRemaining(let remaining, let total):
-                return "Zu viele Seiten: Es sind nur noch \(remaining) von \(total) Seiten übrig."
-            }
-        }
-    }
+    typealias ValidationError = ReadingProgressMutationValidationError
 
     // MARK: - Plan
 
     struct Plan: Equatable {
         var updatedBookState: BookState
         var timing: Timing
-        var normalizedPages: Int?
+        var progress: ReadingProgressMutationPlan
         var trimmedNote: String?
         var didImplyReading: Bool
         var didMarkFinished: Bool
         var isLegacySupplement: Bool
 
-        func makeSession(book: Book) -> ReadingSession {
-            ReadingSession(
+        var normalizedPages: Int? {
+            progress.pagesDelta
+        }
+
+        func makeSession(
+            book: Book,
+            context: ReadingSessionContext,
+            existingSession: ReadingSession? = nil
+        ) -> ReadingSession {
+            let session = existingSession ?? ReadingSession(
                 book: book,
                 startAt: timing.startedAt,
-                durationSeconds: timing.durationSeconds,
-                pagesRead: normalizedPages,
-                note: trimmedNote
+                durationSeconds: timing.durationSeconds
             )
+
+            session.book = book
+            session.startedAt = timing.startedAt
+            session.endedAt = timing.endedAt
+            session.durationSeconds = timing.durationSeconds
+            session.pagesRead = progress.pagesDelta
+            session.note = trimmedNote
+            session.mediumRawValue = context.medium.rawValue
+            session.providerRawValue = context.provider.rawValue
+            session.originRawValue = context.origin.rawValue
+            session.progressUnitRawValue = context.progressUnit.rawValue
+            session.startValue = progress.startValue
+            session.endValue = progress.endValue
+            session.startNormalizedProgress = progress.startNormalizedProgress
+            session.endNormalizedProgress = progress.endNormalizedProgress
+            session.startLocator = progress.startLocator
+            session.endLocator = progress.endLocator
+            return session
         }
 
         func apply(to book: Book) {
@@ -106,23 +110,26 @@ struct ReadingSessionLogging {
     // MARK: - Utilities
 
     static func normalizedTotalPages(_ raw: Int?) -> Int? {
-        guard let t = raw, t > 0 else { return nil }
-        return t
+        guard let total = raw, total > 0 else { return nil }
+        return total
     }
 
     static func normalizePages(_ pages: Int?) -> Int? {
-        guard let p = pages, p > 0 else { return nil }
-        return p
+        guard let pages, pages > 0 else { return nil }
+        return pages
     }
 
     static func trimNote(_ note: String?) -> String? {
-        guard let n = note?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty else { return nil }
-        return n
+        guard let note = note?.trimmingCharacters(in: .whitespacesAndNewlines),
+              note.isEmpty == false else {
+            return nil
+        }
+        return note
     }
 
     static func pagesReadTotal(in sessions: [ReadingSession]) -> Int {
         sessions
-            .compactMap { $0.pagesReadNormalized }
+            .compactMap(\.pagesReadNormalized)
             .reduce(0, +)
     }
 
@@ -146,6 +153,27 @@ struct ReadingSessionLogging {
         ).normalizedProgress
     }
 
+    static func progressSnapshot(
+        status: ReadingStatus,
+        unit: ReadingProgressUnit,
+        totalPages: Int?,
+        totalValue: Double?,
+        sessions: [ReadingSession],
+        updates: [ReadingProgressUpdate] = []
+    ) -> ReadingProgressSnapshot {
+        ReadingProgressEngine.snapshot(
+            for: ReadingProgressAttemptSnapshot(
+                attemptID: UUID(),
+                status: status == .finished ? .finished : .active,
+                unit: unit,
+                pageCountSnapshot: totalPages,
+                totalValueSnapshot: totalValue,
+                sessionPageValues: sessions.compactMap(\.pagesRead),
+                updates: updates
+            )
+        )
+    }
+
     private static func pageProgressInput(
         status: ReadingStatus,
         totalPages: Int?,
@@ -165,12 +193,30 @@ struct ReadingSessionLogging {
     static func plan(
         bookState: BookState,
         existingSessions: [ReadingSession],
+        currentProgress: ReadingProgressSnapshot,
         timing: Timing,
-        pages: Int?,
+        progressUpdate: ReadingProgressUpdate?,
         note: String?,
-        allowsFinishedBookSupplement: Bool = false
+        mutationMode: ReadingProgressMutationMode = .standard,
+        allowsFinishedBookSupplement: Bool = false,
+        allowsAbsolutePageValue: Bool = false
     ) -> Result<Plan, ValidationError> {
-        let normalizedPages = normalizePages(pages)
+        let progressResult = ReadingProgressMutationPlanner.makePlan(
+            current: currentProgress,
+            update: progressUpdate,
+            mode: mutationMode,
+            allowsPageOverflow: allowsFinishedBookSupplement,
+            allowsAbsolutePageValue: allowsAbsolutePageValue
+        )
+
+        let progress: ReadingProgressMutationPlan
+        switch progressResult {
+        case .success(let value):
+            progress = value
+        case .failure(let error):
+            return .failure(error)
+        }
+
         let trimmedNote = trimNote(note)
 
         if allowsFinishedBookSupplement, bookState.status == .finished {
@@ -178,7 +224,7 @@ struct ReadingSessionLogging {
                 Plan(
                     updatedBookState: bookState,
                     timing: timing,
-                    normalizedPages: normalizedPages,
+                    progress: progress,
                     trimmedNote: trimmedNote,
                     didImplyReading: false,
                     didMarkFinished: false,
@@ -187,49 +233,27 @@ struct ReadingSessionLogging {
             )
         }
 
-        // Page validation: you can't log more pages than the book has remaining.
-        if let total = normalizedTotalPages(bookState.pageCount), let p = normalizedPages {
-            let already = pagesReadTotal(in: existingSessions)
-            let remaining = max(0, total - already)
-
-            if remaining <= 0 {
-                return .failure(.noRemainingPages(total: total))
-            }
-
-            if p > remaining {
-                return .failure(.pagesExceedRemaining(remaining: remaining, total: total))
-            }
-        }
-
         var updated = bookState
         var didImplyReading = false
-        var didMarkFinished = false
 
-        // A logged session implies "reading" if the user hasn't started yet.
         if updated.status == .toRead {
             updated.status = .reading
             didImplyReading = true
         }
 
-        // Auto-finish: if this session reaches the last page, mark the book as finished.
-        if let total = normalizedTotalPages(updated.pageCount) {
-            let already = pagesReadTotal(in: existingSessions)
-            let after = already + (normalizedPages ?? 0)
-            if after >= total {
-                updated.status = .finished
-                didMarkFinished = true
+        let didMarkFinished = progress.didReachCompletion
+        if didMarkFinished {
+            updated.status = .finished
 
-                if updated.readFrom == nil {
-                    let earliestExisting = existingSessions.map(\ReadingSession.startedAt).min()
-                    let earliest = min(earliestExisting ?? timing.startedAt, timing.startedAt)
-                    updated.readFrom = earliest
-                }
+            if updated.readFrom == nil {
+                let earliestExisting = existingSessions.map(\.startedAt).min()
+                updated.readFrom = min(earliestExisting ?? timing.startedAt, timing.startedAt)
+            }
 
-                updated.readTo = timing.endedAt
+            updated.readTo = timing.endedAt
 
-                if let from = updated.readFrom, let to = updated.readTo, to < from {
-                    updated.readFrom = to
-                }
+            if let from = updated.readFrom, let to = updated.readTo, to < from {
+                updated.readFrom = to
             }
         }
 
@@ -237,12 +261,45 @@ struct ReadingSessionLogging {
             Plan(
                 updatedBookState: updated,
                 timing: timing,
-                normalizedPages: normalizedPages,
+                progress: progress,
                 trimmedNote: trimmedNote,
                 didImplyReading: didImplyReading,
                 didMarkFinished: didMarkFinished,
                 isLegacySupplement: false
             )
+        )
+    }
+
+    static func plan(
+        bookState: BookState,
+        existingSessions: [ReadingSession],
+        timing: Timing,
+        pages: Int?,
+        note: String?,
+        allowsFinishedBookSupplement: Bool = false
+    ) -> Result<Plan, ValidationError> {
+        let currentProgress = progressSnapshot(
+            status: bookState.status,
+            unit: .pages,
+            totalPages: bookState.pageCount,
+            totalValue: bookState.pageCount.map(Double.init),
+            sessions: existingSessions
+        )
+        let update = normalizePages(pages).map {
+            ReadingProgressUpdate.pageDelta(
+                $0,
+                occurredAt: timing.endedAt
+            )
+        }
+
+        return plan(
+            bookState: bookState,
+            existingSessions: existingSessions,
+            currentProgress: currentProgress,
+            timing: timing,
+            progressUpdate: update,
+            note: note,
+            allowsFinishedBookSupplement: allowsFinishedBookSupplement
         )
     }
 }

@@ -124,7 +124,14 @@ struct ReadingAttemptBookDetailUXTests {
             return
         }
         plan.apply(to: book)
-        let newSession = plan.makeSession(book: book)
+        let sessionContext = legacyPageSessionContext(
+            book: book,
+            readingAttempt: active
+        )
+        let newSession = plan.makeSession(
+            book: book,
+            context: sessionContext
+        )
         ReadingAttemptSessionCoordinator.attach(
             session: newSession,
             to: active,
@@ -189,7 +196,14 @@ struct ReadingAttemptBookDetailUXTests {
             return
         }
         plan.apply(to: book)
-        let session = plan.makeSession(book: book)
+        let sessionContext = legacyPageSessionContext(
+            book: book,
+            readingAttempt: nil
+        )
+        let session = plan.makeSession(
+            book: book,
+            context: sessionContext
+        )
         ReadingAttemptSessionCoordinator.attach(
             session: session,
             to: nil,
@@ -251,5 +265,22 @@ struct ReadingAttemptBookDetailUXTests {
         #expect(groups[0].sessions.map(\.id) == [activeSession.id])
         #expect(groups[1].sessions.map(\.id) == [completedSession.id])
         #expect(groups[2].sessions.map(\.id) == [legacySession.id])
+    }
+
+    @MainActor
+    private func legacyPageSessionContext(
+        book: Book,
+        readingAttempt: ReadingAttempt?
+    ) -> ReadingSessionContext {
+        ReadingSessionContext.resolved(
+            readingAttempt: readingAttempt,
+            requestedSource: ReadingSessionSource(
+                medium: readingAttempt?.readingMedium ?? .physical,
+                provider: readingAttempt?.defaultProvider ?? .none,
+                progressUnit: .pages,
+                origin: .legacy,
+                totalValue: readingAttempt?.totalValueSnapshot ?? book.pageCount.map(Double.init)
+            )
+        )
     }
 }

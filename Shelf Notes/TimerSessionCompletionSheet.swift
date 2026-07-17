@@ -243,7 +243,8 @@ struct TimerSessionCompletionSheet: View {
             pages: pages,
             note: noteText,
             allSessions: book.readingSessionsSafe,
-            now: pending.endedAt
+            now: pending.endedAt,
+            origin: .timer
         )
 
         switch saveResult {

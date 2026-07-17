@@ -34,6 +34,11 @@ enum ReadingAttemptSessionCoordinator {
             return nil
         }
 
+        if let activeAttempt = book.activeReadingAttempt,
+           activeAttempt.progressUnit != .pages {
+            return nil
+        }
+
         return ReadingSessionLogging.remainingPages(
             totalPages: book.pageCount,
             sessions: progressSessions(for: book, allSessions: allSessions)
@@ -46,6 +51,7 @@ enum ReadingAttemptSessionCoordinator {
         for book: Book,
         startedAt: Date,
         now: Date = Date(),
+        source: ReadingSessionSource = ReadingSessionSource(origin: .legacy),
         insertAttempt: (ReadingAttempt) -> Void
     ) -> ReadingAttempt {
         _ = ReadingAttemptRepair.repair(book: book, now: now, insertAttempt: insertAttempt)
@@ -57,6 +63,7 @@ enum ReadingAttemptSessionCoordinator {
                 startedAt: startedAt,
                 now: now
             )
+            updateSourceTotalIfNeeded(activeAttempt, source: source, now: now)
             if book.status != .reading {
                 book.status = .reading
             }
@@ -70,6 +77,10 @@ enum ReadingAttemptSessionCoordinator {
             startedAt: startedAt,
             finishedAt: nil,
             pageCountSnapshot: ReadingAttemptRepair.normalizedPageCount(book.pageCount),
+            readingMedium: source.medium,
+            defaultProvider: source.provider,
+            progressUnit: source.progressUnit,
+            totalValueSnapshot: source.totalValue,
             createdAt: now,
             updatedAt: now
         )
@@ -88,6 +99,7 @@ enum ReadingAttemptSessionCoordinator {
         book: Book,
         startedAt: Date,
         now: Date = Date(),
+        source: ReadingSessionSource = ReadingSessionSource(origin: .legacy),
         insertAttempt: (ReadingAttempt) -> Void
     ) -> ReadingAttempt? {
         if let activeAttempt = book.activeReadingAttempt {
@@ -97,6 +109,7 @@ enum ReadingAttemptSessionCoordinator {
                 startedAt: startedAt,
                 now: now
             )
+            updateSourceTotalIfNeeded(activeAttempt, source: source, now: now)
             if book.status != .reading {
                 book.status = .reading
             }
@@ -114,6 +127,10 @@ enum ReadingAttemptSessionCoordinator {
             startedAt: startedAt,
             finishedAt: nil,
             pageCountSnapshot: ReadingAttemptRepair.normalizedPageCount(book.pageCount),
+            readingMedium: source.medium,
+            defaultProvider: source.provider,
+            progressUnit: source.progressUnit,
+            totalValueSnapshot: source.totalValue,
             createdAt: now,
             updatedAt: now
         )
@@ -142,6 +159,27 @@ enum ReadingAttemptSessionCoordinator {
 
         session.readingAttempt = attempt
         attempt.addSessionIfNeeded(session)
+        updateActiveAttemptMetadata(
+            attempt,
+            book: book,
+            startedAt: plan.timing.startedAt,
+            now: now
+        )
+
+        if plan.didMarkFinished {
+            finish(attempt, book: book, finishedAt: plan.timing.endedAt, now: now)
+        }
+    }
+
+    @MainActor
+    static func applyProgressMutation(
+        to attempt: ReadingAttempt?,
+        plan: ReadingSessionLogging.Plan,
+        book: Book,
+        now: Date = Date()
+    ) {
+        guard let attempt else { return }
+
         updateActiveAttemptMetadata(
             attempt,
             book: book,
@@ -205,6 +243,22 @@ enum ReadingAttemptSessionCoordinator {
             attempt.pageCountSnapshot = ReadingAttemptRepair.normalizedPageCount(book.pageCount)
         }
 
+        attempt.updatedAt = now
+    }
+
+    @MainActor
+    private static func updateSourceTotalIfNeeded(
+        _ attempt: ReadingAttempt,
+        source: ReadingSessionSource,
+        now: Date
+    ) {
+        guard attempt.totalValueSnapshot == nil,
+              let total = source.totalValue,
+              total.isFinite,
+              total > 0 else {
+            return
+        }
+        attempt.totalValueSnapshot = total
         attempt.updatedAt = now
     }
 }

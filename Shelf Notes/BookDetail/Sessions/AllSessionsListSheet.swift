@@ -108,15 +108,21 @@ struct AllSessionsListSheet: View {
 
     @MainActor
     private func delete(_ source: [ReadingSession], at offsets: IndexSet) {
-        for idx in offsets {
-            let s = source[idx]
-            ReadingAttemptSessionCoordinator.detachBeforeDeleting(s)
-            modelContext.delete(s)
-        }
-        if let error = modelContext.saveWithDiagnostics() {
-            lastError = "Konnte nicht löschen: " + error.localizedDescription
-        } else {
+        let sessionsToDelete = offsets.map { source[$0] }
+        switch ReadingSessionDeletionService.delete(
+            sessions: sessionsToDelete,
+            modelContext: modelContext
+        ) {
+        case .failure(let error):
+            lastError = error.message
+        case .success(let result):
             lastError = nil
+            for snapshot in result.snapshots {
+                ChallengeRefreshCoordinator.requestRefreshAfterReadingSessionDelete(
+                    modelContext: modelContext,
+                    sessionSnapshot: snapshot
+                )
+            }
         }
     }
 
