@@ -95,7 +95,7 @@ final class GoalsYearMetricsModel: ObservableObject {
                 hasher.combine(attempt.startedAt?.timeIntervalSinceReferenceDate)
                 hasher.combine(attempt.finishedAt?.timeIntervalSinceReferenceDate)
                 hasher.combine(attempt.pageCountSnapshot)
-                hasher.combine(attempt.updatedAt.timeIntervalSinceReferenceDate)
+                hasher.combine(attempt.progressUnitRawValue)
             }
 
             let hash = UInt64(bitPattern: Int64(hasher.finalize()))

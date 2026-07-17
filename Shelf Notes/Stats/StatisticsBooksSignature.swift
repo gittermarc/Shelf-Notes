@@ -3,7 +3,7 @@ import Foundation
 extension StatisticsSourceStore {
     static func booksSignature(_ books: [Book]) -> Int {
         var hasher = StableStatisticsHasher()
-        hasher.combine("statistics-books-v4")
+        hasher.combine("statistics-books-v5")
         hasher.combine(books.count)
 
         for book in books.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
@@ -47,7 +47,7 @@ extension StatisticsSourceStore {
                 hasher.combineDay(attempt.startedAt)
                 hasher.combineDay(attempt.finishedAt)
                 hasher.combine(attempt.pageCountSnapshot)
-                hasher.combineDate(attempt.updatedAt)
+                hasher.combine(attempt.progressUnitRawValue)
             }
             hasher.combine("attempts-end")
 
@@ -59,7 +59,7 @@ extension StatisticsSourceStore {
 
     static func sessionsSignature(_ books: [Book]) -> Int {
         var hasher = StableStatisticsHasher()
-        hasher.combine("statistics-sessions-v2")
+        hasher.combine("statistics-sessions-v3")
         hasher.combine(books.count)
 
         for book in books.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
@@ -77,6 +77,8 @@ extension StatisticsSourceStore {
                 hasher.combineDate(session.endedAt)
                 hasher.combine(session.durationSeconds)
                 hasher.combine(session.pagesReadNormalized)
+                hasher.combine(session.progressUnitRawValue)
+                hasher.combine(session.originRawValue)
             }
 
             hasher.combine("session-book-end")

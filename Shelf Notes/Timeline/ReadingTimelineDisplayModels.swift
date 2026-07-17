@@ -39,6 +39,14 @@ nonisolated struct ReadingTimelineEntryDisplayItem: Hashable, Sendable, Identifi
     var attemptLabel: String? {
         completion.isReread ? completion.displayName : nil
     }
+
+    var sourceLabel: String {
+        ReadingSourcePresentation.make(
+            medium: completion.medium,
+            provider: completion.provider,
+            progressUnit: completion.progressUnit
+        ).title
+    }
 }
 
 nonisolated struct ReadingTimelineYearDisplayStats: Hashable, Sendable {

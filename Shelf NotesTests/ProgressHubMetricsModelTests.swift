@@ -191,4 +191,61 @@ struct ProgressHubMetricsModelTests {
         #expect(aggregate.booksByID.values.first?.totalPages == 30)
         #expect(aggregate.yearsByYear[2026]?.activeDays == 2)
     }
+
+    @Test @MainActor func mixedMediaCompletionsAndProviderImportsKeepUniversalProgressHubMetrics() {
+        let ebook = makeBook(
+            title: "Digital",
+            status: .finished,
+            createdAt: date(2026, 1, 1),
+            pageCount: 500
+        )
+        let attempt = ReadingAttempt(
+            book: ebook,
+            sequenceNumber: 1,
+            status: .finished,
+            startedAt: date(2026, 1, 1),
+            finishedAt: date(2026, 1, 8),
+            pageCountSnapshot: 500,
+            readingMedium: .ebook,
+            defaultProvider: .googleBooks,
+            progressUnit: .percentage,
+            totalValueSnapshot: 100
+        )
+        ebook.readingAttempts = [attempt]
+
+        let providerImport = ReadingSession(
+            book: ebook,
+            startedAt: date(2026, 4, 15, 8),
+            endedAt: date(2026, 4, 15, 8, 30),
+            progressUnit: .percentage,
+            origin: .providerImport
+        )
+        let realSession = ReadingSession(
+            book: ebook,
+            startedAt: date(2026, 4, 14, 8),
+            endedAt: date(2026, 4, 14, 8, 20),
+            progressUnit: .percentage,
+            origin: .quickLog
+        )
+        let recent = ReadingAnalyticsRecentActivityBuilder.make(
+            sessions: ReadingAnalyticsInputMapper.sessionRecords(from: [providerImport, realSession]),
+            now: date(2026, 4, 15, 9),
+            calendar: calendar
+        )
+
+        let metrics = ProgressHubMetricsModel.makeMetrics(
+            year: 2026,
+            books: [ebook],
+            goals: [ReadingGoal(year: 2026, targetCount: 12)],
+            recentActivity: recent,
+            now: date(2026, 4, 15, 9),
+            calendar: calendar
+        )
+
+        #expect(metrics.finishedThisYear == 1)
+        #expect(metrics.goalTarget == 12)
+        #expect(metrics.minutesLast7 == 20)
+        #expect(metrics.activeDaysLast7 == 1)
+        #expect(metrics.currentStreak == 0)
+    }
 }

@@ -78,6 +78,42 @@ struct ReadingTimelineDisplayStoreTests {
         #expect(yearStats(from: store.displayState)[2024]?.averageRatingText == "4.5")
     }
 
+    @Test @MainActor func changedCompletionSourceRebuildsVisibleTimelinePresentation() async {
+        let store = ReadingTimelineDisplayStore()
+        let bookID = fixedUUID(35)
+        let physical = [bookSnapshot(
+            id: bookID,
+            title: "Source",
+            completions: [completion(
+                bookID: bookID,
+                sequenceNumber: 1,
+                finishedAt: date(2024, 4, 8),
+                medium: .physical,
+                provider: .none,
+                progressUnit: .pages
+            )]
+        )]
+        let kindle = [bookSnapshot(
+            id: bookID,
+            title: "Source",
+            completions: [completion(
+                bookID: bookID,
+                sequenceNumber: 1,
+                finishedAt: date(2024, 4, 8),
+                medium: .ebook,
+                provider: .kindle,
+                progressUnit: .percentage
+            )]
+        )]
+
+        await store.refreshSnapshots(physical)
+        #expect(completionItems(from: store.displayState).first?.sourceLabel == "Physisches Buch")
+        await store.refreshSnapshots(kindle)
+
+        #expect(store.completedBuildCount == 2)
+        #expect(completionItems(from: store.displayState).first?.sourceLabel == "Kindle")
+    }
+
     @Test @MainActor func markerPositionChangesDoNotRebuildDisplayStore() async {
         let store = ReadingTimelineDisplayStore()
         let bookID = fixedUUID(4)
@@ -131,6 +167,9 @@ private extension ReadingTimelineDisplayStoreTests {
         sequenceNumber: Int,
         finishedAt: Date,
         isReread: Bool = false,
+        medium: ReadingMedium = .physical,
+        provider: ReadingProvider = .none,
+        progressUnit: ReadingProgressUnit = .pages,
         title: String = "Fixture Completion",
         author: String = "Fixture Author"
     ) -> ReadingTimelineCompletionSnapshot {
@@ -144,6 +183,9 @@ private extension ReadingTimelineDisplayStoreTests {
             startedAt: calendar.date(byAdding: .day, value: -7, to: finishedAt),
             finishedAt: finishedAt,
             pageCount: 320,
+            mediumRawValue: medium.rawValue,
+            providerRawValue: provider.rawValue,
+            progressUnitRawValue: progressUnit.rawValue,
             isReread: isReread,
             isLegacyFallback: false
         )

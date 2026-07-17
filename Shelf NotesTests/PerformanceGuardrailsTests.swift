@@ -97,4 +97,40 @@ struct PerformanceGuardrailsTests {
         #expect(snapshot.items.count == 4)
         #expect(snapshot.items.map(\.kind) == [.challenge, .yearGoal, .weeklyMinutes, .readingStreak])
     }
+
+    @Test func mixedSessionAggregateBuilderRemainsDeterministicAtScale() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        let base = calendar.date(from: DateComponents(year: 2026, month: 1, day: 1)) ?? .distantPast
+        let records = (0..<6_000).map { index in
+            let startedAt = base.addingTimeInterval(TimeInterval(index * 90))
+            let unit: ReadingProgressUnit = index.isMultiple(of: 3) ? .pages : .percentage
+            let origin: ReadingSessionOrigin = index.isMultiple(of: 10) ? .providerImport : .timer
+            return ReadingSessionAggregateRecord(
+                id: UUID(uuidString: String(format: "00000000-0000-0000-0001-%012d", index)) ?? UUID(),
+                bookID: UUID(uuidString: "00000000-0000-0000-0000-000000000001"),
+                statusRawValue: ReadingStatus.reading.rawValue,
+                startedAt: startedAt,
+                endedAt: startedAt.addingTimeInterval(60),
+                durationSeconds: 60,
+                pagesRead: unit == .pages ? 2 : nil,
+                progressUnitRawValue: unit.rawValue,
+                originRawValue: origin.rawValue,
+                createdAt: startedAt
+            )
+        }
+
+        let first = ReadingSessionAggregateBuilder.make(records: records, now: base, calendar: calendar)
+        let second = ReadingSessionAggregateBuilder.make(
+            records: Array(records.reversed()),
+            now: base,
+            calendar: calendar
+        )
+
+        #expect(first.signature == second.signature)
+        #expect(first.totalSessionCount == 5_400)
+        #expect(first.booksByID.values.first?.totalPages == 3_600)
+        #expect(first.booksByID.values.first?.pageBasedSeconds == 108_000)
+        #expect(first.booksByID.values.first?.pagesPerHour == 120)
+    }
 }

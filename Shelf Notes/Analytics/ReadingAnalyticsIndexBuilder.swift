@@ -44,6 +44,12 @@ nonisolated enum ReadingAnalyticsIndexBuilder {
                     accumulator.rereadCompletionCount += 1
                 }
                 accumulator.pagesRead += pages
+                let contribution = completion.metricContribution
+                if contribution.progressUnit == .pages {
+                    accumulator.pageBasedCompletionCount += 1
+                } else {
+                    accumulator.nonPageCompletionCount += 1
+                }
 
                 if pages > 0 {
                     accumulator.countedBooksWithPagesCount += 1
@@ -75,6 +81,8 @@ nonisolated enum ReadingAnalyticsIndexBuilder {
                     uniqueFinishedBookCount: accumulator.uniqueBookIDs.count,
                     rereadCompletionCount: accumulator.rereadCompletionCount,
                     pagesRead: accumulator.pagesRead,
+                    pageBasedCompletionCount: accumulator.pageBasedCompletionCount,
+                    nonPageCompletionCount: accumulator.nonPageCompletionCount,
                     countedBooksWithPagesCount: accumulator.countedBooksWithPagesCount,
                     averagePagesPerBook: averagePagesPerBook,
                     pagesByMonth: accumulator.pagesByMonth
@@ -90,6 +98,8 @@ private nonisolated struct YearAccumulator {
     var uniqueBookIDs: Set<UUID> = []
     var rereadCompletionCount: Int = 0
     var pagesRead: Int = 0
+    var pageBasedCompletionCount: Int = 0
+    var nonPageCompletionCount: Int = 0
     var countedBooksWithPagesCount: Int = 0
     var pagesByMonth: [Int: Int] = [:]
 }

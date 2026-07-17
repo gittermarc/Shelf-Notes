@@ -32,6 +32,18 @@ nonisolated struct GoalsYearMetrics {
     var finishedCompletionCount: Int {
         finishedCompletions.count
     }
+
+    var hasNonPageCompletions: Bool {
+        finishedCompletions.contains { $0.record.metricContribution.progressUnit != .pages }
+    }
+
+    var hasPageBasedCompletions: Bool {
+        finishedCompletions.contains { $0.record.metricContribution.progressUnit == .pages }
+    }
+
+    var hasMixedProgressUnits: Bool {
+        hasPageBasedCompletions && hasNonPageCompletions
+    }
 }
 
 extension GoalsYearMetrics: Equatable {
@@ -48,7 +60,7 @@ extension GoalsYearMetrics: Equatable {
         lhs.rereadCompletionCount == rhs.rereadCompletionCount
     }
 
-    static func placeholder(
+    @MainActor static func placeholder(
         selectedYear: Int,
         now: Date = Date(),
         calendar: Calendar = .current
@@ -64,7 +76,7 @@ extension GoalsYearMetrics: Equatable {
 }
 
 nonisolated enum GoalsYearMetricsBuilder {
-    static func make(
+    @MainActor static func make(
         selectedYear: Int,
         books: [Book],
         goals: [ReadingGoal],
@@ -129,7 +141,7 @@ nonisolated enum GoalsYearMetricsBuilder {
         return years.sorted(by: >)
     }
 
-    private static func completions(
+    @MainActor private static func completions(
         in selectedYear: Int,
         books: [Book],
         calendar: Calendar

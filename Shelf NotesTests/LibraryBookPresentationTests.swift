@@ -25,7 +25,7 @@ struct LibraryBookPresentationTests {
         #expect(presentation.lastActivityText != nil)
     }
 
-    @Test func missingPageCountDoesNotCreatePageOrPercentageFallbacks() {
+    @Test func missingPageCountKeepsKnownPageProgressWithoutInventingPercentage() {
         let snapshot = LibraryView.LibrarySourceSnapshot.BookSnapshot(
             title: "Unknown Pages",
             statusRawValue: ReadingStatus.reading.rawValue,
@@ -36,10 +36,10 @@ struct LibraryBookPresentationTests {
 
         let presentation = LibraryBookPresentation(snapshot: snapshot)
 
-        #expect(presentation.shouldShowReadingProgress == false)
+        #expect(presentation.shouldShowReadingProgress)
         #expect(presentation.progressFraction == nil)
         #expect(presentation.progressText == nil)
-        #expect(presentation.pageProgressText == nil)
+        #expect(presentation.pageProgressText == "42 Seiten gelesen")
         #expect(presentation.remainingPagesText == nil)
     }
 
@@ -93,6 +93,67 @@ struct LibraryBookPresentationTests {
         #expect(presentation.progressText == "100 %")
         #expect(presentation.pageProgressText == "100 von 100 Seiten")
         #expect(presentation.remainingPagesText == nil)
+    }
+
+    @Test func percentageEbookShowsIndividualProgressWithoutPageValues() {
+        let snapshot = LibraryView.LibrarySourceSnapshot.BookSnapshot(
+            title: "Digital",
+            statusRawValue: ReadingStatus.reading.rawValue,
+            pageCount: 450,
+            readingProgressFraction: 0.4,
+            readingMediumRawValue: ReadingMedium.ebook.rawValue,
+            readingProviderRawValue: ReadingProvider.kindle.rawValue,
+            progressUnitRawValue: ReadingProgressUnit.percentage.rawValue,
+            progressNativeValue: 40,
+            progressTotalValue: 100
+        )
+
+        let presentation = LibraryBookPresentation(snapshot: snapshot)
+
+        #expect(presentation.shouldShowReadingProgress)
+        #expect(presentation.progressText == "40 %")
+        #expect(presentation.pageProgressText == nil)
+        #expect(presentation.remainingPagesText == nil)
+        #expect(presentation.detailText == "Aktueller Lesestand 40%")
+        #expect(presentation.sourceText == "Kindle")
+        #expect(presentation.accessibilitySummary.contains("Kindle"))
+    }
+
+    @Test func locatorWithoutPercentageShowsPositionButNoSyntheticProgressBar() {
+        let snapshot = LibraryView.LibrarySourceSnapshot.BookSnapshot(
+            title: "Position",
+            statusRawValue: ReadingStatus.reading.rawValue,
+            readingProgressFraction: nil,
+            readingMediumRawValue: ReadingMedium.ebook.rawValue,
+            readingProviderRawValue: ReadingProvider.appleBooks.rawValue,
+            progressUnitRawValue: ReadingProgressUnit.locator.rawValue,
+            progressLocator: "Kapitel 7"
+        )
+
+        let presentation = LibraryBookPresentation(snapshot: snapshot)
+
+        #expect(presentation.shouldShowReadingProgress)
+        #expect(presentation.progressFraction == nil)
+        #expect(presentation.progressText == nil)
+        #expect(presentation.pageProgressText == nil)
+        #expect(presentation.detailText == "Leseposition: Kapitel 7")
+        #expect(presentation.sourceText == "Apple Books")
+    }
+
+    @Test func legacyPhysicalPresentationStaysCompact() {
+        let snapshot = LibraryView.LibrarySourceSnapshot.BookSnapshot(
+            title: "Paper",
+            statusRawValue: ReadingStatus.reading.rawValue,
+            pageCount: 200,
+            pagesReadTotal: 50,
+            readingProgressFraction: 0.25
+        )
+
+        let presentation = LibraryBookPresentation(snapshot: snapshot)
+
+        #expect(presentation.sourceText == nil)
+        #expect(presentation.pageProgressText == "50 von 200 Seiten")
+        #expect(presentation.remainingPagesText == "noch 150 Seiten")
     }
 
     private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {

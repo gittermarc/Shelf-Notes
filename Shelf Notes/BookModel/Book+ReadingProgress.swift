@@ -7,10 +7,20 @@ import Foundation
 
 @MainActor
 extension Book {
-    /// Sum of all logged pages across sessions (ignores nil/<=0).
+    /// Sum of eligible page-based session contributions (ignores nil/<=0).
     var pagesReadTotalFromSessions: Int {
         readingSessionsSafe
-            .compactMap { $0.pagesReadNormalized }
+            .map { session in
+                ReadingSessionMetricMapper.contribution(
+                    from: ReadingSessionMetricInput(
+                        startedAt: session.startedAt,
+                        durationSeconds: session.durationSeconds,
+                        pagesRead: session.pagesReadNormalized,
+                        progressUnitRawValue: session.progressUnitRawValue,
+                        originRawValue: session.originRawValue
+                    )
+                ).pagesRead
+            }
             .reduce(0, +)
     }
 
@@ -54,12 +64,23 @@ extension Book {
         status: ReadingAttemptStatus
     ) -> ReadingProgressSnapshot {
         let sessions = readingSessionsSafe
+        let pageValues = sessions.map { session in
+            ReadingSessionMetricMapper.contribution(
+                from: ReadingSessionMetricInput(
+                    startedAt: session.startedAt,
+                    durationSeconds: session.durationSeconds,
+                    pagesRead: session.pagesReadNormalized,
+                    progressUnitRawValue: session.progressUnitRawValue,
+                    originRawValue: session.originRawValue
+                )
+            ).pagesRead
+        }
         let input = ReadingProgressAttemptSnapshot(
             attemptID: id,
             status: status,
             unit: .pages,
             pageCountSnapshot: pageCount,
-            sessionPageValues: sessions.compactMap(\.pagesRead)
+            sessionPageValues: pageValues
         )
         return ReadingProgressEngine.snapshot(for: input)
     }
@@ -69,7 +90,7 @@ extension Book {
     /// Rules:
     /// - If the book is marked as finished, progress is always 1.0.
     /// - If `pageCount` is missing/0 and the book is not finished, returns `nil`.
-    /// - Otherwise: sum(pagesRead) / pageCount, clamped to 0…1.
+    /// - Otherwise: sum(eligible page-session pages) / pageCount, clamped to 0…1.
     var readingProgressFraction: Double? {
         currentReadingProgressSnapshot.normalizedProgress
     }

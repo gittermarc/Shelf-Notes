@@ -88,6 +88,8 @@ nonisolated struct StatisticsSessionSourceSnapshot: Sendable {
                     endedAt: session.endedAt,
                     durationSeconds: session.durationSeconds,
                     pagesRead: session.pagesRead,
+                    progressUnitRawValue: session.progressUnitRawValue,
+                    originRawValue: session.originRawValue,
                     createdAt: session.createdAt
                 )
             }

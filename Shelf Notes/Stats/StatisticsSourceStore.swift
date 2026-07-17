@@ -277,7 +277,7 @@ final class StatisticsSourceStore: ObservableObject {
         guard let sourceSnapshot, sourceSnapshot.booksSignature == key.booksSignature else { return }
 
         let sessionSource = matchingSessionSource(for: key)
-        if key.activityMetric == .readingMinutes, sessionSource == nil {
+        if key.activityMetric.needsSessionSource, sessionSource == nil {
             return
         }
 
@@ -295,7 +295,7 @@ final class StatisticsSourceStore: ObservableObject {
         }
         guard !Task.isCancelled else { return }
         guard self.sourceSnapshot?.booksSignature == key.booksSignature else { return }
-        if key.activityMetric == .readingMinutes {
+        if key.activityMetric.needsSessionSource {
             guard matchingSessionSource(for: key) != nil else { return }
         }
         heatmapCache = cache
@@ -377,7 +377,7 @@ final class StatisticsSourceStore: ObservableObject {
         for activityMetric: StatisticsActivityMetric,
         booksSignature: Int
     ) -> Int? {
-        guard activityMetric == .readingMinutes else {
+        guard activityMetric.needsSessionSource else {
             return booksSignature
         }
         guard sessionSourceNeedsRefresh == false else {
@@ -394,7 +394,7 @@ final class StatisticsSourceStore: ObservableObject {
         for activityMetric: StatisticsActivityMetric,
         booksSignature: Int
     ) -> Int? {
-        guard activityMetric == .readingMinutes else { return nil }
+        guard activityMetric.needsSessionSource else { return nil }
         if sessionSourceNeedsRefresh == false,
            sessionSourceSnapshot?.booksSignature == booksSignature {
             return nil
@@ -406,7 +406,7 @@ final class StatisticsSourceStore: ObservableObject {
     private func matchingSessionSource(
         for key: StatisticsHeatmapCacheKey
     ) -> StatisticsSessionSourceSnapshot? {
-        guard key.activityMetric == .readingMinutes else {
+        guard key.activityMetric.needsSessionSource else {
             return nil
         }
         guard let sessionSourceSnapshot,

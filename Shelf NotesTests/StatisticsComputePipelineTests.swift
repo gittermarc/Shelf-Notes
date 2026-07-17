@@ -162,6 +162,122 @@ struct StatisticsComputePipelineTests {
         #expect(aggregates.roundedMinutesByDay(for: .finished)[date(2026, 1, 2)] == 30)
     }
 
+    @Test func providerImportDoesNotCreateMinutesOrReadingDaysInEitherHeatmapPath() {
+        let builder = StatisticsHeatmapBuilder(now: date(2026, 4, 15), calendar: calendar)
+        let sessionBooks = [
+            StatisticsSessionBookSnapshot(
+                statusRawValue: ReadingStatus.reading.rawValue,
+                readingSessions: [
+                    .init(
+                        startedAt: date(2026, 2, 3, 20, 0),
+                        endedAt: date(2026, 2, 3, 21, 0),
+                        durationSeconds: 3_600,
+                        pagesRead: 80,
+                        progressUnitRawValue: ReadingProgressUnit.pages.rawValue,
+                        originRawValue: ReadingSessionOrigin.providerImport.rawValue
+                    )
+                ]
+            )
+        ]
+        let books = [
+            StatisticsBookSnapshot(
+                title: "Imported",
+                statusRawValue: ReadingStatus.reading.rawValue
+            )
+        ]
+        let aggregates = StatisticsSessionSourceSnapshot.makeAggregates(
+            sessionBooks: sessionBooks,
+            now: date(2026, 4, 15),
+            calendar: calendar
+        )
+
+        for metric in [StatisticsActivityMetric.readingMinutes, .readingDays] {
+            let key = StatisticsHeatmapCacheKey(
+                selectedYear: 2026,
+                scope: .all,
+                activityMetric: metric,
+                booksSignature: 1,
+                activitySignature: 2
+            )
+            let direct = builder.makeHeatmapCache(
+                for: key,
+                books: books,
+                sessionBooks: sessionBooks
+            )
+            let cached = builder.makeHeatmapCache(
+                for: key,
+                books: books,
+                sessionBooks: sessionBooks,
+                sessionAggregates: aggregates
+            )
+
+            #expect(direct.counts.isEmpty)
+            #expect(cached.counts.isEmpty)
+        }
+    }
+
+    @Test func readingDaysMatchAcrossMidnightForDirectAndAggregatePaths() {
+        let start = date(2026, 1, 8, 23, 50)
+        let end = date(2026, 1, 9, 0, 10)
+        let session = StatisticsReadingSessionSnapshot(
+            startedAt: start,
+            endedAt: end,
+            durationSeconds: 1_200,
+            pagesRead: nil,
+            progressUnitRawValue: ReadingProgressUnit.percentage.rawValue,
+            originRawValue: ReadingSessionOrigin.timer.rawValue
+        )
+        let book = StatisticsBookSnapshot(
+            title: "Across Midnight",
+            statusRawValue: ReadingStatus.reading.rawValue,
+            readingSessions: [session],
+            progressUnitRawValue: ReadingProgressUnit.percentage.rawValue
+        )
+        let key = StatisticsHeatmapCacheKey(
+            selectedYear: 2026,
+            scope: .all,
+            activityMetric: .readingDays,
+            booksSignature: 1,
+            activitySignature: 2
+        )
+        let builder = StatisticsHeatmapBuilder(
+            now: date(2026, 12, 31),
+            calendar: calendar
+        )
+        let direct = builder.makeHeatmapCache(
+            for: key,
+            books: [book],
+            sessionBooks: [StatisticsSessionBookSnapshot(bookSnapshot: book)]
+        )
+        let aggregates = ReadingSessionAggregateBuilder.make(
+            records: [
+                ReadingSessionAggregateRecord(
+                    id: session.id,
+                    bookID: book.id,
+                    statusRawValue: book.statusRawValue,
+                    startedAt: start,
+                    endedAt: end,
+                    durationSeconds: session.durationSeconds,
+                    pagesRead: session.pagesRead,
+                    progressUnitRawValue: session.progressUnitRawValue,
+                    originRawValue: session.originRawValue,
+                    createdAt: session.createdAt
+                )
+            ],
+            now: date(2026, 12, 31),
+            calendar: calendar
+        )
+        let cached = builder.makeHeatmapCache(
+            for: key,
+            books: [book],
+            sessionAggregates: aggregates
+        )
+
+        #expect(direct.counts == cached.counts)
+        #expect(direct.counts.count == 2)
+        #expect(direct.stats.activeDays == 2)
+    }
+
     @Test func detachedPipelineKeepsStatsAndHeatmapStableForSameSource() async {
         let books = [
             StatisticsBookSnapshot(

@@ -6,6 +6,8 @@ nonisolated struct StatisticsReadingSessionSnapshot: Sendable {
     let endedAt: Date
     let durationSeconds: Int
     let pagesRead: Int?
+    let progressUnitRawValue: String
+    let originRawValue: String
     let createdAt: Date
 
     init(
@@ -14,6 +16,8 @@ nonisolated struct StatisticsReadingSessionSnapshot: Sendable {
         endedAt: Date,
         durationSeconds: Int,
         pagesRead: Int?,
+        progressUnitRawValue: String = ReadingProgressUnit.pages.rawValue,
+        originRawValue: String = ReadingSessionOrigin.legacy.rawValue,
         createdAt: Date? = nil
     ) {
         self.id = id
@@ -21,6 +25,8 @@ nonisolated struct StatisticsReadingSessionSnapshot: Sendable {
         self.endedAt = endedAt
         self.durationSeconds = durationSeconds
         self.pagesRead = pagesRead
+        self.progressUnitRawValue = progressUnitRawValue
+        self.originRawValue = originRawValue
         self.createdAt = createdAt ?? startedAt
     }
 
@@ -30,6 +36,8 @@ nonisolated struct StatisticsReadingSessionSnapshot: Sendable {
         self.endedAt = session.endedAt
         self.durationSeconds = session.durationSeconds
         self.pagesRead = session.pagesReadNormalized
+        self.progressUnitRawValue = session.progressUnitRawValue
+        self.originRawValue = session.originRawValue
         self.createdAt = session.createdAt
     }
 }
@@ -57,6 +65,7 @@ nonisolated struct StatisticsBookSnapshot: Sendable {
     let readingSessions: [ReadingSessionSnapshot]
     let readingCompletions: [ReadingCompletionRecord]
     let activeAttemptStartedAt: Date?
+    let progressUnitRawValue: String
 
     init(
         id: UUID = UUID(),
@@ -78,7 +87,8 @@ nonisolated struct StatisticsBookSnapshot: Sendable {
         userRatingAverage1: Double? = nil,
         readingSessions: [ReadingSessionSnapshot] = [],
         readingCompletions: [ReadingCompletionRecord]? = nil,
-        activeAttemptStartedAt: Date? = nil
+        activeAttemptStartedAt: Date? = nil,
+        progressUnitRawValue: String = ReadingProgressUnit.pages.rawValue
     ) {
         self.id = id
         self.title = title
@@ -108,6 +118,7 @@ nonisolated struct StatisticsBookSnapshot: Sendable {
             pageCount: pageCount
         )
         self.activeAttemptStartedAt = activeAttemptStartedAt
+        self.progressUnitRawValue = progressUnitRawValue
     }
 
     @MainActor init(book: Book, includeReadingSessions: Bool = false) {
@@ -133,6 +144,10 @@ nonisolated struct StatisticsBookSnapshot: Sendable {
             : []
         self.readingCompletions = ReadingCompletionRecordBuilder.records(from: book)
         self.activeAttemptStartedAt = book.activeReadingAttempt?.startedAt
+        self.progressUnitRawValue = (
+            book.activeReadingAttempt
+                ?? book.orderedReadingAttempts.last
+        )?.progressUnitRawValue ?? ReadingProgressUnit.pages.rawValue
     }
 
     var status: ReadingStatus {
@@ -141,6 +156,10 @@ nonisolated struct StatisticsBookSnapshot: Sendable {
 
     var hasCompletedReading: Bool {
         !readingCompletions.isEmpty
+    }
+
+    var progressUnit: ReadingProgressUnit {
+        ReadingProgressUnit.fromPersisted(progressUnitRawValue)
     }
 
     private static func legacyCompletions(
@@ -302,7 +321,12 @@ private nonisolated extension StatisticsSnapshotBuilder {
     }
 
     func totalPages(_ input: [StatisticsBookSnapshot]) -> Int {
-        input.reduce(0) { $0 + ($1.pageCount ?? 0) }
+        input.reduce(0) { result, book in
+            result + (ReadingProgressMetricMapper.pageCountContribution(
+                pageCount: book.pageCount,
+                progressUnit: book.progressUnit
+            ) ?? 0)
+        }
     }
 
     func totalPages(_ completions: [ReadingCompletionRecord]) -> Int {
@@ -350,6 +374,7 @@ private nonisolated extension StatisticsSnapshotBuilder {
         let avgPagesPerBook = avgPagesPerCompletionText(for: completionsInYear)
         let avgDaysPerBook = avgDaysPerCompletionText(for: completionsInYear)
         let avgPagesPerDay = avgPagesPerDayText(for: completionsInYear)
+        let hasNonPageBooks = scopedBooks.contains { $0.progressUnit != .pages }
 
         let tinyTeaserLine: String?
         if completionsInYear.count >= 2, avgPagesPerBook != "–" || avgDaysPerBook != "–" || avgPagesPerDay != "–" {
@@ -371,7 +396,9 @@ private nonisolated extension StatisticsSnapshotBuilder {
 
         return StatisticsStatsCache.Summary(
             yearOptions: availableYears(from: allBooks),
-            heroSubtitle: "\(scopedCount) Bücher • \(progressText) • \(formatInt(scopedPages)) Seiten (wo vorhanden)",
+            heroSubtitle: hasNonPageBooks
+                ? "\(scopedCount) Bücher • \(progressText) • \(formatInt(scopedPages)) Seiten (nur seitenbasiert)"
+                : "\(scopedCount) Bücher • \(progressText) • \(formatInt(scopedPages)) Seiten (wo vorhanden)",
             tinyTeaserLine: tinyTeaserLine,
             overview: StatisticsStatsCache.Summary.Overview(
                 scopedBooksCount: scopedCount,
@@ -385,7 +412,8 @@ private nonisolated extension StatisticsSnapshotBuilder {
                 uniqueBooksInSelectedYearCount: uniqueBooksInSelectedYear,
                 rereadCompletionsInSelectedYearCount: rereadsInSelectedYear,
                 avgPagesPerBookText: avgPagesPerBook,
-                avgDaysPerBookText: avgDaysPerBook
+                avgDaysPerBookText: avgDaysPerBook,
+                hasNonPageCompletionsInSelectedYear: completionsInYear.contains { $0.progressUnit != .pages }
             )
         )
     }

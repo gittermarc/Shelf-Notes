@@ -60,6 +60,11 @@ struct ReadingTimelineBookRowView: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
+
+                        Text(item.sourceLabel)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
             }
@@ -78,9 +83,9 @@ struct ReadingTimelineBookRowView: View {
 
     private var accessibilityText: String {
         if let attemptLabel = item.attemptLabel {
-            return "\(item.title), \(attemptLabel), beendet am \(item.accessibilityDateText)"
+            return "\(item.title), \(attemptLabel), \(item.sourceLabel), beendet am \(item.accessibilityDateText)"
         }
-        return "\(item.title), beendet am \(item.accessibilityDateText)"
+        return "\(item.title), \(item.sourceLabel), beendet am \(item.accessibilityDateText)"
     }
 }
 

@@ -26,6 +26,8 @@ nonisolated struct ReadingSessionAggregateRecord: Hashable, Sendable {
     let endedAt: Date
     let durationSeconds: Int
     let pagesRead: Int?
+    let progressUnitRawValue: String
+    let originRawValue: String
     let createdAt: Date
 
     init(
@@ -37,6 +39,8 @@ nonisolated struct ReadingSessionAggregateRecord: Hashable, Sendable {
         endedAt: Date,
         durationSeconds: Int,
         pagesRead: Int? = nil,
+        progressUnitRawValue: String = ReadingProgressUnit.pages.rawValue,
+        originRawValue: String = ReadingSessionOrigin.legacy.rawValue,
         createdAt: Date
     ) {
         self.id = id
@@ -47,6 +51,8 @@ nonisolated struct ReadingSessionAggregateRecord: Hashable, Sendable {
         self.endedAt = endedAt
         self.durationSeconds = max(0, durationSeconds)
         self.pagesRead = pagesRead.flatMap { $0 > 0 ? $0 : nil }
+        self.progressUnitRawValue = progressUnitRawValue
+        self.originRawValue = originRawValue
         self.createdAt = createdAt
     }
 
@@ -63,7 +69,21 @@ nonisolated struct ReadingSessionAggregateRecord: Hashable, Sendable {
             id: id,
             startedAt: startedAt,
             durationSeconds: durationSeconds,
-            createdAt: createdAt
+            createdAt: createdAt,
+            progressUnitRawValue: progressUnitRawValue,
+            originRawValue: originRawValue
+        )
+    }
+
+    var metricContribution: ReadingMetricContribution {
+        ReadingSessionMetricMapper.contribution(
+            from: ReadingSessionMetricInput(
+                startedAt: startedAt,
+                durationSeconds: durationSeconds,
+                pagesRead: pagesRead,
+                progressUnitRawValue: progressUnitRawValue,
+                originRawValue: originRawValue
+            )
         )
     }
 
@@ -78,6 +98,8 @@ nonisolated struct ReadingSessionAggregateRecord: Hashable, Sendable {
             endedAt: session.endedAt,
             durationSeconds: session.durationSeconds,
             pagesRead: session.pagesReadNormalized,
+            progressUnitRawValue: session.progressUnitRawValue,
+            originRawValue: session.originRawValue,
             createdAt: session.createdAt
         )
     }
@@ -87,10 +109,21 @@ nonisolated struct ReadingSessionBookAggregate: Equatable, Sendable {
     let bookID: UUID
     let sessionCount: Int
     let totalSeconds: Int
+    let pageBasedSeconds: Int
     let totalPages: Int
 
     var totalMinutes: Int {
         Int((Double(totalSeconds) / 60.0).rounded())
+    }
+
+    var averageSessionDurationSeconds: Int? {
+        guard sessionCount > 0 else { return nil }
+        return Int((Double(totalSeconds) / Double(sessionCount)).rounded())
+    }
+
+    var pagesPerHour: Double? {
+        guard totalPages > 0, pageBasedSeconds > 0 else { return nil }
+        return Double(totalPages) * 3_600 / Double(pageBasedSeconds)
     }
 }
 
@@ -98,11 +131,22 @@ nonisolated struct ReadingSessionYearAggregate: Equatable, Sendable {
     let year: Int
     let sessionCount: Int
     let totalSeconds: Int
+    let pageBasedSeconds: Int
     let totalPages: Int
     let activeDays: Int
 
     var totalMinutes: Int {
         Int((Double(totalSeconds) / 60.0).rounded())
+    }
+
+    var averageSessionDurationSeconds: Int? {
+        guard sessionCount > 0 else { return nil }
+        return Int((Double(totalSeconds) / Double(sessionCount)).rounded())
+    }
+
+    var pagesPerHour: Double? {
+        guard totalPages > 0, pageBasedSeconds > 0 else { return nil }
+        return Double(totalPages) * 3_600 / Double(pageBasedSeconds)
     }
 }
 
@@ -162,6 +206,24 @@ nonisolated struct ReadingSessionAggregateSnapshot: Equatable, Sendable {
         guard let range else { return pagesByDay }
         return pagesByDay.filter { day, _ in range.contains(day) }
     }
+
+    func readingDays(
+        for scope: ReadingSessionAggregateScope,
+        range: ClosedRange<Date>? = nil
+    ) -> [Date: Int] {
+        let secondsByDay = secondsByDayByScope[scope] ?? [:]
+        var result: [Date: Int] = [:]
+        result.reserveCapacity(secondsByDay.count)
+
+        for (day, seconds) in secondsByDay where seconds > 0 {
+            if let range, range.contains(day) == false {
+                continue
+            }
+            result[day] = 1
+        }
+
+        return result
+    }
 }
 
 nonisolated enum ReadingSessionAggregateBuilder {
@@ -186,7 +248,7 @@ nonisolated enum ReadingSessionAggregateBuilder {
         var bookAccumulators: [UUID: BookAccumulator] = [:]
         var yearAccumulators: [Int: YearAccumulator] = [:]
         var hasher = StableReadingSessionAggregateHasher()
-        hasher.combine("reading-session-aggregates-v1")
+        hasher.combine("reading-session-aggregates-v3")
         hasher.combine(records.count)
 
         let ordered = records.sorted { left, right in
@@ -204,48 +266,60 @@ nonisolated enum ReadingSessionAggregateBuilder {
             calendar: calendar
         )
 
+        var totalSessionCount = 0
+
         for record in ordered {
             combine(record: record, into: &hasher)
             recentAccumulator.consume(record.sessionRecord)
+            let contribution = record.metricContribution
+            totalSessionCount += contribution.sessionCount
 
-            let daySegments = splitSessionByDay(
-                start: record.startedAt,
-                end: record.endedAt,
-                calendar: activityCalendar
-            )
             let fallbackDay = activityCalendar.startOfDay(for: record.startedAt)
-            let sessionSeconds = max(0, record.durationSeconds)
-            let segments = daySegments.isEmpty ? [(fallbackDay, sessionSeconds)] : daySegments
+            let sessionSeconds = contribution.durationSeconds
+            let daySegments = sessionSeconds > 0
+                ? splitSessionByDay(
+                    start: record.startedAt,
+                    end: record.endedAt,
+                    calendar: activityCalendar
+                )
+                : []
+            let segments = daySegments.isEmpty && sessionSeconds > 0
+                ? [(fallbackDay, sessionSeconds)]
+                : daySegments
 
             for scope in record.aggregateScopes {
                 for (day, seconds) in segments where seconds > 0 {
                     secondsByDayByScope[scope, default: [:]][day, default: 0] += seconds
                 }
-                if let pagesRead = record.pagesRead {
-                    pagesByDayByScope[scope, default: [:]][fallbackDay, default: 0] += pagesRead
+                if contribution.pagesRead > 0 {
+                    pagesByDayByScope[scope, default: [:]][fallbackDay, default: 0] += contribution.pagesRead
                 }
             }
 
             if let bookID = record.bookID {
                 var accumulator = bookAccumulators[bookID] ?? BookAccumulator(bookID: bookID)
-                accumulator.sessionCount += 1
+                accumulator.sessionCount += contribution.sessionCount
                 accumulator.totalSeconds += sessionSeconds
-                accumulator.totalPages += record.pagesRead ?? 0
+                accumulator.pageBasedSeconds += contribution.pageBasedDurationSeconds
+                accumulator.totalPages += contribution.pagesRead
                 bookAccumulators[bookID] = accumulator
             }
 
             let year = activityCalendar.component(.year, from: fallbackDay)
             var yearAccumulator = yearAccumulators[year] ?? YearAccumulator(year: year)
-            yearAccumulator.sessionCount += 1
+            yearAccumulator.sessionCount += contribution.sessionCount
             yearAccumulator.totalSeconds += sessionSeconds
-            yearAccumulator.totalPages += record.pagesRead ?? 0
-            yearAccumulator.activeDays.insert(fallbackDay)
+            yearAccumulator.pageBasedSeconds += contribution.pageBasedDurationSeconds
+            yearAccumulator.totalPages += contribution.pagesRead
+            if contribution.readingDay != nil {
+                yearAccumulator.activeDays.insert(fallbackDay)
+            }
             yearAccumulators[year] = yearAccumulator
         }
 
         return ReadingSessionAggregateSnapshot(
             signature: hasher.finalizeInt(),
-            totalSessionCount: records.count,
+            totalSessionCount: totalSessionCount,
             recentActivity: recentAccumulator.makeRecentActivity(),
             secondsByDayByScope: secondsByDayByScope,
             pagesByDayByScope: pagesByDayByScope,
@@ -301,6 +375,8 @@ private nonisolated extension ReadingSessionAggregateBuilder {
         hasher.combineDate(record.endedAt)
         hasher.combine(record.durationSeconds)
         hasher.combine(record.pagesRead)
+        hasher.combine(record.progressUnitRawValue)
+        hasher.combine(record.originRawValue)
         hasher.combineDate(record.createdAt)
     }
 }
@@ -309,6 +385,7 @@ private nonisolated struct BookAccumulator {
     let bookID: UUID
     var sessionCount: Int = 0
     var totalSeconds: Int = 0
+    var pageBasedSeconds: Int = 0
     var totalPages: Int = 0
 
     func makeAggregate() -> ReadingSessionBookAggregate {
@@ -316,6 +393,7 @@ private nonisolated struct BookAccumulator {
             bookID: bookID,
             sessionCount: sessionCount,
             totalSeconds: totalSeconds,
+            pageBasedSeconds: pageBasedSeconds,
             totalPages: totalPages
         )
     }
@@ -325,6 +403,7 @@ private nonisolated struct YearAccumulator {
     let year: Int
     var sessionCount: Int = 0
     var totalSeconds: Int = 0
+    var pageBasedSeconds: Int = 0
     var totalPages: Int = 0
     var activeDays: Set<Date> = []
 
@@ -333,6 +412,7 @@ private nonisolated struct YearAccumulator {
             year: year,
             sessionCount: sessionCount,
             totalSeconds: totalSeconds,
+            pageBasedSeconds: pageBasedSeconds,
             totalPages: totalPages,
             activeDays: activeDays.count
         )

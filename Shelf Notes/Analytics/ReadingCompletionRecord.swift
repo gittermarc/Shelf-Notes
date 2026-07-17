@@ -10,6 +10,9 @@ nonisolated struct ReadingCompletionRecord: Hashable, Sendable, Identifiable {
     let startedAt: Date?
     let finishedAt: Date
     let pageCount: Int?
+    let mediumRawValue: String
+    let providerRawValue: String
+    let progressUnitRawValue: String
     let isReread: Bool
     let isLegacyFallback: Bool
 
@@ -23,6 +26,9 @@ nonisolated struct ReadingCompletionRecord: Hashable, Sendable, Identifiable {
         startedAt: Date?,
         finishedAt: Date,
         pageCount: Int?,
+        mediumRawValue: String = ReadingMedium.physical.rawValue,
+        providerRawValue: String = ReadingProvider.none.rawValue,
+        progressUnitRawValue: String = ReadingProgressUnit.pages.rawValue,
         isReread: Bool,
         isLegacyFallback: Bool = false
     ) {
@@ -34,7 +40,13 @@ nonisolated struct ReadingCompletionRecord: Hashable, Sendable, Identifiable {
         self.author = author
         self.startedAt = startedAt
         self.finishedAt = finishedAt
-        self.pageCount = ReadingCompletionRecord.normalizedPageCount(pageCount)
+        self.mediumRawValue = mediumRawValue
+        self.providerRawValue = providerRawValue
+        self.progressUnitRawValue = progressUnitRawValue
+        self.pageCount = ReadingProgressMetricMapper.pageCountContribution(
+            pageCount: pageCount,
+            progressUnit: ReadingProgressUnit.fromPersisted(progressUnitRawValue)
+        )
         self.isReread = isReread
         self.isLegacyFallback = isLegacyFallback
     }
@@ -45,6 +57,30 @@ nonisolated struct ReadingCompletionRecord: Hashable, Sendable, Identifiable {
 
     var displayName: String {
         "\(sequenceNumber). Durchgang"
+    }
+
+    var medium: ReadingMedium {
+        ReadingMedium.fromPersisted(mediumRawValue)
+    }
+
+    var provider: ReadingProvider {
+        ReadingProvider.fromPersisted(providerRawValue)
+    }
+
+    var progressUnit: ReadingProgressUnit {
+        ReadingProgressUnit.fromPersisted(progressUnitRawValue)
+    }
+
+    var metricContribution: ReadingMetricContribution {
+        ReadingProgressMetricMapper.contribution(
+            from: ReadingProgressMetricInput(
+                progressUnitRawValue: progressUnitRawValue,
+                nativeValue: pageCount.map(Double.init),
+                normalizedProgress: 1,
+                isCompleted: true
+            ),
+            source: .completion
+        )
     }
 
     static func normalizedPageCount(_ raw: Int?) -> Int? {
@@ -79,6 +115,9 @@ nonisolated struct ReadingCompletionRecord: Hashable, Sendable, Identifiable {
             startedAt: readFrom ?? createdAt,
             finishedAt: finishedAt,
             pageCount: pageCount,
+            mediumRawValue: ReadingMedium.physical.rawValue,
+            providerRawValue: ReadingProvider.none.rawValue,
+            progressUnitRawValue: ReadingProgressUnit.pages.rawValue,
             isReread: false,
             isLegacyFallback: true
         )
@@ -86,11 +125,11 @@ nonisolated struct ReadingCompletionRecord: Hashable, Sendable, Identifiable {
 }
 
 nonisolated enum ReadingCompletionRecordBuilder {
-    static func records(from books: [Book]) -> [ReadingCompletionRecord] {
+    @MainActor static func records(from books: [Book]) -> [ReadingCompletionRecord] {
         books.flatMap { records(from: $0) }
     }
 
-    static func records(from book: Book) -> [ReadingCompletionRecord] {
+    @MainActor static func records(from book: Book) -> [ReadingCompletionRecord] {
         let attemptRecords = book.orderedReadingAttempts.compactMap { attempt in
             record(from: attempt, book: book)
         }
@@ -135,7 +174,10 @@ nonisolated enum ReadingCompletionRecordBuilder {
         return lhs.id < rhs.id
     }
 
-    private static func record(from attempt: ReadingAttempt, book: Book) -> ReadingCompletionRecord? {
+    @MainActor private static func record(
+        from attempt: ReadingAttempt,
+        book: Book
+    ) -> ReadingCompletionRecord? {
         guard attempt.status == .finished else { return nil }
         guard let finishedAt = attempt.finishedAt else { return nil }
 
@@ -152,6 +194,9 @@ nonisolated enum ReadingCompletionRecordBuilder {
             startedAt: attempt.startedAt ?? book.readFrom,
             finishedAt: finishedAt,
             pageCount: pageCount,
+            mediumRawValue: attempt.readingMediumRawValue,
+            providerRawValue: attempt.defaultProviderRawValue,
+            progressUnitRawValue: attempt.progressUnitRawValue,
             isReread: sequenceNumber > 1,
             isLegacyFallback: false
         )

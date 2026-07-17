@@ -17,7 +17,7 @@ nonisolated struct StatisticsHeatmapBuilder {
     ) -> StatisticsHeatmapCache {
         let scoped = scopedBooks(for: key.scope, in: books)
         let scopedSessionBooks: [StatisticsSessionBookSnapshot]
-        if key.activityMetric == .readingMinutes {
+        if key.activityMetric.needsSessionSource {
             scopedSessionBooks = self.scopedSessionBooks(
                 for: key.scope,
                 books: books,
@@ -28,11 +28,21 @@ nonisolated struct StatisticsHeatmapBuilder {
         }
         let range = heatmapRange(for: key.selectedYear)
         let counts: [Date: Int]
-        if key.activityMetric == .readingMinutes, let sessionAggregates {
-            counts = sessionAggregates.roundedMinutesByDay(
-                for: ReadingSessionAggregateScope(statisticsScope: key.scope),
-                range: range.start...range.end
-            )
+        if let sessionAggregates, key.activityMetric.needsSessionSource {
+            switch key.activityMetric {
+            case .readingMinutes:
+                counts = sessionAggregates.roundedMinutesByDay(
+                    for: ReadingSessionAggregateScope(statisticsScope: key.scope),
+                    range: range.start...range.end
+                )
+            case .readingDays:
+                counts = sessionAggregates.readingDays(
+                    for: ReadingSessionAggregateScope(statisticsScope: key.scope),
+                    range: range.start...range.end
+                )
+            case .completions:
+                counts = [:]
+            }
         } else {
             counts = activityDailyCounts(
                 metric: key.activityMetric,
@@ -154,15 +164,35 @@ private nonisolated extension StatisticsHeatmapBuilder {
             counts[day, default: 0] += 1
         }
 
-        func addRange(from: Date, to: Date) {
-            var day = calendar.startOfDay(for: from)
-            let end = calendar.startOfDay(for: to)
-            guard day <= end else { return }
+        func addSessionDays(start: Date, end: Date, durationSeconds: Int) {
+            guard durationSeconds > 0 else { return }
 
-            while day <= end {
-                addDay(day)
-                guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
-                day = next
+            var start = start
+            var end = end
+            if end < start {
+                (start, end) = (end, start)
+            }
+
+            guard end > start else {
+                addDay(start)
+                return
+            }
+
+            let endAfterRange = calendar.date(byAdding: .day, value: 1, to: range.end) ?? range.end
+            var cursor = max(start, range.start)
+            let clampedEnd = min(end, endAfterRange)
+            guard clampedEnd > cursor else { return }
+
+            while cursor < clampedEnd {
+                let dayStart = calendar.startOfDay(for: cursor)
+                guard let nextDayStart = calendar.date(byAdding: .day, value: 1, to: dayStart) else {
+                    break
+                }
+                let segmentEnd = min(clampedEnd, nextDayStart)
+                if segmentEnd > cursor {
+                    addDay(dayStart)
+                }
+                cursor = segmentEnd
             }
         }
 
@@ -177,11 +207,17 @@ private nonisolated extension StatisticsHeatmapBuilder {
                 secondsByDay[day, default: 0] += seconds
             }
 
-            func addSession(start: Date, end: Date) {
+            func addSession(start: Date, end: Date, durationSeconds: Int) {
                 var start = start
                 var end = end
                 if end < start {
                     (start, end) = (end, start)
+                }
+
+                guard durationSeconds > 0 else { return }
+                guard end > start else {
+                    addSeconds(durationSeconds, on: start)
+                    return
                 }
 
                 let clampedStart = max(start, range.start)
@@ -202,7 +238,20 @@ private nonisolated extension StatisticsHeatmapBuilder {
 
             for book in sessionBooks {
                 for session in book.readingSessions {
-                    addSession(start: session.startedAt, end: session.endedAt)
+                    let contribution = ReadingSessionMetricMapper.contribution(
+                        from: ReadingSessionMetricInput(
+                            startedAt: session.startedAt,
+                            durationSeconds: session.durationSeconds,
+                            pagesRead: session.pagesRead,
+                            progressUnitRawValue: session.progressUnitRawValue,
+                            originRawValue: session.originRawValue
+                        )
+                    )
+                    addSession(
+                        start: session.startedAt,
+                        end: session.endedAt,
+                        durationSeconds: contribution.durationSeconds
+                    )
                 }
             }
 
@@ -224,18 +273,23 @@ private nonisolated extension StatisticsHeatmapBuilder {
             }
 
         case .readingDays:
-            for book in books {
-                for completion in book.readingCompletions {
-                    if let from = completion.startedAt {
-                        addRange(from: from, to: completion.finishedAt)
-                    } else {
-                        addDay(completion.finishedAt)
+            for book in sessionBooks {
+                for session in book.readingSessions {
+                    let input = ReadingSessionMetricInput(
+                        startedAt: session.startedAt,
+                        durationSeconds: session.durationSeconds,
+                        pagesRead: session.pagesRead,
+                        progressUnitRawValue: session.progressUnitRawValue,
+                        originRawValue: session.originRawValue
+                    )
+                    let contribution = ReadingSessionMetricMapper.contribution(from: input)
+                    if contribution.readingDay != nil {
+                        addSessionDays(
+                            start: session.startedAt,
+                            end: session.endedAt,
+                            durationSeconds: contribution.durationSeconds
+                        )
                     }
-                }
-
-                if book.status == .reading, let from = book.activeAttemptStartedAt ?? book.readFrom {
-                    let clampedNow = min(range.end, calendar.startOfDay(for: now))
-                    addRange(from: from, to: clampedNow)
                 }
             }
         }

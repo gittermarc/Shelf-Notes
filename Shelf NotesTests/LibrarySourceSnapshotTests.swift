@@ -75,6 +75,63 @@ struct LibrarySourceSnapshotTests {
         #expect(snapshot.collectionNames == ["Favorites"])
     }
 
+    @Test @MainActor func activePercentageRereadIgnoresCompletedPageAttempt() {
+        let book = Book(title: "Mixed Reread", status: .reading)
+        book.pageCount = 400
+        let completed = ReadingAttempt(
+            book: book,
+            sequenceNumber: 1,
+            status: .finished,
+            startedAt: date(2025, 1, 1),
+            finishedAt: date(2025, 1, 10),
+            pageCountSnapshot: 400,
+            progressUnit: .pages
+        )
+        let active = ReadingAttempt(
+            book: book,
+            sequenceNumber: 2,
+            status: .active,
+            startedAt: date(2026, 1, 1),
+            readingMedium: .ebook,
+            defaultProvider: .kindle,
+            progressUnit: .percentage,
+            totalValueSnapshot: 100
+        )
+        let oldSession = ReadingSession(
+            book: book,
+            readingAttempt: completed,
+            startedAt: date(2025, 1, 2),
+            endedAt: date(2025, 1, 3),
+            pagesRead: 400
+        )
+        completed.sessionsSafe = [oldSession]
+        let event = ReadingProgressEvent(
+            book: book,
+            readingAttempt: active,
+            occurredAt: date(2026, 1, 2),
+            medium: .ebook,
+            provider: .kindle,
+            progressUnit: .percentage,
+            nativeValue: 20,
+            totalValue: 100,
+            normalizedProgress: 0.2,
+            origin: .quickLog,
+            deduplicationKey: "active-percentage"
+        )
+        active.progressEventsSafe = [event]
+        book.readingAttemptsSafe = [completed, active]
+        book.readingSessionsSafe = [oldSession]
+        book.readingProgressEventsSafe = [event]
+
+        let snapshot = LibraryView.LibrarySourceSnapshot.BookSnapshot(book: book)
+
+        #expect(snapshot.pagesReadTotal == 0)
+        #expect(snapshot.progressUnitRawValue == ReadingProgressUnit.percentage.rawValue)
+        #expect(snapshot.readingProviderRawValue == ReadingProvider.kindle.rawValue)
+        #expect(snapshot.readingProgressFraction == 0.2)
+        #expect(snapshot.progressNativeValue == 20)
+    }
+
     @Test func sourceSignatureChangesForSmartShelfRelevantSnapshotMutations() {
         let base = LibraryView.LibrarySourceSnapshot.BookSnapshot(
             id: fixedID(1),
@@ -103,6 +160,15 @@ struct LibrarySourceSnapshotTests {
         #expect(original != signature(mutating: base, hasCover: false, coverRevision: 0))
         #expect(original != signature(mutating: base, hasUserRating: true, userRatingAverage1: 4.5))
         #expect(original != signature(mutating: base, isRereading: true, completedReadingAttemptCount: 1, currentReadingAttemptDisplayName: "2. Durchgang"))
+        #expect(original != signature(
+            mutating: base,
+            readingMediumRawValue: ReadingMedium.ebook.rawValue,
+            readingProviderRawValue: ReadingProvider.kindle.rawValue,
+            progressUnitRawValue: ReadingProgressUnit.percentage.rawValue,
+            progressNativeValue: 40,
+            progressTotalValue: 100
+        ))
+        #expect(original != signature(mutating: base, progressLocator: "Kapitel 7"))
     }
 
     private func signature(
@@ -110,6 +176,12 @@ struct LibrarySourceSnapshotTests {
         pageCount: Int? = nil,
         pagesReadTotal: Int? = nil,
         readingProgressFraction: Double? = nil,
+        readingMediumRawValue: String? = nil,
+        readingProviderRawValue: String? = nil,
+        progressUnitRawValue: String? = nil,
+        progressNativeValue: Double? = nil,
+        progressTotalValue: Double? = nil,
+        progressLocator: String? = nil,
         lastSessionAt: Date? = nil,
         hasCover: Bool? = nil,
         coverRevision: Int? = nil,
@@ -133,6 +205,12 @@ struct LibrarySourceSnapshotTests {
             pageCount: pageCount ?? snapshot.pageCount,
             pagesReadTotal: pagesReadTotal ?? snapshot.pagesReadTotal,
             readingProgressFraction: readingProgressFraction ?? snapshot.readingProgressFraction,
+            readingMediumRawValue: readingMediumRawValue ?? snapshot.readingMediumRawValue,
+            readingProviderRawValue: readingProviderRawValue ?? snapshot.readingProviderRawValue,
+            progressUnitRawValue: progressUnitRawValue ?? snapshot.progressUnitRawValue,
+            progressNativeValue: progressNativeValue ?? snapshot.progressNativeValue,
+            progressTotalValue: progressTotalValue ?? snapshot.progressTotalValue,
+            progressLocator: progressLocator ?? snapshot.progressLocator,
             lastSessionAt: lastSessionAt ?? snapshot.lastSessionAt,
             hasCover: hasCover ?? snapshot.hasCover,
             coverRevision: coverRevision ?? snapshot.coverRevision,

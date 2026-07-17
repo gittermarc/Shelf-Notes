@@ -85,7 +85,7 @@ struct StatisticsReadingChartsSection: View {
                 }
                 #endif
 
-                Text("Seiten zählen je abgeschlossenem Lesedurchgang. Re-Reads zählen als eigene Abschlüsse.")
+                Text("Seiten zählen nur bei seitenbasierten Lesedurchgängen. Prozentstände werden nicht addiert; Re-Reads zählen als eigene Abschlüsse.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -312,4 +312,71 @@ struct StatisticsSnapshotBuilderTests {
         #expect(cache.summary.heroSubtitle == "1 Bücher • 2 Abschlüsse • 1 Bücher gelesen • 300 Seiten (wo vorhanden)")
     }
 
+    @Test func mixedLibraryKeepsCompletionCountsButLimitsPageStatistics() {
+        let builder = StatisticsSnapshotBuilder(now: date(2026, 4, 15), calendar: calendar)
+        let physicalID = UUID()
+        let ebookID = UUID()
+        let books = [
+            StatisticsBookSnapshot(
+                id: physicalID,
+                title: "Paper",
+                statusRawValue: ReadingStatus.finished.rawValue,
+                pageCount: 300,
+                readingCompletions: [
+                    ReadingCompletionRecord(
+                        id: "paper-completion",
+                        bookID: physicalID,
+                        sequenceNumber: 1,
+                        title: "Paper",
+                        author: "Ada",
+                        startedAt: date(2026, 1, 1),
+                        finishedAt: date(2026, 1, 10),
+                        pageCount: 300,
+                        progressUnitRawValue: ReadingProgressUnit.pages.rawValue,
+                        isReread: false
+                    )
+                ],
+                progressUnitRawValue: ReadingProgressUnit.pages.rawValue
+            ),
+            StatisticsBookSnapshot(
+                id: ebookID,
+                title: "Digital",
+                statusRawValue: ReadingStatus.finished.rawValue,
+                pageCount: 450,
+                readingCompletions: [
+                    ReadingCompletionRecord(
+                        id: "ebook-completion",
+                        bookID: ebookID,
+                        sequenceNumber: 1,
+                        title: "Digital",
+                        author: "Bea",
+                        startedAt: date(2026, 2, 1),
+                        finishedAt: date(2026, 2, 8),
+                        pageCount: 450,
+                        mediumRawValue: ReadingMedium.ebook.rawValue,
+                        providerRawValue: ReadingProvider.kindle.rawValue,
+                        progressUnitRawValue: ReadingProgressUnit.percentage.rawValue,
+                        isReread: false
+                    )
+                ],
+                progressUnitRawValue: ReadingProgressUnit.percentage.rawValue
+            )
+        ]
+
+        let cache = builder.makeStatsCache(
+            for: .init(selectedYear: 2026, scope: .all, booksSignature: 450),
+            books: books
+        )
+
+        #expect(cache.summary.overview.readingCompletionCount == 2)
+        #expect(cache.summary.overview.finishedInSelectedYearCount == 2)
+        #expect(cache.summary.overview.pagesInSelectedYear == 300)
+        #expect(cache.summary.overview.avgPagesPerBookText == "300")
+        #expect(cache.summary.overview.hasNonPageCompletionsInSelectedYear)
+        #expect(cache.summary.heroSubtitle == "2 Bücher • 2 gelesen • 300 Seiten (nur seitenbasiert)")
+        #expect(cache.monthlySeries.map(\.finishedCount) == [1, 1, 0, 0])
+        #expect(cache.monthlySeries.map(\.pages) == [300, 0, 0, 0])
+        #expect(cache.biggest?.label == "Paper • 300 Seiten")
+    }
+
 }

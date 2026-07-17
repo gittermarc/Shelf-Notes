@@ -116,6 +116,8 @@ enum ProgressHubSessionMetricsProvider {
         hasher.combine(record.startedAt.timeIntervalSinceReferenceDate)
         hasher.combine(record.durationSeconds)
         hasher.combine(record.createdAt.timeIntervalSinceReferenceDate)
+        hasher.combine(record.progressUnitRawValue)
+        hasher.combine(record.originRawValue)
         let hash = UInt64(bitPattern: Int64(hasher.finalize()))
         aggregate ^= hash &+ 0x9E37_79B9_7F4A_7C15 &+ (aggregate << 6) &+ (aggregate >> 2)
     }

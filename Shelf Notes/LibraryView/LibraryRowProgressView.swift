@@ -25,21 +25,22 @@ struct LibraryRowProgressView: View {
     }
 
     var body: some View {
-        if presentation.shouldShowReadingProgress,
-           let fraction = presentation.progressFraction {
+        if presentation.shouldShowReadingProgress {
             switch style {
             case .list:
-                listProgress(fraction: fraction)
+                listProgress
             case .grid:
-                gridProgress(fraction: fraction)
+                gridProgress
             }
         }
     }
 
-    private func listProgress(fraction: Double) -> some View {
+    private var listProgress: some View {
         VStack(alignment: .leading, spacing: 4) {
-            ProgressView(value: fraction)
-                .progressViewStyle(.linear)
+            if let fraction = presentation.progressFraction {
+                ProgressView(value: fraction)
+                    .progressViewStyle(.linear)
+            }
 
             HStack(spacing: 6) {
                 if let progressText = presentation.progressText {
@@ -63,6 +64,13 @@ struct LibraryRowProgressView: View {
                         .lineLimit(1)
                 }
 
+                if let detailText = presentation.detailText {
+                    Text(detailText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
                 if let rereadBadgeText = presentation.rereadBadgeText {
                     Text(rereadBadgeText)
                         .font(.caption2.weight(.semibold))
@@ -72,15 +80,24 @@ struct LibraryRowProgressView: View {
                         .background(.secondary.opacity(0.12), in: Capsule())
                 }
             }
+
+            if let sourceText = presentation.sourceText {
+                Text(sourceText)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(presentation.accessibilitySummary)
     }
 
-    private func gridProgress(fraction: Double) -> some View {
+    private var gridProgress: some View {
         VStack(alignment: .leading, spacing: 3) {
-            ProgressView(value: fraction)
-                .progressViewStyle(.linear)
+            if let fraction = presentation.progressFraction {
+                ProgressView(value: fraction)
+                    .progressViewStyle(.linear)
+            }
 
             HStack(spacing: 4) {
                 if let progressText = presentation.progressText {
@@ -92,6 +109,13 @@ struct LibraryRowProgressView: View {
 
                 if let rereadBadgeText = presentation.rereadBadgeText {
                     Text(rereadBadgeText)
+                        .font(.caption2)
+                        .lineLimit(1)
+                }
+
+                if presentation.progressText == nil,
+                   let detailText = presentation.detailText {
+                    Text(detailText)
                         .font(.caption2)
                         .lineLimit(1)
                 }

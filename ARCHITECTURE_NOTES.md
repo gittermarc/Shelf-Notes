@@ -1,6 +1,6 @@
 # ARCHITECTURE_NOTES.md
 
-Stand: E-Book-Erweiterung PR 4 vom 2026-07-17 auf Basis des aktuellen Projektarchivs. Aussagen beziehen sich auf den geprüften Codebestand. Unklare Punkte sind als **UNKNOWN** markiert.
+Stand: E-Book-Erweiterung PR 5 vom 2026-07-17 auf Basis des aktuellen Projektarchivs. Aussagen beziehen sich auf den geprüften Codebestand. Unklare Punkte sind als **UNKNOWN** markiert.
 
 ## Scope und Methode
 
@@ -11,7 +11,7 @@ Geprüft wurden:
 - SwiftData-Modelle und Container-Konfiguration
 - CloudKit-/Entitlement-Konfiguration
 - Root Navigation, Tabs, Sheets und Startup-Maintenance
-- Formatneutrale Fortschrittsberechnung, Reading-Attempt-Isolation, Session-/Import-Mutationen, adaptive Quellen-/Fortschritts-UX und Legacy-Backfill
+- Formatneutrale Fortschrittsberechnung, Reading-Attempt-Isolation, Session-/Import-Mutationen, adaptive Quellen-/Fortschritts-UX, Mixed-Media-Analytics und Legacy-Backfill
 - Große Dateien nach Zeilenzahl
 - Hot Paths für Rendering, Scroll, Sync, Storage, Concurrency und Caching
 - Tests und Testpläne
@@ -25,187 +25,80 @@ Nicht durchgeführt:
 
 ## Big Files List: Top 15 Dateien nach Zeilen
 
-### 1. `Shelf Notes/Stats/StatisticsSnapshotBuilder.swift` - 667 Zeilen
+### 1. `Shelf Notes/Stats/StatisticsSnapshotBuilder.swift` - 787 Zeilen
 
-Zweck:
+- Baut Statistics-Snapshots, Jahres-/Monatswerte, Top-Listen und Nerd-Metriken.
+- Risiko: viele fachliche Regeln, Calendar-Logik und Präsentationsableitungen in einer Datei; Mixed-Media-Seitenregeln müssen zentral bleiben.
 
-- Baut Statistik-Snapshots für Fortschritt, Jahreswerte, Monatswerte, Top-Listen, Genres und weitere Auswertungen.
+### 2. `Shelf Notes/LibraryView/LibraryView.swift` - 643 Zeilen
 
-Warum riskant:
+- Zentraler Library-Screen mit Source-Tracking, Navigation und Dashboard-Einbindung.
+- Risiko: großer SwiftUI-Invalidationsbereich und viele Main-Actor-Abhängigkeiten.
 
-- Sehr viele fachliche Statistikregeln in einer Datei.
-- Date-/Calendar-Logik, Aggregation und Präsentationsableitung liegen eng zusammen.
-- Änderungen können viele Statistikbereiche gleichzeitig beeinflussen.
-- Hotspot bei großen Libraries, weil Statistiken über viele Bücher und Sessions aggregieren.
+### 3. `Shelf Notes/BookDetail/Sessions/SessionsCard.swift` - 633 Zeilen
 
-### 2. `Shelf Notes/Challenges/ChallengeEngine+Compute.swift` - 521 Zeilen
+- Session-Start, Timer, Quick Log, Source-Auswahl, Listen und Mutationsaufrufe im Buchdetail.
+- Risiko: UI-, Sheet-, Timer- und Persistenzpfade liegen weiterhin eng beieinander.
 
-Zweck:
+### 4. `Shelf Notes/Challenges/ChallengeEngine+Compute.swift` - 528 Zeilen
 
-- Berechnet Challenge-Fortschritt, Baselines, Metriken und Zielerreichung.
+- Berechnet Challenge-Fortschritt, Baselines und Zeitfenster.
+- Risiko: dichte fachliche Logik; Mixed-Media-Anpassung ist bewusst noch nicht Teil von PR 5.
 
-Warum riskant:
+### 5. `Shelf Notes/Challenges/ChallengeTemplateRegistry.swift` - 504 Zeilen
 
-- Dichte Fachlogik mit vielen Challenge-Metriken.
-- Date-Window- und Session-Overlap-Logik ist fehleranfällig.
-- Änderungen können Completion, Rewards und Hints beeinflussen.
-- Potenzieller Hotspot nach Session-Saves, weil Challenge-Refresh häufig getriggert wird.
+- Definiert Challenge-Templates, Texte, Ziele und Verfügbarkeiten.
+- Risiko: viele statische Fälle in einer Datei und enge Kopplung an Challenge-Metriken.
 
-### 3. `Shelf Notes/Collections/CollectionsSmartActionBuilder.swift` - 470 Zeilen
+### 6. `Shelf Notes/Stats/StatisticsHeatmapBuilder.swift` - 502 Zeilen
 
-Zweck:
+- Baut Tages-/Wochen-Buckets, Streaks und Heatmap-Statistiken.
+- Risiko: direkte und aggregierte Pfade müssen bei Zeitzonen, Mitternachtsgrenzen und Provider-Imports identisch bleiben.
+
+### 7. `Shelf Notes/LibraryView/LibraryDerivedState.swift` - 480 Zeilen
+
+- Value-Snapshots, Signaturen und vorbereitete Library-Such-/Fortschrittswerte.
+- Risiko: sichtbare Source-, Locator- und Fortschrittsfelder vergrößern die Cache-Signatur; nur UI-relevante Felder dürfen enthalten sein.
+
+### 8. `Shelf Notes/Collections/CollectionsSmartActionBuilder.swift` - 470 Zeilen
 
 - Baut Smart Actions und Empfehlungen für Collections.
+- Risiko: UI-nahe Heuristiken, viele Auswahlregeln und mögliche Kosten bei großen Bibliotheken.
 
-Warum riskant:
+### 9. `Shelf Notes/ReadingSessionAggregates.swift` - 463 Zeilen
 
-- UI-nahe Heuristiken und fachliche Auswahlregeln sind in einer großen Datei gekoppelt.
-- Hohe Regression-Gefahr bei Änderungen an Collection-Snapshots.
-- Performance-Risiko, falls der Builder im Renderpfad großer Collections läuft.
+- Bildet Session-, Tages-, Buch- und Jahresaggregate samt Signaturen.
+- Risiko: universelle und seitenbasierte Metriken teilen weiterhin einen großen Builder; späterer Split in Records, Bucketing und Hashing ist sinnvoll.
 
-### 4. `Shelf Notes/Stats/StatisticsHeatmapBuilder.swift` - 444 Zeilen
+### 10. `Shelf Notes/Settings/AppearanceSettings/AppearancePreferences.swift` - 440 Zeilen
 
-Zweck:
+- Beschreibt Appearance-Optionen und persistierte Darstellungspräferenzen.
+- Risiko: globale UI-Auswirkungen und viele Optionen in einer Datei.
 
-- Baut Heatmap-Daten, Tages-/Wochenwerte und vermutlich Streak-nahe Auswertungen.
+### 11. `Shelf Notes/Stats/StatisticsSourceStore.swift` - 438 Zeilen
 
-Warum riskant:
+- Beobachtet Book-/Session-Quellen, verwaltet Signaturen und koordiniert Detached-Compute-Caches.
+- Risiko: falsche Signaturen führen zu stale Daten oder unnötigen Neuberechnungen; Actor-Grenzen müssen stabil bleiben.
 
-- Calendar-/Timezone-Logik und Aggregation sind empfindlich.
-- Bei vielen Sessions kann tägliche Aggregation teuer werden.
-- Muss konsistent mit `StatisticsSnapshotBuilder` bleiben.
+### 12. `Shelf Notes/LibraryView/LibraryView+Header.swift` - 437 Zeilen
 
-### 5. `Shelf Notes/BookDetail/BookDetailView+Cards.swift` - 408 Zeilen
+- Header, Filter, Suche, Sortierung und Library-Steuerung.
+- Risiko: viele Controls hängen am zentralen Library-State und können breite Re-Renders auslösen.
 
-Zweck:
+### 13. `Shelf Notes/BookDetail/BookDetailView+Cards.swift` - 435 Zeilen
 
-- Enthält mehrere Karten/Abschnitte der Buchdetailansicht.
+- Enthält mehrere Karten und Abschnitte der Buchdetailansicht.
+- Risiko: große SwiftUI-Datei mit hoher Invalidationsfläche und vielen Book-Abhängigkeiten.
 
-Warum riskant:
+### 14. `Shelf Notes/LibraryView/LibraryView+Grid.swift` - 418 Zeilen
 
-- Große SwiftUI-Datei mit vielen View-Zweigen.
-- Bindings, Navigation und Mutationen können indirekt gekoppelt sein.
-- Hohe Invalidationsfläche bei Änderungen an `Book`.
+- Grid-/List-Darstellung der Bibliothek und Fortschritts-Cues.
+- Risiko: Scroll-Hotpath; Cover, Navigation und adaptive Progress-Darstellung müssen günstig bleiben.
 
-### 6. `Shelf Notes/Settings/AppearanceSettings/AppearancePreferences.swift` - 407 Zeilen
+### 15. `Shelf Notes/Widgets/LibraryWidgetSnapshotBuilder.swift` - 417 Zeilen
 
-Zweck:
-
-- Beschreibt Appearance-Optionen, Darstellungseinstellungen und vermutlich zugehörige Presentation Values.
-
-Warum riskant:
-
-- Globale App-Darstellung hängt an `@AppStorage` in `RootView`.
-- Änderungen an Appearance können Root- und Tab-Invalidationen auslösen.
-- Viele Optionen in einer Datei erschweren Review.
-
-### 7. `Shelf Notes/TagsView/TagSuggestionEngine.swift` - 402 Zeilen
-
-Zweck:
-
-- Erzeugt Tag-Vorschläge aus Buchdaten, Kategorien, Autor, Titel und vorhandenen Tags.
-
-Warum riskant:
-
-- String-Normalisierung und Heuristiken können leicht Edge Cases erzeugen.
-- Performance-Risiko bei großen Bibliotheken, wenn Vorschläge häufig neu gebaut werden.
-- Muss konsistent mit Tag-Hygiene und Tag-Mutationen bleiben.
-
-### 8. `Shelf Notes/BookDetail/BookDetailView+Bindings.swift` - 399 Zeilen
-
-Zweck:
-
-- Bindings, State-Ableitungen und Mutationsbrücken für `BookDetailView`.
-
-Warum riskant:
-
-- Viele Speicherpfade und UI-Bindings in einer Datei.
-- Änderungen können SwiftData-Saves, Ratings, Status, Dates, Tags und Notizen betreffen.
-- Hohe MainActor- und View-Invalidation-Relevanz.
-
-### 9. `Shelf Notes/TagsView/TagHygieneBuilder.swift` - 398 Zeilen
-
-Zweck:
-
-- Ermittelt Tag-Hygiene-Probleme wie Dubletten, Case-Varianten oder Singular/Plural-Kandidaten.
-
-Warum riskant:
-
-- Data-Cleanup-Logik ist fachlich sensibel.
-- Falsche Gruppierung kann zu falschen Merge-/Rename-Vorschlägen führen.
-- Muss sehr gut getestet bleiben, weil Nutzeraktionen Daten verändern können.
-
-### 10. `Shelf Notes/LibraryView/LibraryView+Header.swift` - 396 Zeilen
-
-Zweck:
-
-- Header, Filter, Such-/Sortiersteuerung und UI-Controls der Bibliothek.
-
-Warum riskant:
-
-- Viele UI-Controls hängen am zentralen Library-Zustand.
-- `@AppStorage`, Filter-State und Derived State können viele Re-Renders auslösen.
-- Header-Änderungen können den gesamten Library-Screen invalidieren.
-
-### 11. `Shelf Notes/BookDetail/Sessions/SessionsCard.swift` - 385 Zeilen
-
-Zweck:
-
-- Zeigt Lesesessions, Timer-Controls, Session-Aktionen und Challenge-Hints im Buchdetail.
-
-Warum riskant:
-
-- Nutzt eigene Queries und reagiert auf Session-/Challenge-Änderungen.
-- UI, Mutation, Notification und Async-Refresh liegen nah beieinander.
-- Risiko für wiederholte Challenge-Refreshes und MainActor-Arbeit.
-
-### 12. `Shelf Notes/AddBook/AddBookViewModel.swift` - 385 Zeilen
-
-Zweck:
-
-- ViewModel für Buch-Hinzufügen, Draft State, Such-/Importzustand und Speichern.
-
-Warum riskant:
-
-- Viele `@Published` Zustände können breite UI-Updates erzeugen.
-- Netzwerk-, Draft-, Routing- und Persistenzlogik sind wahrscheinlich gekoppelt.
-- Hohe Änderungsfrequenz bei Import-UX.
-
-### 13. `Shelf Notes/Stats/StatisticsSourceStore.swift` - 368 Zeilen
-
-Zweck:
-
-- Beobachtet Bücher/Sessions, baut Source-Snapshots und steuert Statistik-Compute-Caches.
-
-Warum riskant:
-
-- `@MainActor` Store mit Observation Tracking.
-- Muss SwiftData-Objekte sicher in Value-Snapshots überführen.
-- Fehlerhafte Signaturen führen zu stale oder zu häufig neu berechneten Statistiken.
-
-### 14. `Shelf Notes/LibraryView/LibraryView+Grid.swift` - 362 Zeilen
-
-Zweck:
-
-- Grid-/List-Darstellung der Bibliothek.
-
-Warum riskant:
-
-- Scroll-Hotpath.
-- Viele Cover-Views, Navigation Links und Cell-Zustände können SwiftUI-Invalidationskosten erhöhen.
-- Muss strikt vermeiden, beim Rendern SwiftData zu mutieren.
-
-### 15. `Shelf Notes/TagsView/TagsView.swift` - 358 Zeilen
-
-Zweck:
-
-- Hauptscreen für Tags Dashboard, Suche, Sortierung, Hygiene und Navigation.
-
-Warum riskant:
-
-- Volle Bibliotheksdaten werden für Tag-Indizes genutzt.
-- Mehrere Sheets/Flows und Cleanup-Aktionen sind gekoppelt.
-- Datenqualität und UI-Performance hängen an denselben Indizes.
+- Baut lokale Value-Snapshots für das Bibliothekswidget.
+- Risiko: Widget-Mixed-Media-Semantik ist noch nicht Teil von PR 5 und darf nicht versehentlich von App-internen Contracts abweichen.
 
 ## Hot Path Analyse
 
@@ -644,6 +537,58 @@ Risiken und Tradeoffs:
 - Die Quellenänderung ist vor der ersten Session erlaubt. Bei späteren automatischen Imports muss dieselbe Sperre auch Progress Events berücksichtigen, damit die Attempt-Semantik stabil bleibt.
 - Provider-spezifische Locator-Formate bleiben opaque Strings. Eine spätere Reader-Integration benötigt einen versionierten Locator-Contract, statt bestehende Strings nachträglich heuristisch zu interpretieren.
 
+### Mixed-Media Derived States und Analytics
+
+Betroffene Dateien:
+
+- `Shelf Notes/ReadingMetrics/ReadingMetricEligibility.swift`
+- `Shelf Notes/ReadingMetrics/ReadingMetricContribution.swift`
+- `Shelf Notes/ReadingMetrics/ReadingSessionMetricMapper.swift`
+- `Shelf Notes/ReadingMetrics/ReadingProgressMetricMapper.swift`
+- `Shelf Notes/ReadingSessionAggregates.swift`
+- `Shelf Notes/Analytics/ReadingAnalyticsInputMapper.swift`
+- `Shelf Notes/Analytics/ReadingAnalyticsIndexBuilder.swift`
+- `Shelf Notes/Analytics/ReadingAnalyticsValueTypes.swift`
+- `Shelf Notes/Analytics/ReadingCompletionRecord.swift`
+- `Shelf Notes/Stats/*`
+- `Shelf Notes/Goals/*`
+- `Shelf Notes/ProgressHub/*`
+- `Shelf Notes/Timeline/*`
+- `Shelf Notes/LibraryView/*`
+
+Architekturentscheidung:
+
+- Metrikberechtigung wird nicht nach konkreten Providern verzweigt. `ReadingMetricEligibility` entscheidet zentral anhand von Datenquelle, `ReadingProgressUnit` und `ReadingSessionOrigin`.
+- `ReadingSessionMetricMapper` bildet Session-Snapshots in universelle Session-/Zeit-/Lesetagsbeiträge und optional addierbare Seitenbeiträge ab. Prozent- und Locator-Sessions zählen als echte Sessions, tragen aber keine Seiten bei.
+- `ReadingProgressMetricMapper` bildet Einzelbuch-Fortschritt und Abschlüsse ab. Ein Provider-Import kann damit einen belastbaren Fortschritt oder Abschluss liefern, erzeugt aber weder Session, Lesezeit, Lesetag noch Streak.
+- `ReadingSessionAggregateSnapshot` hält `totalSeconds` und `pageBasedSeconds` getrennt. Durchschnittliche Sessiondauer verwendet alle echten Sessions; Seiten pro Stunde verwendet ausschließlich die Zeitbasis seitenbasierter Sessions.
+- `ReadingCompletionRecord` speichert Medium, Provider und Fortschrittseinheit eines historischen Attempts. Die `pageCount` wird nur für `.pages` übernommen. Alle Einheiten zählen als Abschluss, aber nur seitenbasierte Abschlüsse fließen in Seitenstatistiken und Seitendiagramme ein.
+- Der aktive `ReadingAttempt` steuert weiterhin den aktuellen Library-Fortschritt. Frühere abgeschlossene Attempts bleiben unabhängig davon in Timeline, Goals und Statistics erhalten.
+- SwiftData-Objekte werden am Main Actor in kleine `Sendable`-Records und Snapshots überführt. `ReadingAnalyticsIndexBuilder`, `StatisticsComputePipeline`, `StatisticsHeatmapBuilder` und `ReadingTimelineBuilder` arbeiten anschließend value-basiert und können außerhalb des Main Actors laufen.
+
+Cache- und Signaturregeln:
+
+- Statistics-Book-Signaturen berücksichtigen die Progress Unit der Attempts, aber weder Provider, Medium noch Locator, weil diese Felder globale Statistikwerte nicht verändern.
+- Statistics-Session-Signaturen berücksichtigen Progress Unit und Origin, weil beide die Metrikberechtigung beeinflussen.
+- Goals berücksichtigen Abschlussdaten, Page Snapshot und Progress Unit. Provider- oder Medium-Wechsel ohne Metrikänderung invalidieren die Zielberechnung nicht.
+- Timeline und Library berücksichtigen Medium und Provider, weil diese Informationen sichtbar dargestellt werden. Library berücksichtigt zusätzlich den Locator, weil er Teil des sichtbaren Einzelbuch-Fortschritts ist.
+
+Fachliche Invarianten:
+
+- Sessionanzahl, Lesezeit, Lesetage, Streak und durchschnittliche Sessiondauer sind medienübergreifend und stammen nur aus echten Sessions.
+- Seiten, verbleibende Seiten, Seiten pro Stunde und Seitendiagramme stammen ausschließlich aus `.pages`-Daten.
+- Prozentwerte verschiedener Bücher werden niemals summiert. Locator werden nicht als Seiten oder Prozente interpretiert.
+- `providerImport` erzeugt keine Sessionwirkung. Ein defensiv falsch persistierter Provider-Import als Session wird von den Metrik-Mappern ebenfalls ausgeschlossen.
+- Ein aktiver Reread übernimmt weder Seiten noch Prozentstände früherer Attempts. Historische Abschlüsse bleiben trotzdem vollständig erhalten.
+- Direkte und aggregierte Heatmap-Pfade müssen dieselben Leseminuten und Lesetage liefern, einschließlich Sessions über Mitternacht.
+
+Risiken und Tradeoffs:
+
+- `ReadingSessionAggregates.swift` bleibt ein wachsender Hotspot. Die neue Kompatibilitätsschicht reduziert fachliche Duplikation, der Builder sollte später dennoch in Records, Bucketing und Signaturbildung aufgeteilt werden.
+- Seitenstatistiken sind bei gemischten Bibliotheken bewusst partielle Kennzahlen. UI-Texte kennzeichnen dies dezent; eine globale Prozentleistung wäre fachlich irreführend.
+- Locator- oder reine Provider-Metadatenänderungen invalidieren globale Statistiken absichtlich nicht. Ändert ein späterer Provider daraus abgeleitete Metriksemantik, muss die jeweilige Signatur gezielt erweitert werden.
+- Challenge Engine, Widgets und Live Activity verwenden in diesem PR weiterhin ihre bestehenden Contracts. Ihre Mixed-Media-Anpassung bleibt ein separater Schritt.
+
 ### Secrets und Konfiguration
 
 Betroffene Dateien:
@@ -918,26 +863,28 @@ Betroffene Dateien:
 - `Shelf Notes/Stats/StatisticsSourceStore.swift`
 - `Shelf Notes/Stats/StatisticsSnapshotBuilder.swift`
 - `Shelf Notes/Stats/StatisticsHeatmapBuilder.swift`
+- `Shelf Notes/ReadingSessionAggregates.swift`
+- `Shelf Notes/ReadingMetrics/ReadingSessionMetricMapper.swift`
 
-Idee:
+Ist-Zustand:
 
-- Pro Buch und Jahr Session-Aggregate bilden:
-  - Minuten
-  - Seiten
-  - Session Count
-  - aktive Tage
-  - Notizen Count
-- Für Heatmap zusätzlich Tages-Buckets cachen.
+- `StatisticsSourceStore` hält Book- und Session-Quellen getrennt. Leseminuten und Lesetage fordern die Session-Quelle an; Abschluss-Heatmaps benötigen sie nicht.
+- `ReadingSessionAggregateBuilder` bildet pro Scope Tages-Buckets sowie Buch- und Jahresaggregate für Sessionanzahl, universelle Dauer, seitenbasierte Dauer, Seiten und aktive Tage.
+- `ReadingSessionMetricMapper` entfernt Provider-Imports zentral aus Sessionzeit und Lesetagen. Prozent- und Locator-Sessions bleiben echte Sessions, tragen aber weder Seiten noch seitenbasierte Dauer bei.
+- `StatisticsHeatmapBuilder` kann direkte Session-Snapshots oder vorberechnete Aggregate verwenden. Beide Pfade sind für Leseminuten und Lesetage semantisch identisch.
+- Seiten pro Stunde wird aus `totalPages / pageBasedSeconds` gebildet und dadurch nicht von Prozent-Sessions verwässert.
 
 Invalidation:
 
 - ReadingSession insert/update/delete.
-- Änderung an `startedAt`, `endedAt`, `durationSeconds`, `pagesRead`, `note`.
+- Änderung an `startedAt`, `endedAt`, `durationSeconds`, `pagesRead`, `progressUnitRawValue` oder `originRawValue`.
+- Änderungen an Provider, Medium, Locator oder Notiz invalidieren die Session-Aggregate nicht, solange sie die Metrikberechtigung nicht verändern.
 
-Erwarteter Effekt:
+Wirkung:
 
 - Weniger wiederholte Sorts und Reduces in Stats.
-- Schnellere Heatmap und Monatsauswertung.
+- Konsistente Heatmap- und Progress-Hub-Werte bei gemischten Medien.
+- Keine Sessionwirkung durch reine Provider-Imports.
 
 ### Challenge Refresh Coalescing
 

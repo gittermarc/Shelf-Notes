@@ -125,6 +125,53 @@ struct StatisticsSourceStoreTests {
     }
 
     @MainActor
+    @Test func sourceSignaturesTrackMetricRelevantUnitAndOriginChanges() {
+        let book = makeFinishedBook()
+        let attempt = ReadingAttempt(
+            book: book,
+            sequenceNumber: 1,
+            status: .finished,
+            startedAt: book.readFrom,
+            finishedAt: book.readTo,
+            pageCountSnapshot: book.pageCount,
+            readingMedium: .physical,
+            defaultProvider: .none,
+            progressUnit: .pages
+        )
+        book.readingAttemptsSafe = [attempt]
+        let session = ReadingSession(
+            book: book,
+            readingAttempt: attempt,
+            startedAt: date(2026, 1, 2, 20, 0),
+            endedAt: date(2026, 1, 2, 21, 0),
+            pagesRead: 40
+        )
+        attempt.sessionsSafe = [session]
+        book.readingSessionsSafe = [session]
+
+        let initialBooks = StatisticsSourceStore.booksSignature([book])
+        let initialSessions = StatisticsSourceStore.sessionsSignature([book])
+
+        attempt.defaultProviderRawValue = ReadingProvider.kindle.rawValue
+        attempt.readingMediumRawValue = ReadingMedium.ebook.rawValue
+        let providerOnlyBooks = StatisticsSourceStore.booksSignature([book])
+
+        attempt.progressUnitRawValue = ReadingProgressUnit.percentage.rawValue
+        let percentageBooks = StatisticsSourceStore.booksSignature([book])
+
+        session.progressUnitRawValue = ReadingProgressUnit.percentage.rawValue
+        let percentageSessions = StatisticsSourceStore.sessionsSignature([book])
+
+        session.originRawValue = ReadingSessionOrigin.providerImport.rawValue
+        let importedSessions = StatisticsSourceStore.sessionsSignature([book])
+
+        #expect(providerOnlyBooks == initialBooks)
+        #expect(percentageBooks != providerOnlyBooks)
+        #expect(percentageSessions != initialSessions)
+        #expect(importedSessions != percentageSessions)
+    }
+
+    @MainActor
     @Test func bookSignatureStaysStableForSameBooksInDifferentOrder() {
         let first = makeFinishedBook(title: "Alpha", author: "Ada")
         let second = makeFinishedBook(title: "Beta", author: "Bea", readTo: date(2026, 2, 8), pageCount: 210)
@@ -140,6 +187,7 @@ struct StatisticsSourceStoreTests {
         let book = makeFinishedBook()
         let store = StatisticsSourceStore()
         store.refreshSourceAndTrack(books: [book])
+        store.refreshSessionSourceAndTrack(books: [book])
 
         let initialState = store.makeViewState(
             selectedYear: 2026,
@@ -172,6 +220,7 @@ struct StatisticsSourceStoreTests {
         let book = makeFinishedBook()
         let store = StatisticsSourceStore()
         store.refreshSourceAndTrack(books: [book])
+        store.refreshSessionSourceAndTrack(books: [book])
 
         let baseState = store.makeViewState(
             selectedYear: 2026,
@@ -209,6 +258,7 @@ struct StatisticsSourceStoreTests {
         let book = makeFinishedBook()
         let store = StatisticsSourceStore()
         store.refreshSourceAndTrack(books: [book])
+        store.refreshSessionSourceAndTrack(books: [book])
 
         let baseState = store.makeViewState(
             selectedYear: 2026,
@@ -263,7 +313,7 @@ struct StatisticsSourceStoreTests {
         #expect(changedState.statsDecision == .stale)
     }
     @MainActor
-    @Test func readingMinutesHeatmapUsesSeparateSessionSignature() throws {
+    @Test func sessionBasedHeatmapsUseSeparateSessionSignature() throws {
         let book = makeFinishedBook()
         let session = ReadingSession(
             book: book,
@@ -281,8 +331,8 @@ struct StatisticsSourceStoreTests {
             scope: .all,
             activityMetric: .readingDays
         )
-        #expect(readingDaysState.heatmapKey != nil)
-        #expect(readingDaysState.sessionSourceRequestToken == nil)
+        #expect(readingDaysState.heatmapKey == nil)
+        #expect(readingDaysState.sessionSourceRequestToken != nil)
 
         let waitingState = store.makeViewState(
             selectedYear: 2026,
@@ -293,15 +343,22 @@ struct StatisticsSourceStoreTests {
         #expect(waitingState.sessionSourceRequestToken != nil)
 
         store.refreshSessionSourceAndTrack(books: [book])
+        let readyReadingDaysState = store.makeViewState(
+            selectedYear: 2026,
+            scope: .all,
+            activityMetric: .readingDays
+        )
         let readyState = store.makeViewState(
             selectedYear: 2026,
             scope: .all,
             activityMetric: .readingMinutes
         )
+        let readyReadingDaysKey = try #require(readyReadingDaysState.heatmapKey)
         let readyHeatmapKey = try #require(readyState.heatmapKey)
         let readyStatsKey = try #require(readyState.statsKey)
         let readyBooksSignature = try #require(readyState.booksSignature)
 
+        #expect(readyReadingDaysKey.activitySignature == readyHeatmapKey.activitySignature)
         #expect(readyHeatmapKey.booksSignature == readyBooksSignature)
         #expect(readyHeatmapKey.activitySignature == StatisticsSourceStore.sessionsSignature([book]))
         #expect(readyStatsKey.booksSignature == readyBooksSignature)
@@ -394,7 +451,8 @@ struct StatisticsSourceStoreTests {
             activityMetric: .readingDays
         )
         #expect(afterInvalidation.statsDecision == .reusable)
-        #expect(afterInvalidation.sessionSourceRequestToken == nil)
+        #expect(afterInvalidation.heatmapKey == nil)
+        #expect(afterInvalidation.sessionSourceRequestToken != nil)
     }
 
     @MainActor
@@ -427,7 +485,8 @@ struct StatisticsSourceStoreTests {
         )
 
         #expect(store.sessionSourceSnapshot?.sessionsSignature == existingSource.sessionsSignature)
-        #expect(readingDaysState.sessionSourceRequestToken == nil)
+        #expect(readingDaysState.sessionSourceRequestToken != nil)
+        #expect(readingDaysState.heatmapKey == nil)
         #expect(readingMinutesState.sessionSourceRequestToken != nil)
         #expect(readingMinutesState.heatmapKey == nil)
     }

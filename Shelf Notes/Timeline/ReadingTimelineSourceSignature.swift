@@ -29,6 +29,9 @@ nonisolated struct ReadingTimelineSourceSignature: Hashable, Sendable {
                 hasher.combine(Self.dayStamp(completion.startedAt))
                 hasher.combine(Self.dayStamp(completion.finishedAt))
                 hasher.combine(completion.pageCount ?? -1)
+                hasher.combine(completion.mediumRawValue)
+                hasher.combine(completion.providerRawValue)
+                hasher.combine(completion.progressUnitRawValue)
                 hasher.combine(completion.isReread)
                 hasher.combine(completion.isLegacyFallback)
             }

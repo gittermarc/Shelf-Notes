@@ -1,10 +1,10 @@
 # PROJECT_CONTEXT.md
 
-Stand: E-Book-Erweiterung PR 4 vom 2026-07-17 auf Basis des aktuellen Projektarchivs. Der aktuelle Code ist die Quelle der Wahrheit.
+Stand: E-Book-Erweiterung PR 5 vom 2026-07-17 auf Basis des aktuellen Projektarchivs. Der aktuelle Code ist die Quelle der Wahrheit.
 
 ## TL;DR
 
-Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlichen Buchbibliothek mit Lesestatus, Lesesessions, Zielen, Challenges, Statistiken, Tags, Listen/Sammlungen, CSV-Import/-Export, Google-Books-Import, Cover-Caching und Live-Activity-Unterstützung. Das Persistenzmodell und die Session-UX sind formatneutral für physische Bücher und manuell getrackte externe E-Books. Eine zentrale value-basierte Fortschritts-Engine berechnet Seiten-, Prozent- und Locator-Fortschritt pro `ReadingAttempt`; ein idempotenter Startup-Repair klassifiziert Legacy-Daten und pflegt stabile Baseline-Events nach. Quick Log und Timer nutzen denselben adaptiven Fortschrittseditor und dieselbe Mutationslogik. Ein lokaler EPUB-/PDF-Reader, Provider-Konten und automatische Synchronisierung sind noch nicht integriert und werden in der Oberfläche nicht als verfügbar dargestellt. Persistenz läuft über SwiftData; die primäre Store-Konfiguration nutzt CloudKit über `ModelConfiguration(cloudKitDatabase: .automatic)`. Das Deployment Target ist laut `Shelf Notes.xcodeproj/project.pbxproj` iOS 26.0.
+Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlichen Buchbibliothek mit Lesestatus, Lesesessions, Zielen, Challenges, Statistiken, Tags, Listen/Sammlungen, CSV-Import/-Export, Google-Books-Import, Cover-Caching und Live-Activity-Unterstützung. Das Persistenzmodell, die Session-UX und die zentralen Derived States sind formatneutral für physische Bücher und manuell getrackte externe E-Books. Eine zentrale value-basierte Fortschritts-Engine berechnet Seiten-, Prozent- und Locator-Fortschritt pro `ReadingAttempt`; ein idempotenter Startup-Repair klassifiziert Legacy-Daten und pflegt stabile Baseline-Events nach. Die Mixed-Media-Kompatibilitätsschicht trennt universelle Session-/Zeit-/Abschlussmetriken von ausschließlich addierbaren Seitenmetriken. Prozentstände bleiben Einzelbuch-Fortschritt und werden nie bibliotheksweit summiert; reine Provider-Imports erzeugen weder Sessionzeit noch Lesetag oder Streak. Quick Log und Timer nutzen denselben adaptiven Fortschrittseditor und dieselbe Mutationslogik. Ein lokaler EPUB-/PDF-Reader, Provider-Konten und automatische Synchronisierung sind noch nicht integriert und werden in der Oberfläche nicht als verfügbar dargestellt. Persistenz läuft über SwiftData; die primäre Store-Konfiguration nutzt CloudKit über `ModelConfiguration(cloudKitDatabase: .automatic)`. Das Deployment Target ist laut `Shelf Notes.xcodeproj/project.pbxproj` iOS 26.0.
 
 ## Key Concepts / Domänenbegriffe
 
@@ -19,6 +19,8 @@ Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlic
 - `ReadingSourceSelection` / `ReadingSourceDraft`: Testbare Abbildung der Nutzerwahl auf Medium, Provider, Fortschrittseinheit und Session-Quelle. Externe Anbieter sind manuell getrackt; `localFile` ist sichtbar, aber noch nicht auswählbar. Pfade: `Shelf Notes/ReadingSources/ReadingSourceSelection.swift`, `Shelf Notes/ReadingSources/ReadingSourceDraft.swift`.
 - `ReadingProgressInputView`: Gemeinsamer adaptiver Editor für Seiten, absolute Prozentstände, Locator und Sessions ohne messbaren Fortschritt. Parsing und Korrekturbestätigung liegen im pure `ReadingProgressInputBuilder`. Pfad: `Shelf Notes/BookDetail/Sessions/ProgressInput/*`.
 - Reading-Presentation-Modelle: `ReadingProgressPresentation`, `ReadingSourcePresentation` und `ReadingSessionPresentation` verhindern künstliche Seitenangaben bei E-Books und halten Journey-/Session-Zeilen kompakt. Pfad: `Shelf Notes/BookDetail/Sessions/Presentation/*`.
+- Mixed-Media-Metriken: `ReadingMetricEligibility`, `ReadingMetricContribution`, `ReadingSessionMetricMapper` und `ReadingProgressMetricMapper` entscheiden zentral nach Datenquelle, Fortschrittseinheit und Origin, welche Werte zu Zeit, Sessions, Lesetagen, Seiten, Einzelbuch-Fortschritt oder Abschlüssen beitragen. Pfad: `Shelf Notes/ReadingMetrics/*`.
+- `ReadingSessionAggregateSnapshot`: Sendable Session-Aggregate mit universeller Zeit/Sessionanzahl sowie separater seitenbasierter Zeitbasis für korrekte Seiten-pro-Stunde-Werte. Pfad: `Shelf Notes/ReadingSessionAggregates.swift`.
 - `ReadingSessionMutationService`: Zentraler atomarer Schreibpfad für Session, sessiongebundenes Fortschrittsereignis, Reading Attempt und Book. Der kompatible `pages:`-Aufruf bleibt bestehen. Pfad: `Shelf Notes/BookDetail/Sessions/ReadingSessionMutationService.swift`.
 - `ReadingProgressImportMutationService`: Speichert deduplizierte reine Fortschrittsimporte ohne Session, Lesezeit oder Book-Lesetag. Der Dienst ist providerneutral und enthält keinen Google-Books-Code. Pfad: `Shelf Notes/ReadingProgress/ReadingProgressImportMutationService.swift`.
 - `ReadingSessionDeletionService`: Entfernt Sessions und alle über `sourceSessionID` beziehungsweise den stabilen Session-Key gebundenen Progress Events in einem gemeinsamen Save. Pfad: `Shelf Notes/BookDetail/Sessions/ReadingSessionDeletionService.swift`.
@@ -82,7 +84,10 @@ Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlic
 - Viele schwere Berechnungen sind in testbare Builder ausgelagert.
 - Beispiele:
   - Library: `LibraryBooksIndex`, `LibraryDerivedStateBuilder`, `LibraryDisplayStore`
-  - Stats: `StatisticsSourceStore`, `StatisticsComputePipeline`, `StatisticsSnapshotBuilder`
+  - Mixed-Media-Metriken: `ReadingSessionMetricMapper`, `ReadingProgressMetricMapper`, `ReadingSessionAggregateBuilder`
+  - Analytics: `ReadingAnalyticsInputMapper`, `ReadingAnalyticsIndexBuilder`, `ReadingCompletionRecordBuilder`
+  - Stats: `StatisticsSourceStore`, `StatisticsComputePipeline`, `StatisticsSnapshotBuilder`, `StatisticsHeatmapBuilder`
+  - Timeline: `ReadingTimelineBookSnapshot`, `ReadingTimelineBuilder`, `ReadingTimelineDisplayStore`
   - Tags: `TagsIndexBuilder`, `TagsDomainIndex`, `TagSuggestionEngine`, `TagHygieneBuilder`
   - Challenges: `ChallengeEngine`, `ChallengeEngine+Compute`, `ChallengeEngine+Snapshot`
   - Collections: `CollectionsDashboardBuilder`, `CollectionsSmartActionBuilder`
@@ -230,6 +235,18 @@ Pfade: `Shelf Notes/ReadingSources/ReadingSource*.swift`, `Shelf Notes/BookDetai
 - `ReadingProgressPresentationBuilder` zeigt Seiten ausschließlich für `.pages`. Prozent- und Locator-Quellen erhalten eigene Texte; unbekannter Fortschritt bleibt sichtbar unbekannt.
 - `ReadingJourneyCard`, `SessionRow`, gruppierte Session-Vorschauen und die vollständige Session-Liste zeigen Medium/Provider, Fortschritt und hilfreiche Herkunft kompakt.
 - `Book.isEbook` bleibt reine Google-Books-Metainformation und wird nicht für die Nutzer-Leseart herangezogen.
+
+### Mixed-Media Derived States und Analytics
+
+Pfade: `Shelf Notes/ReadingMetrics/*`, `Shelf Notes/ReadingSessionAggregates.swift`, `Shelf Notes/Analytics/*`, `Shelf Notes/Stats/*`, `Shelf Notes/Goals/*`, `Shelf Notes/ProgressHub/*`, `Shelf Notes/Timeline/*`, `Shelf Notes/LibraryView/*`
+
+- Universell für echte Sessions sind Sessionanzahl, Dauer, Lesetage, Streaks und durchschnittliche Sessiondauer. Ein `providerImport`-Event oder eine defensiv als `providerImport` klassifizierte Session trägt dazu nicht bei.
+- Seitenmetriken werden nur aus `.pages`-Daten gebildet. `pageBasedDurationSeconds` hält die Zeitbasis für Seiten pro Stunde getrennt von Prozent- und Locator-Sessions.
+- Prozent- und Locator-Fortschritt kann den aktuellen Fortschritt und Abschluss eines einzelnen Books beeinflussen, wird aber nicht bibliotheksweit addiert und erzeugt keine künstlichen Seitenwerte.
+- Abschlussstatistiken zählen jeden beendeten `ReadingAttempt`; Wiederholungslesungen bleiben historische Abschlüsse, während der aktive Attempt allein den aktuellen Bibliotheksfortschritt steuert.
+- `ReadingAnalyticsInputMapper`, Statistics-Snapshots und Timeline-Snapshots lesen SwiftData ausschließlich am Main Actor in kleine `Sendable`-Werte. Analytics-, Heatmap- und Timeline-Builder arbeiten anschließend value-basiert außerhalb des Main Actors.
+- Cache-Signaturen enthalten nur ergebnis- oder darstellungsrelevante Quellenfelder: Stats und Goals berücksichtigen die Fortschrittseinheit, Session-Signaturen zusätzlich die Origin; Timeline und Library berücksichtigen sichtbare Medium-/Provider-Informationen. Locator-Änderungen invalidieren keine globalen Statistiken.
+- Library, Continue Reading, Stats, Goals und Timeline zeigen gemischte Quellen formatneutral. Seitenkennzahlen werden bei gemischten Daten dezent als ausschließlich seitenbasiert gekennzeichnet.
 
 ### `BookExternalReference`
 
@@ -446,6 +463,12 @@ Root-Level AppStorage/SceneStorage:
   - `ReadingProgressPresentationTests`
   - `ReadingSessionPresentationTests`
   - `ReadingSourceSessionUXTests`
+  - `ReadingMetricCompatibilityTests`
+  - `ReadingAnalyticsIndexBuilderTests`
+  - `StatisticsSnapshotBuilderTests`
+  - `StatisticsComputePipelineTests`
+  - `ReadingTimelineBuilderTests`
+  - `LibraryBookPresentationTests`
 
 ### Projektstruktur
 

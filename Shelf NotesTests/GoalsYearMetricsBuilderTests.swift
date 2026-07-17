@@ -407,4 +407,92 @@ struct GoalsYearMetricsBuilderTests {
         #expect(metrics.pagesReadInSelectedYear == 280)
     }
 
+    @Test @MainActor func mixedCompletionUnitsCountTowardGoalWithoutSummingEbookMetadataPages() {
+        let physical = makeBook(
+            title: "Paper",
+            status: .finished,
+            createdAt: date(2026, 1, 1),
+            pageCount: 300
+        )
+        let physicalAttempt = ReadingAttempt(
+            book: physical,
+            sequenceNumber: 1,
+            status: .finished,
+            startedAt: date(2026, 1, 1),
+            finishedAt: date(2026, 1, 10),
+            pageCountSnapshot: 300,
+            readingMedium: .physical,
+            defaultProvider: .none,
+            progressUnit: .pages
+        )
+        physical.readingAttempts = [physicalAttempt]
+
+        let ebook = makeBook(
+            title: "Digital",
+            status: .finished,
+            createdAt: date(2026, 2, 1),
+            pageCount: 450
+        )
+        let ebookAttempt = ReadingAttempt(
+            book: ebook,
+            sequenceNumber: 1,
+            status: .finished,
+            startedAt: date(2026, 2, 1),
+            finishedAt: date(2026, 2, 8),
+            pageCountSnapshot: 450,
+            readingMedium: .ebook,
+            defaultProvider: .kindle,
+            progressUnit: .percentage,
+            totalValueSnapshot: 100
+        )
+        ebook.readingAttempts = [ebookAttempt]
+
+        let metrics = GoalsYearMetricsBuilder.make(
+            selectedYear: 2026,
+            books: [physical, ebook],
+            goals: [],
+            now: date(2026, 4, 15),
+            calendar: calendar
+        )
+
+        #expect(metrics.finishedCompletionCount == 2)
+        #expect(metrics.uniqueFinishedBooksCount == 2)
+        #expect(metrics.pagesReadInSelectedYear == 300)
+        #expect(metrics.countedBooksWithPagesCount == 1)
+        #expect(metrics.averagePagesPerBook == 300)
+        #expect(metrics.hasPageBasedCompletions)
+        #expect(metrics.hasNonPageCompletions)
+        #expect(metrics.hasMixedProgressUnits)
+    }
+
+    @Test @MainActor func goalSignatureTracksMetricUnitButIgnoresProviderPresentationChanges() {
+        let book = makeBook(
+            title: "Digital",
+            status: .finished,
+            createdAt: date(2026, 1, 1),
+            pageCount: 400
+        )
+        let attempt = ReadingAttempt(
+            book: book,
+            sequenceNumber: 1,
+            status: .finished,
+            startedAt: date(2026, 1, 1),
+            finishedAt: date(2026, 1, 8),
+            pageCountSnapshot: 400,
+            readingMedium: .ebook,
+            defaultProvider: .kindle,
+            progressUnit: .percentage
+        )
+        book.readingAttempts = [attempt]
+
+        let original = GoalsYearMetricsModel.makeInputToken(selectedYear: 2026, books: [book], goals: [])
+        attempt.defaultProvider = .googleBooks
+        let providerChanged = GoalsYearMetricsModel.makeInputToken(selectedYear: 2026, books: [book], goals: [])
+        attempt.progressUnit = .pages
+        let unitChanged = GoalsYearMetricsModel.makeInputToken(selectedYear: 2026, books: [book], goals: [])
+
+        #expect(original == providerChanged)
+        #expect(original != unitChanged)
+    }
+
 }

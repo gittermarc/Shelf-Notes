@@ -78,6 +78,44 @@ struct ReadingTimelineBuilderTests {
         #expect(stats?.previewBookIDs == [bookID, bookID])
     }
 
+    @Test func mixedMediaRereadsKeepHistoricalCompletionsAndSourceLabels() {
+        let bookID = fixedUUID(25)
+        let snapshot = bookSnapshot(
+            id: bookID,
+            title: "Mixed Repeat",
+            completions: [
+                completion(
+                    bookID: bookID,
+                    sequenceNumber: 1,
+                    finishedAt: date(2024, 1, 8),
+                    medium: .physical,
+                    provider: .none,
+                    progressUnit: .pages
+                ),
+                completion(
+                    bookID: bookID,
+                    sequenceNumber: 2,
+                    finishedAt: date(2025, 3, 7),
+                    isReread: true,
+                    medium: .ebook,
+                    provider: .kindle,
+                    progressUnit: .percentage
+                )
+            ]
+        )
+
+        let state = ReadingTimelineBuilder.build(bookSnapshots: [snapshot], calendar: calendar)
+        let completions = completionItems(from: state)
+
+        #expect(state.years == [2024, 2025])
+        #expect(state.completionCount == 2)
+        #expect(state.rereadCompletionCount == 1)
+        #expect(completions.map(\.sourceLabel) == ["Physisches Buch", "Kindle"])
+        #expect(completions[0].completion.pageCount == 320)
+        #expect(completions[1].completion.pageCount == nil)
+        #expect(completions[1].attemptLabel == "2. Durchgang")
+    }
+
     @Test @MainActor func activeRereadWithoutFinishedDateDoesNotAppear() {
         let book = Book(title: "Active Reread", author: "Ada", status: .reading)
         book.id = fixedUUID(3)
@@ -191,6 +229,9 @@ private extension ReadingTimelineBuilderTests {
         sequenceNumber: Int,
         finishedAt: Date,
         isReread: Bool = false,
+        medium: ReadingMedium = .physical,
+        provider: ReadingProvider = .none,
+        progressUnit: ReadingProgressUnit = .pages,
         title: String = "Fixture Completion",
         author: String = "Fixture Author"
     ) -> ReadingTimelineCompletionSnapshot {
@@ -204,6 +245,9 @@ private extension ReadingTimelineBuilderTests {
             startedAt: calendar.date(byAdding: .day, value: -7, to: finishedAt),
             finishedAt: finishedAt,
             pageCount: 320,
+            mediumRawValue: medium.rawValue,
+            providerRawValue: provider.rawValue,
+            progressUnitRawValue: progressUnit.rawValue,
             isReread: isReread,
             isLegacyFallback: false
         )

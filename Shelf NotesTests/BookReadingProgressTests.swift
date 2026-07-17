@@ -110,6 +110,33 @@ struct BookReadingProgressTests {
         #expect(book.readingProgressFraction == 0.2)
     }
 
+    @Test @MainActor func legacyProgressIgnoresPercentageAndProviderImportSessions() {
+        let book = Book(title: "Mixed Legacy", status: .reading)
+        book.pageCount = 100
+
+        let pageSession = makeSession(book: book, pagesRead: 20)
+        pageSession.progressUnit = .pages
+        pageSession.origin = .quickLog
+
+        let percentageSession = makeSession(book: book, pagesRead: 80)
+        percentageSession.progressUnit = .percentage
+        percentageSession.origin = .quickLog
+
+        let providerImportSession = makeSession(book: book, pagesRead: 100)
+        providerImportSession.progressUnit = .pages
+        providerImportSession.origin = .providerImport
+
+        book.readingSessionsSafe = [
+            pageSession,
+            percentageSession,
+            providerImportSession
+        ]
+
+        #expect(book.pagesReadTotalFromSessions == 20)
+        #expect(book.currentReadingProgressSnapshot.pagesRead == 20)
+        #expect(book.readingProgressFraction == 0.2)
+    }
+
     @MainActor
     private func makeSession(book: Book, pagesRead: Int?) -> ReadingSession {
         ReadingSession(

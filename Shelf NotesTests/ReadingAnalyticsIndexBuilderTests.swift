@@ -267,4 +267,107 @@ struct ReadingAnalyticsIndexBuilderTests {
         #expect(summary2026.pagesByMonth[3] == 300)
     }
 
+    @Test func mixedCompletionUnitsCountBooksButOnlyAddPageBasedCompletions() {
+        let physicalBookID = UUID()
+        let ebookBookID = UUID()
+        let books = [
+            ReadingAnalyticsBookRecord(
+                id: physicalBookID,
+                statusRawValue: ReadingStatus.finished.rawValue,
+                createdAt: date(2026, 1, 1),
+                readFrom: nil,
+                readTo: nil,
+                pageCount: 300,
+                readingCompletions: [
+                    ReadingCompletionRecord(
+                        id: "physical",
+                        bookID: physicalBookID,
+                        sequenceNumber: 1,
+                        title: "Paper",
+                        author: "Ada",
+                        startedAt: date(2026, 1, 1),
+                        finishedAt: date(2026, 1, 10),
+                        pageCount: 300,
+                        progressUnitRawValue: ReadingProgressUnit.pages.rawValue,
+                        isReread: false
+                    )
+                ]
+            ),
+            ReadingAnalyticsBookRecord(
+                id: ebookBookID,
+                statusRawValue: ReadingStatus.finished.rawValue,
+                createdAt: date(2026, 2, 1),
+                readFrom: nil,
+                readTo: nil,
+                pageCount: 450,
+                readingCompletions: [
+                    ReadingCompletionRecord(
+                        id: "ebook",
+                        bookID: ebookBookID,
+                        sequenceNumber: 1,
+                        title: "Digital",
+                        author: "Bea",
+                        startedAt: date(2026, 2, 1),
+                        finishedAt: date(2026, 2, 8),
+                        pageCount: 450,
+                        mediumRawValue: ReadingMedium.ebook.rawValue,
+                        providerRawValue: ReadingProvider.kindle.rawValue,
+                        progressUnitRawValue: ReadingProgressUnit.percentage.rawValue,
+                        isReread: false
+                    )
+                ]
+            )
+        ]
+
+        let summary = ReadingAnalyticsIndexBuilder.make(
+            books: books,
+            sessions: [],
+            now: date(2026, 3, 1),
+            calendar: calendar
+        ).summary(forYear: 2026)
+
+        #expect(summary.finishedBookCount == 2)
+        #expect(summary.uniqueFinishedBookCount == 2)
+        #expect(summary.pagesRead == 300)
+        #expect(summary.pageBasedCompletionCount == 1)
+        #expect(summary.nonPageCompletionCount == 1)
+        #expect(summary.countedBooksWithPagesCount == 1)
+        #expect(summary.averagePagesPerBook == 300)
+        #expect(summary.pagesByMonth[1] == 300)
+        #expect(summary.pagesByMonth[2] == 0)
+    }
+
+    @Test func providerImportDoesNotCreateRecentActivity() {
+        let now = date(2026, 4, 15, 9)
+        let sessions = [
+            ReadingAnalyticsSessionRecord(
+                id: UUID(),
+                startedAt: date(2026, 4, 15, 8),
+                durationSeconds: 1_800,
+                createdAt: date(2026, 4, 15, 8),
+                progressUnitRawValue: ReadingProgressUnit.percentage.rawValue,
+                originRawValue: ReadingSessionOrigin.providerImport.rawValue
+            ),
+            ReadingAnalyticsSessionRecord(
+                id: UUID(),
+                startedAt: date(2026, 4, 14, 8),
+                durationSeconds: 1_200,
+                createdAt: date(2026, 4, 14, 8),
+                progressUnitRawValue: ReadingProgressUnit.percentage.rawValue,
+                originRawValue: ReadingSessionOrigin.quickLog.rawValue
+            )
+        ]
+
+        let activity = ReadingAnalyticsIndexBuilder.make(
+            books: [],
+            sessions: sessions,
+            now: now,
+            calendar: calendar
+        ).recentActivity
+
+        #expect(activity.minutesLast7 == 20)
+        #expect(activity.activeDaysLast7 == 1)
+        #expect(activity.currentStreak == 0)
+    }
+
 }

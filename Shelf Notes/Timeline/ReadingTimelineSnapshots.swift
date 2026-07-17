@@ -36,7 +36,7 @@ nonisolated struct ReadingTimelineBookSnapshot: Hashable, Sendable, Identifiable
         self.completions = completions
     }
 
-    init(book: Book) {
+    @MainActor init(book: Book) {
         self.init(
             id: book.id,
             title: book.title,
@@ -51,7 +51,7 @@ nonisolated struct ReadingTimelineBookSnapshot: Hashable, Sendable, Identifiable
         )
     }
 
-    static func snapshots(from books: [Book]) -> [ReadingTimelineBookSnapshot] {
+    @MainActor static func snapshots(from books: [Book]) -> [ReadingTimelineBookSnapshot] {
         books.map(ReadingTimelineBookSnapshot.init(book:))
     }
 }
@@ -66,6 +66,9 @@ nonisolated struct ReadingTimelineCompletionSnapshot: Hashable, Sendable, Identi
     let startedAt: Date?
     let finishedAt: Date
     let pageCount: Int?
+    let mediumRawValue: String
+    let providerRawValue: String
+    let progressUnitRawValue: String
     let isReread: Bool
     let isLegacyFallback: Bool
 
@@ -79,6 +82,9 @@ nonisolated struct ReadingTimelineCompletionSnapshot: Hashable, Sendable, Identi
         startedAt: Date?,
         finishedAt: Date,
         pageCount: Int?,
+        mediumRawValue: String = ReadingMedium.physical.rawValue,
+        providerRawValue: String = ReadingProvider.none.rawValue,
+        progressUnitRawValue: String = ReadingProgressUnit.pages.rawValue,
         isReread: Bool,
         isLegacyFallback: Bool = false
     ) {
@@ -90,7 +96,13 @@ nonisolated struct ReadingTimelineCompletionSnapshot: Hashable, Sendable, Identi
         self.author = author
         self.startedAt = startedAt
         self.finishedAt = finishedAt
-        self.pageCount = ReadingCompletionRecord.normalizedPageCount(pageCount)
+        self.mediumRawValue = mediumRawValue
+        self.providerRawValue = providerRawValue
+        self.progressUnitRawValue = progressUnitRawValue
+        self.pageCount = ReadingProgressMetricMapper.pageCountContribution(
+            pageCount: pageCount,
+            progressUnit: ReadingProgressUnit.fromPersisted(progressUnitRawValue)
+        )
         self.isReread = isReread
         self.isLegacyFallback = isLegacyFallback
     }
@@ -106,6 +118,9 @@ nonisolated struct ReadingTimelineCompletionSnapshot: Hashable, Sendable, Identi
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
             pageCount: record.pageCount,
+            mediumRawValue: record.mediumRawValue,
+            providerRawValue: record.providerRawValue,
+            progressUnitRawValue: record.progressUnitRawValue,
             isReread: record.isReread,
             isLegacyFallback: record.isLegacyFallback
         )
@@ -119,6 +134,18 @@ nonisolated struct ReadingTimelineCompletionSnapshot: Hashable, Sendable, Identi
         "\(sequenceNumber). Durchgang"
     }
 
+    var medium: ReadingMedium {
+        ReadingMedium.fromPersisted(mediumRawValue)
+    }
+
+    var provider: ReadingProvider {
+        ReadingProvider.fromPersisted(providerRawValue)
+    }
+
+    var progressUnit: ReadingProgressUnit {
+        ReadingProgressUnit.fromPersisted(progressUnitRawValue)
+    }
+
     var asCompletionRecord: ReadingCompletionRecord {
         ReadingCompletionRecord(
             id: id,
@@ -130,6 +157,9 @@ nonisolated struct ReadingTimelineCompletionSnapshot: Hashable, Sendable, Identi
             startedAt: startedAt,
             finishedAt: finishedAt,
             pageCount: pageCount,
+            mediumRawValue: mediumRawValue,
+            providerRawValue: providerRawValue,
+            progressUnitRawValue: progressUnitRawValue,
             isReread: isReread,
             isLegacyFallback: isLegacyFallback
         )

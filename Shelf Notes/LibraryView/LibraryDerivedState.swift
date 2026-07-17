@@ -56,6 +56,12 @@ extension LibraryView {
             let pageCount: Int?
             let pagesReadTotal: Int
             let readingProgressFraction: Double?
+            let readingMediumRawValue: String
+            let readingProviderRawValue: String
+            let progressUnitRawValue: String
+            let progressNativeValue: Double?
+            let progressTotalValue: Double?
+            let progressLocator: String?
             let lastSessionAt: Date?
             let hasCover: Bool
             let coverRevision: Int
@@ -69,11 +75,11 @@ extension LibraryView {
 
             @MainActor init(book: Book) {
                 let allSessions = book.readingSessionsSafe
-                let progressSessions = ReadingAttemptSessionCoordinator.progressSessions(
-                    for: book,
-                    allSessions: allSessions
-                )
-                let pagesReadTotal = ReadingSessionLogging.pagesReadTotal(in: progressSessions)
+                let progressSnapshot = book.currentReadingProgressSnapshot
+                let sourceAttempt = book.activeReadingAttempt ?? book.orderedReadingAttempts.last
+                let pagesReadTotal = progressSnapshot.unit == .pages
+                    ? max(0, progressSnapshot.pagesRead ?? 0)
+                    : 0
                 let pageCount = LibrarySourceSnapshot.normalizedPositiveInt(book.pageCount)
                 let coverRevision = LibrarySourceSnapshot.coverRevision(for: book)
                 let ratingAverage = LibrarySourceSnapshot.normalizedUserRatingAverage1(for: book)
@@ -90,11 +96,13 @@ extension LibraryView {
                 readTo = book.readTo
                 self.pageCount = pageCount
                 self.pagesReadTotal = pagesReadTotal
-                readingProgressFraction = ReadingSessionLogging.progressFraction(
-                    status: book.status,
-                    totalPages: pageCount,
-                    sessions: progressSessions
-                )
+                readingProgressFraction = progressSnapshot.normalizedProgress
+                readingMediumRawValue = sourceAttempt?.readingMediumRawValue ?? ReadingMedium.physical.rawValue
+                readingProviderRawValue = sourceAttempt?.defaultProviderRawValue ?? ReadingProvider.none.rawValue
+                progressUnitRawValue = progressSnapshot.unit.rawValue
+                progressNativeValue = progressSnapshot.nativeValue
+                progressTotalValue = progressSnapshot.totalValue
+                progressLocator = progressSnapshot.locator
                 lastSessionAt = LibrarySourceSnapshot.lastSessionDate(in: allSessions)
                 hasCover = coverRevision > 0
                 self.coverRevision = coverRevision
@@ -126,6 +134,12 @@ extension LibraryView {
                 pageCount: Int? = nil,
                 pagesReadTotal: Int = 0,
                 readingProgressFraction: Double? = nil,
+                readingMediumRawValue: String = ReadingMedium.physical.rawValue,
+                readingProviderRawValue: String = ReadingProvider.none.rawValue,
+                progressUnitRawValue: String = ReadingProgressUnit.pages.rawValue,
+                progressNativeValue: Double? = nil,
+                progressTotalValue: Double? = nil,
+                progressLocator: String? = nil,
                 lastSessionAt: Date? = nil,
                 hasCover: Bool = false,
                 coverRevision: Int = 0,
@@ -150,6 +164,12 @@ extension LibraryView {
                 self.pageCount = LibrarySourceSnapshot.normalizedPositiveInt(pageCount)
                 self.pagesReadTotal = max(0, pagesReadTotal)
                 self.readingProgressFraction = LibrarySourceSnapshot.normalizedProgressFraction(readingProgressFraction)
+                self.readingMediumRawValue = readingMediumRawValue
+                self.readingProviderRawValue = readingProviderRawValue
+                self.progressUnitRawValue = progressUnitRawValue
+                self.progressNativeValue = progressNativeValue ?? (pagesReadTotal > 0 ? Double(pagesReadTotal) : nil)
+                self.progressTotalValue = progressTotalValue ?? pageCount.map(Double.init)
+                self.progressLocator = progressLocator
                 self.lastSessionAt = lastSessionAt
                 self.hasCover = hasCover || coverRevision > 0
                 self.coverRevision = max(0, coverRevision)
@@ -221,6 +241,12 @@ extension LibraryView {
                 hasher.combine(book.pageCount)
                 hasher.combine(book.pagesReadTotal)
                 hasher.combine(progressBucket(book.readingProgressFraction))
+                hasher.combine(book.readingMediumRawValue)
+                hasher.combine(book.readingProviderRawValue)
+                hasher.combine(book.progressUnitRawValue)
+                hasher.combine(doubleBucket(book.progressNativeValue))
+                hasher.combine(doubleBucket(book.progressTotalValue))
+                hasher.combine(book.progressLocator)
                 hasher.combine(timestampStamp(book.lastSessionAt))
                 hasher.combine(book.hasCover)
                 hasher.combine(book.coverRevision)
@@ -266,6 +292,11 @@ extension LibraryView {
 
         private static func progressBucket(_ value: Double?) -> Int {
             guard let value else { return -1 }
+            return Int((value * 1_000).rounded())
+        }
+
+        private static func doubleBucket(_ value: Double?) -> Int {
+            guard let value, value.isFinite else { return -1 }
             return Int((value * 1_000).rounded())
         }
 

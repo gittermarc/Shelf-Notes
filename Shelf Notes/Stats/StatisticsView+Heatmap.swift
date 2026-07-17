@@ -5,11 +5,11 @@ extension StatisticsView {
     func heatmapHintText(range: StatisticsHeatmapRange) -> String {
         switch activityMetric {
         case .readingDays:
-            return "„Lesetage“ zählt pro Tag, an dem ein Buch aktiv war (aus readFrom/readTo; bei „Lese ich“ bis heute). Zeitraum: \(range.start.formatted(date: .numeric, time: .omitted))–\(range.end.formatted(date: .numeric, time: .omitted))."
+            return "„Lesetage“ zählt Tage mit einer echten geloggten Lesesession. Reine Provider-Fortschrittsimporte zählen nicht. Zeitraum: \(range.start.formatted(date: .numeric, time: .omitted))–\(range.end.formatted(date: .numeric, time: .omitted))."
         case .readingMinutes:
-            return "„Leseminuten“ summiert die Dauer aller geloggten Lesesessions pro Tag (aus ReadingSession.durationSeconds). Zeitraum: \(range.start.formatted(date: .numeric, time: .omitted))–\(range.end.formatted(date: .numeric, time: .omitted))."
+            return "„Leseminuten“ summiert die Dauer echter geloggter Lesesessions. Reine Provider-Fortschrittsimporte erzeugen keine Lesezeit. Zeitraum: \(range.start.formatted(date: .numeric, time: .omitted))–\(range.end.formatted(date: .numeric, time: .omitted))."
         case .completions:
-            return "„Abschlüsse“ zählt pro Tag, an dem ein Buch beendet wurde (readTo/readFrom). Zeitraum: \(range.start.formatted(date: .numeric, time: .omitted))–\(range.end.formatted(date: .numeric, time: .omitted))."
+            return "„Abschlüsse“ zählt beendete Lesedurchgänge. Wiederholungslesungen bleiben als eigene historische Abschlüsse erhalten. Zeitraum: \(range.start.formatted(date: .numeric, time: .omitted))–\(range.end.formatted(date: .numeric, time: .omitted))."
         }
     }
 

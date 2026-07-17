@@ -28,7 +28,7 @@ nonisolated enum StatisticsActivityMetric: String, CaseIterable, Identifiable, S
 
 nonisolated extension StatisticsActivityMetric {
     var needsSessionSource: Bool {
-        self == .readingMinutes
+        self == .readingMinutes || self == .readingDays
     }
 }
 
@@ -132,6 +132,7 @@ nonisolated struct StatisticsStatsCache: Sendable {
             let rereadCompletionsInSelectedYearCount: Int
             let avgPagesPerBookText: String
             let avgDaysPerBookText: String
+            let hasNonPageCompletionsInSelectedYear: Bool
         }
 
         let yearOptions: [Int]

@@ -116,9 +116,19 @@ struct GoalsView: View {
             ProgressView(value: pct)
 
             HStack(spacing: 10) {
-                StatPill(systemImage: "doc.plaintext", title: "Seiten", value: formatInt(metrics.pagesReadInSelectedYear))
+                StatPill(
+                    systemImage: "doc.plaintext",
+                    title: metrics.hasNonPageCompletions ? "Seiten*" : "Seiten",
+                    value: formatInt(metrics.pagesReadInSelectedYear)
+                )
                 StatPill(systemImage: "divide.circle", title: "Ø/Buch", value: formatOptionalInt(metrics.averagePagesPerBook))
                 StatPill(systemImage: "calendar", title: "/Monat", value: formatInt(metrics.pagesPerMonth))
+            }
+
+            if metrics.hasNonPageCompletions {
+                Text("* Nur seitenbasierte Abschlüsse. E-Book-Prozentstände werden nicht addiert.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(14)

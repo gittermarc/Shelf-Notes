@@ -34,7 +34,7 @@ nonisolated struct ReadingAnalyticsBookRecord: Hashable, Sendable {
         )
     }
 
-    init(book: Book) {
+    @MainActor init(book: Book) {
         self.init(
             id: book.id,
             statusRawValue: book.statusRawValue,
@@ -87,30 +87,50 @@ nonisolated struct ReadingAnalyticsSessionRecord: Hashable, Sendable {
     let startedAt: Date
     let durationSeconds: Int
     let createdAt: Date
+    let progressUnitRawValue: String
+    let originRawValue: String
 
     init(
         id: UUID,
         startedAt: Date,
         durationSeconds: Int,
-        createdAt: Date
+        createdAt: Date,
+        progressUnitRawValue: String = ReadingProgressUnit.pages.rawValue,
+        originRawValue: String = ReadingSessionOrigin.legacy.rawValue
     ) {
         self.id = id
         self.startedAt = startedAt
         self.durationSeconds = durationSeconds
         self.createdAt = createdAt
+        self.progressUnitRawValue = progressUnitRawValue
+        self.originRawValue = originRawValue
     }
 
-    init(session: ReadingSession) {
+    @MainActor init(session: ReadingSession) {
         self.init(
             id: session.id,
             startedAt: session.startedAt,
             durationSeconds: session.durationSeconds,
-            createdAt: session.createdAt
+            createdAt: session.createdAt,
+            progressUnitRawValue: session.progressUnitRawValue,
+            originRawValue: session.originRawValue
         )
     }
 
     var normalizedDurationSeconds: Int {
-        max(0, durationSeconds)
+        metricContribution.durationSeconds
+    }
+
+    var metricContribution: ReadingMetricContribution {
+        ReadingSessionMetricMapper.contribution(
+            from: ReadingSessionMetricInput(
+                startedAt: startedAt,
+                durationSeconds: durationSeconds,
+                pagesRead: nil,
+                progressUnitRawValue: progressUnitRawValue,
+                originRawValue: originRawValue
+            )
+        )
     }
 }
 
@@ -120,6 +140,8 @@ nonisolated struct ReadingAnalyticsYearSummary: Equatable, Sendable {
     let uniqueFinishedBookCount: Int
     let rereadCompletionCount: Int
     let pagesRead: Int
+    let pageBasedCompletionCount: Int
+    let nonPageCompletionCount: Int
     let countedBooksWithPagesCount: Int
     let averagePagesPerBook: Int?
     let pagesByMonth: [Int: Int]
@@ -131,6 +153,8 @@ nonisolated struct ReadingAnalyticsYearSummary: Equatable, Sendable {
             uniqueFinishedBookCount: 0,
             rereadCompletionCount: 0,
             pagesRead: 0,
+            pageBasedCompletionCount: 0,
+            nonPageCompletionCount: 0,
             countedBooksWithPagesCount: 0,
             averagePagesPerBook: nil,
             pagesByMonth: [:]
