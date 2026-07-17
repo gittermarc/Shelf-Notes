@@ -1,10 +1,10 @@
 # PROJECT_CONTEXT.md
 
-Stand: E-Book-Erweiterung PR 3 vom 2026-07-17 auf Basis des aktuellen Projektarchivs. Der aktuelle Code ist die Quelle der Wahrheit.
+Stand: E-Book-Erweiterung PR 4 vom 2026-07-17 auf Basis des aktuellen Projektarchivs. Der aktuelle Code ist die Quelle der Wahrheit.
 
 ## TL;DR
 
-Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlichen Buchbibliothek mit Lesestatus, Lesesessions, Zielen, Challenges, Statistiken, Tags, Listen/Sammlungen, CSV-Import/-Export, Google-Books-Import, Cover-Caching und Live-Activity-Unterstützung. Das Persistenzmodell besitzt zusätzlich ein formatneutrales Fundament für physische Bücher, externe E-Books und später lokal gelesene EPUBs/PDFs. Eine zentrale value-basierte Fortschritts-Engine berechnet Seiten-, Prozent- und Locator-Fortschritt pro `ReadingAttempt`; ein idempotenter Startup-Repair klassifiziert Legacy-Daten und pflegt stabile Baseline-Events nach. Session-Mutationen schreiben Session, Fortschrittsereignis, Attempt und Book gemeinsam, während ein separater Importpfad reine Fortschrittsereignisse ohne Lesezeit oder Lesetag speichert. Persistenz läuft über SwiftData; die primäre Store-Konfiguration nutzt CloudKit über `ModelConfiguration(cloudKitDatabase: .automatic)`. Das Deployment Target ist laut `Shelf Notes.xcodeproj/project.pbxproj` iOS 26.0.
+Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlichen Buchbibliothek mit Lesestatus, Lesesessions, Zielen, Challenges, Statistiken, Tags, Listen/Sammlungen, CSV-Import/-Export, Google-Books-Import, Cover-Caching und Live-Activity-Unterstützung. Das Persistenzmodell und die Session-UX sind formatneutral für physische Bücher und manuell getrackte externe E-Books. Eine zentrale value-basierte Fortschritts-Engine berechnet Seiten-, Prozent- und Locator-Fortschritt pro `ReadingAttempt`; ein idempotenter Startup-Repair klassifiziert Legacy-Daten und pflegt stabile Baseline-Events nach. Quick Log und Timer nutzen denselben adaptiven Fortschrittseditor und dieselbe Mutationslogik. Ein lokaler EPUB-/PDF-Reader, Provider-Konten und automatische Synchronisierung sind noch nicht integriert und werden in der Oberfläche nicht als verfügbar dargestellt. Persistenz läuft über SwiftData; die primäre Store-Konfiguration nutzt CloudKit über `ModelConfiguration(cloudKitDatabase: .automatic)`. Das Deployment Target ist laut `Shelf Notes.xcodeproj/project.pbxproj` iOS 26.0.
 
 ## Key Concepts / Domänenbegriffe
 
@@ -16,6 +16,9 @@ Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlic
 - `ReadingProgressEvent`: Provider- und formatneutrales Fortschrittsereignis mit nativen und optional normalisierten Werten. Pfad: `Shelf Notes/ReadingSources/ReadingProgressEvent.swift`.
 - `ReadingProgressEngine`: Pure, formatneutrale Berechnung für genau einen Lesedurchgang auf Basis von `ReadingProgressAttemptSnapshot` und `ReadingProgressUpdate`. Pfad: `Shelf Notes/ReadingProgress/*`.
 - `ReadingSessionSource` / `ReadingSessionContext`: Kleine Source-Werte für Attempt, Medium, Provider, Fortschrittseinheit, Origin und optionalen Gesamtwert. Pfad: `Shelf Notes/BookDetail/Sessions/ReadingSessionContext.swift`.
+- `ReadingSourceSelection` / `ReadingSourceDraft`: Testbare Abbildung der Nutzerwahl auf Medium, Provider, Fortschrittseinheit und Session-Quelle. Externe Anbieter sind manuell getrackt; `localFile` ist sichtbar, aber noch nicht auswählbar. Pfade: `Shelf Notes/ReadingSources/ReadingSourceSelection.swift`, `Shelf Notes/ReadingSources/ReadingSourceDraft.swift`.
+- `ReadingProgressInputView`: Gemeinsamer adaptiver Editor für Seiten, absolute Prozentstände, Locator und Sessions ohne messbaren Fortschritt. Parsing und Korrekturbestätigung liegen im pure `ReadingProgressInputBuilder`. Pfad: `Shelf Notes/BookDetail/Sessions/ProgressInput/*`.
+- Reading-Presentation-Modelle: `ReadingProgressPresentation`, `ReadingSourcePresentation` und `ReadingSessionPresentation` verhindern künstliche Seitenangaben bei E-Books und halten Journey-/Session-Zeilen kompakt. Pfad: `Shelf Notes/BookDetail/Sessions/Presentation/*`.
 - `ReadingSessionMutationService`: Zentraler atomarer Schreibpfad für Session, sessiongebundenes Fortschrittsereignis, Reading Attempt und Book. Der kompatible `pages:`-Aufruf bleibt bestehen. Pfad: `Shelf Notes/BookDetail/Sessions/ReadingSessionMutationService.swift`.
 - `ReadingProgressImportMutationService`: Speichert deduplizierte reine Fortschrittsimporte ohne Session, Lesezeit oder Book-Lesetag. Der Dienst ist providerneutral und enthält keinen Google-Books-Code. Pfad: `Shelf Notes/ReadingProgress/ReadingProgressImportMutationService.swift`.
 - `ReadingSessionDeletionService`: Entfernt Sessions und alle über `sourceSessionID` beziehungsweise den stabilen Session-Key gebundenen Progress Events in einem gemeinsamen Save. Pfad: `Shelf Notes/BookDetail/Sessions/ReadingSessionDeletionService.swift`.
@@ -109,7 +112,7 @@ Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlic
 - `Shelf Notes/AppLifecycle`: Startup-Maintenance, zum Beispiel Cover-Backfill und einmalige Jobs.
 - `Shelf Notes/LibraryView`: Bibliotheksansicht, Filter, Sortierung, Grid/List, Header, Derived State.
 - `Shelf Notes/BookDetail`: Detailansicht, Karten, Bindings, Sessions, Notizen und Timer-Integration.
-- `Shelf Notes/BookDetail/Sessions`: Session-UI, formatneutrale Session-Kontexte, atomare Session-Mutationen, zentrale Löschung, Timer-Manager und Live-Activity-Brücke.
+- `Shelf Notes/BookDetail/Sessions`: Gemeinsame Quellenwahl, adaptiver Fortschrittseditor, formatneutrale Präsentation, Session-Kontexte, atomare Session-Mutationen, zentrale Löschung, Timer-Manager und Live-Activity-Brücke.
 - `Shelf Notes/ReadingAttempts`: Reading-Attempt-Modell, Repair-Logik und Session-Zuordnung für Lesedurchgänge und Rereads.
 - `Shelf Notes/ReadingSources`: Stabile Reading-Source Raw Values, formatneutrale Fortschrittsereignisse, externe Buchreferenzen, Annotationen und typisierte Modellzugriffe.
 - `Shelf Notes/ReadingProgress`: Value-Snapshots, zentrale Fortschritts-Engine, Mutationsplanung, reine Progress-Imports, SwiftData-Adapter, deterministische Event-Fingerprints und idempotenter Legacy-Repair.
@@ -215,7 +218,18 @@ Pfade: `Shelf Notes/ReadingProgress/*`, `Shelf Notes/BookModel/Book+ReadingProgr
 - Jede Session mit Fortschritt besitzt höchstens ein Event mit `sourceSessionID` und `session-progress:<session-id>`. Erneutes Speichern aktualisiert dieses Event statt ein zweites anzulegen.
 - Reine Fortschrittsimporte verwenden einen vom Aufrufer gelieferten stabilen Deduplizierungsschlüssel, erzeugen keine Session und verändern `Book.readFrom`/`readTo` nicht.
 - Session-Löschungen laufen über `ReadingSessionDeletionService`, damit sessiongebundene Progress Events nicht verwaist oder weiterhin wirksam bleiben.
-- Bestehende Aufrufer bleiben über `Book+ReadingProgress`, `ReadingSessionLogging` und den kompatiblen `pages:`-Mutationspfad korrekt; die sichtbaren Eingabeoberflächen wurden nicht auf Prozent oder Locator umgebaut.
+- Bestehende Aufrufer bleiben über `Book+ReadingProgress`, `ReadingSessionLogging` und den kompatiblen `pages:`-Mutationspfad korrekt. Quick Log und Timer erzeugen über `ReadingProgressInputBuilder` nun dieselben Seiten-, Prozent-, Locator- oder leeren Updates.
+
+### Einheitliche Lesequellen- und Fortschritts-UX
+
+Pfade: `Shelf Notes/ReadingSources/ReadingSource*.swift`, `Shelf Notes/BookDetail/Sessions/ProgressInput/*`, `Shelf Notes/BookDetail/Sessions/Presentation/*`
+
+- Neue Lesedurchgänge speichern die gewählte Quelle direkt am `ReadingAttempt`. Bestehende Legacy-Attempts bleiben ohne Zwangsabfrage `physical`/`none`/`pages`.
+- Verfügbare manuelle Quellen sind physisches Buch, Apple Books, Kindle, Google Books und andere E-Book-Apps. EPUB/PDF in Shelf Notes wird als späterer lokaler Reader angezeigt, ist aber noch nicht auswählbar.
+- `ReadingProgressInputBuilder` akzeptiert leere Eingaben, Seitendifferenzen, absolute Prozentstände, Locator mit optionalem Prozentwert und expliziten Abschluss. Ein niedrigerer absoluter Stand erfordert eine bewusste Korrekturbestätigung.
+- `ReadingProgressPresentationBuilder` zeigt Seiten ausschließlich für `.pages`. Prozent- und Locator-Quellen erhalten eigene Texte; unbekannter Fortschritt bleibt sichtbar unbekannt.
+- `ReadingJourneyCard`, `SessionRow`, gruppierte Session-Vorschauen und die vollständige Session-Liste zeigen Medium/Provider, Fortschritt und hilfreiche Herkunft kompakt.
+- `Book.isEbook` bleibt reine Google-Books-Metainformation und wird nicht für die Nutzer-Leseart herangezogen.
 
 ### `BookExternalReference`
 
@@ -341,6 +355,9 @@ Root-Level AppStorage/SceneStorage:
 
 - CSV-Import beim ersten Start ohne Bücher: `CSVImportExportView`
 - Timer-Abschluss: `TimerSessionCompletionSheet`
+- Lesequellenauswahl: `ReadingSourceSelectionSheet`
+- Adaptiver Fortschrittseditor: `ReadingProgressInputView`, genutzt von `QuickSessionLogSheet` und `TimerSessionCompletionSheet`
+- Wiederholungsdurchgang: `ReReadStartSheet` mit eigener Quellenwahl für den neuen Attempt
 - Buch hinzufügen/importieren: `AddBook`, `BookImport`
 - Buchdetail: `BookDetailView` mit Status, Metadaten, Tags, Ratings, Sessions, Notizen und Collections
 - Collections: Hub, Detail, New Collection, Bulk Add
@@ -424,6 +441,11 @@ Root-Level AppStorage/SceneStorage:
   - `ReadingProgressImportMutationServiceTests`
   - `ReadingSessionDeletionServiceTests`
   - `ReadingSessionAttemptIsolationTests`
+  - `ReadingSourceSelectionTests`
+  - `ReadingProgressInputBuilderTests`
+  - `ReadingProgressPresentationTests`
+  - `ReadingSessionPresentationTests`
+  - `ReadingSourceSessionUXTests`
 
 ### Projektstruktur
 

@@ -62,8 +62,8 @@ struct ReadingSessionContext {
         return ReadingSessionContext(
             readingAttempt: readingAttempt,
             source: ReadingSessionSource(
-                medium: requestedSource.medium,
-                provider: requestedSource.provider,
+                medium: readingAttempt.readingMedium,
+                provider: readingAttempt.defaultProvider,
                 progressUnit: readingAttempt.progressUnit,
                 origin: requestedSource.origin,
                 totalValue: readingAttempt.totalValueSnapshot ?? requestedSource.totalValue

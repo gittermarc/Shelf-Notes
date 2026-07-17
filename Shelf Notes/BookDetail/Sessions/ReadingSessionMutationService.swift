@@ -29,7 +29,7 @@ enum ReadingSessionMutationService {
             readingAttempt: activeAttempt,
             requestedSource: source
         )
-        let currentProgress = currentProgressSnapshot(
+        let currentProgress = ReadingSessionProgressSnapshotBuilder.make(
             book: book,
             attempt: activeAttempt,
             context: context,
@@ -248,67 +248,6 @@ enum ReadingSessionMutationService {
             progressUnit: .pages,
             origin: origin,
             totalValue: attempt?.totalValueSnapshot ?? book.pageCount.map(Double.init)
-        )
-    }
-
-    private static func currentProgressSnapshot(
-        book: Book,
-        attempt: ReadingAttempt?,
-        context: ReadingSessionContext,
-        sessions: [ReadingSession],
-        excludingSessionID: UUID? = nil
-    ) -> ReadingProgressSnapshot {
-        if let attempt {
-            let attemptID = attempt.id
-            let relatedSessionIDs = Set(attempt.sessionsSafe.map(\.id))
-            let relatedSessions = sessions.filter { session in
-                if let excludingSessionID, session.id == excludingSessionID {
-                    return false
-                }
-                if session.readingAttempt?.id == attemptID {
-                    return true
-                }
-                return relatedSessionIDs.contains(session.id)
-            }
-            let relatedEvents = attempt.progressEventsSafe.filter { event in
-                if let excludingSessionID, event.sourceSessionID == excludingSessionID {
-                    return false
-                }
-                guard let relatedAttemptID = event.readingAttempt?.id else { return true }
-                return relatedAttemptID == attemptID
-            }
-            let fallbackPageCount = attempt.progressUnit == .pages
-                ? ReadingAttemptRepair.normalizedPageCount(book.pageCount)
-                : nil
-            let totalValueSnapshot = attempt.totalValueSnapshot
-                ?? context.totalValue
-                ?? fallbackPageCount.map(Double.init)
-            var updates: [ReadingProgressUpdate] = []
-            for session in relatedSessions {
-                updates.append(contentsOf: ReadingProgressUpdate.updates(session: session))
-            }
-            for event in relatedEvents {
-                updates.append(ReadingProgressUpdate(event: event))
-            }
-            return ReadingProgressEngine.snapshot(
-                for: ReadingProgressAttemptSnapshot(
-                    attemptID: attemptID,
-                    status: attempt.status,
-                    unit: attempt.progressUnit,
-                    pageCountSnapshot: attempt.pageCountSnapshot ?? fallbackPageCount,
-                    totalValueSnapshot: totalValueSnapshot,
-                    sessionPageValues: relatedSessions.compactMap(\.pagesRead),
-                    updates: updates
-                )
-            )
-        }
-
-        return ReadingSessionLogging.progressSnapshot(
-            status: book.status,
-            unit: context.progressUnit,
-            totalPages: context.progressUnit == .pages ? book.pageCount : nil,
-            totalValue: context.totalValue,
-            sessions: sessions
         )
     }
 

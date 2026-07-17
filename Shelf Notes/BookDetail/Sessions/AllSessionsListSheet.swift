@@ -62,13 +62,20 @@ struct AllSessionsListSheet: View {
                     ForEach(sessionGroups) { group in
                         Section {
                             ForEach(group.sessions, id: \.id) { session in
+                                let presentation = ReadingSessionPresentationBuilder.make(session: session)
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(primaryLine(for: session))
+                                    Text(presentation.primaryLine)
                                         .font(.subheadline.weight(.semibold))
 
-                                    let secondary = secondaryLine(for: session)
-                                    if !secondary.isEmpty {
-                                        Text(secondary)
+                                    if presentation.metadataLine.isEmpty == false {
+                                        Text(presentation.metadataLine)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
+                                    }
+
+                                    if let note = presentation.note {
+                                        Text(note)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                             .lineLimit(3)
@@ -126,20 +133,4 @@ struct AllSessionsListSheet: View {
         }
     }
 
-    private func primaryLine(for session: ReadingSession) -> String {
-        let when = SessionRow.whenFormatter.string(from: session.startedAt)
-        let minutes = max(1, Int(round(Double(max(0, session.durationSeconds)) / 60.0)))
-        return "\(when) · \(minutes) Min."
-    }
-
-    private func secondaryLine(for session: ReadingSession) -> String {
-        var parts: [String] = []
-        if let p = session.pagesReadNormalized {
-            parts.append("\(p) Seiten")
-        }
-        if let n = session.note?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty {
-            parts.append(n)
-        }
-        return parts.joined(separator: " · ")
-    }
 }

@@ -1,6 +1,6 @@
 # ARCHITECTURE_NOTES.md
 
-Stand: E-Book-Erweiterung PR 3 vom 2026-07-17 auf Basis des aktuellen Projektarchivs. Aussagen beziehen sich auf den geprüften Codebestand. Unklare Punkte sind als **UNKNOWN** markiert.
+Stand: E-Book-Erweiterung PR 4 vom 2026-07-17 auf Basis des aktuellen Projektarchivs. Aussagen beziehen sich auf den geprüften Codebestand. Unklare Punkte sind als **UNKNOWN** markiert.
 
 ## Scope und Methode
 
@@ -11,7 +11,7 @@ Geprüft wurden:
 - SwiftData-Modelle und Container-Konfiguration
 - CloudKit-/Entitlement-Konfiguration
 - Root Navigation, Tabs, Sheets und Startup-Maintenance
-- Formatneutrale Fortschrittsberechnung, Reading-Attempt-Isolation, Session-/Import-Mutationen und Legacy-Backfill
+- Formatneutrale Fortschrittsberechnung, Reading-Attempt-Isolation, Session-/Import-Mutationen, adaptive Quellen-/Fortschritts-UX und Legacy-Backfill
 - Große Dateien nach Zeilenzahl
 - Hot Paths für Rendering, Scroll, Sync, Storage, Concurrency und Caching
 - Tests und Testpläne
@@ -555,7 +555,7 @@ Risiken und Tradeoffs:
 - Der 100er-Fallback bei prozentbasierten nativen Werten ist eine fachliche Konvention für Prozentangaben, kein erfundener Gesamtwert; `snapshot.totalValue` bleibt dabei `nil`.
 - Gleich datierte Events benötigen dauerhaft stabile Identifier, damit die deterministische Auswahl geräteübergreifend reproduzierbar bleibt.
 - Baseline-Events sind abgeleitete Legacy-Artefakte. Zukünftige Schreibpfade müssen echte Nutzer- oder Provider-Events weiterhin getrennt persistieren.
-- Neue UI für Prozent- oder Locator-Fortschritt ist noch nicht vorhanden; bestehende Oberflächen nutzen überwiegend die kompatiblen Seiten- und Normalized-Progress-Zugriffe.
+- Prozent- und Locator-Fortschritt werden über den gemeinsamen adaptiven Editor erfasst. Bestehende Seiten-Aufrufer bleiben als Kompatibilitätspfad erhalten.
 
 ### Formatneutrale Session- und Progress-Mutationen
 
@@ -584,7 +584,7 @@ Architekturentscheidung:
 - `ReadingProgressImportMutationService` speichert reine, deduplizierte Progress Events ohne `ReadingSession`. Es entstehen weder Lesezeit noch Session-basierter Lesetag; `Book.readFrom` und `readTo` bleiben unverändert.
 - Konkrete Provider-Clients sind nicht Teil dieser Stufe. Der Importdienst akzeptiert providerneutrale Requests und kann später von Google Books oder weiteren Adaptern aufgerufen werden.
 - `ReadingSessionDeletionService` ist der einzige UI-nahe Löschpfad für Sessions. Er entfernt zuerst alle über `sourceSessionID` oder den Session-Key gebundenen Progress Events und speichert anschließend Session- und Event-Löschung gemeinsam.
-- Quick Log und Timer verwenden weiterhin ihre bisherigen Oberflächen, persistieren aber jetzt die korrekten Origins `.quickLog` beziehungsweise `.timer`.
+- Quick Log und Timer verwenden denselben `ReadingProgressInputBuilder` und dieselbe Mutationsschicht; Unterschiede bestehen nur in Dauerquelle und Origin `.quickLog` beziehungsweise `.timer`.
 
 Fachliche Invarianten:
 
@@ -599,7 +599,50 @@ Risiken und Tradeoffs:
 - Session- und Import-Upserts laden aktuell Progress Events zur robusten Deduplizierung aus dem `ModelContext`. Das ist korrekt und CloudKit-tolerant, kann bei sehr großen Eventmengen aber ein späterer Performance-Hotspot werden.
 - `sourceSessionID` ist absichtlich nur eine UUID und keine zweite SwiftData-Beziehung. Dadurch bleibt das Schema einfacher, die referenzielle Bereinigung muss jedoch zentral im Löschservice erhalten bleiben.
 - Ein fehlgeschlagener Save lässt wie bei bestehenden Mutationsdiensten Änderungen im aktuellen `ModelContext` zurück. Der persistente Store bleibt atomar, die UI sollte den Fehler anzeigen und gegebenenfalls den Context neu laden.
-- Die sichtbaren Eingabeoberflächen bleiben in PR 3 seitenorientiert. Prozent- und Locator-Pfade sind über Services und Tests vorbereitet, aber noch nicht als allgemeine manuelle UI exponiert.
+- Die adaptiven Eingabeoberflächen sind bewusst manuell. Sie behaupten weder Provider-Synchronisierung noch einen bereits verfügbaren lokalen Reader.
+
+### Einheitliche Reading-Source- und Progress-Experience
+
+Betroffene Dateien:
+
+- `Shelf Notes/ReadingSources/ReadingSourceSelection.swift`
+- `Shelf Notes/ReadingSources/ReadingSourceDraft.swift`
+- `Shelf Notes/ReadingSources/ReadingSourceAttemptMutation.swift`
+- `Shelf Notes/BookDetail/Sessions/ReadingSourceSelectionSheet.swift`
+- `Shelf Notes/BookDetail/Sessions/ProgressInput/*`
+- `Shelf Notes/BookDetail/Sessions/Presentation/*`
+- `Shelf Notes/BookDetail/Sessions/QuickSessionLogSheet.swift`
+- `Shelf Notes/TimerSessionCompletionSheet.swift`
+- `Shelf Notes/BookDetail/Sessions/ReReadStartSheet.swift`
+- `Shelf Notes/BookDetail/Sessions/ReadingProgressView.swift`
+- `Shelf Notes/BookDetail/Sessions/ReadingJourneyCard.swift`
+- `Shelf Notes/BookDetail/Sessions/SessionRow.swift`
+- `Shelf Notes/BookDetail/Sessions/AllSessionsListSheet.swift`
+
+Architekturentscheidung:
+
+- `ReadingSourceSelection` ist reine UI-Domäne und mappt deterministisch auf persistierte `ReadingMedium`, `ReadingProvider` und `ReadingProgressUnit`. `Book.isEbook` bleibt davon strikt getrennt.
+- Externe E-Book-Quellen sind manuell getrackt. Es gibt keine Kontoverknüpfung, automatische Synchronisierung oder privaten URL-Schemes.
+- `localFile` ist ein ehrlicher Placeholder: sichtbar zur Orientierung, aber deaktiviert, solange kein integrierter EPUB-/PDF-Reader existiert.
+- Die Quellenwahl wird vor der ersten Session am aktiven `ReadingAttempt` gespeichert. Nach der ersten Session oder dem ersten Progress Event bleibt die Attempt-Quelle unverändert. Ein Reread erzeugt einen neuen Attempt und verändert abgeschlossene Attempts nicht.
+- `ReadingProgressInputState` enthält ausschließlich editierbaren UI-Zustand. `ReadingProgressInputBuilder` wandelt ihn pure in `ReadingProgressUpdate` und `ReadingProgressMutationMode` um; fachliche Grenzwerte validiert weiterhin `ReadingProgressMutationPlanner`.
+- Quick Log und Timer teilen denselben Editor und Builder. Views duplizieren weder Seitenbegrenzung noch Rückschrittsvalidierung.
+- `ReadingProgressPresentationBuilder` entscheidet ausschließlich nach Fortschrittseinheit. Seitenwerte werden niemals aus Prozent- oder Locator-Daten abgeleitet.
+- Session- und Journey-Präsentationen lesen die auf Session beziehungsweise Attempt gespeicherten Source-Snapshots. Damit bleibt die historische Anzeige stabil, auch wenn Metadaten des Books später geändert werden.
+
+UX-Invarianten:
+
+- Leere Fortschrittsangaben bleiben zulässig; Dauer und Notiz können allein gespeichert werden.
+- Ein bekannter absoluter Prozentstand darf nur nach sichtbarer Bestätigung reduziert werden.
+- Locator werden unverändert gespeichert und nicht interpretiert. Ohne expliziten Prozentwert bleibt der Prozentfortschritt unbekannt.
+- Physische Legacy-Attempts funktionieren weiterhin ohne Quellen-Dialog mit Seitenfortschritt.
+- Der neue Attempt eines Wiederholungsdurchgangs erhält eine eigene Quelle; frühere Durchgänge bleiben unverändert.
+
+Risiken und Tradeoffs:
+
+- Der lokale Reader ist bereits als deaktivierte Auswahl sichtbar. Texte und Availability müssen beim späteren Readium-PR gemeinsam umgestellt werden, damit kein widersprüchlicher Zustand entsteht.
+- Die Quellenänderung ist vor der ersten Session erlaubt. Bei späteren automatischen Imports muss dieselbe Sperre auch Progress Events berücksichtigen, damit die Attempt-Semantik stabil bleibt.
+- Provider-spezifische Locator-Formate bleiben opaque Strings. Eine spätere Reader-Integration benötigt einen versionierten Locator-Contract, statt bestehende Strings nachträglich heuristisch zu interpretieren.
 
 ### Secrets und Konfiguration
 

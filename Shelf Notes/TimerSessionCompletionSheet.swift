@@ -16,7 +16,7 @@ struct TimerSessionCompletionSheet: View {
     let book: Book?
     let pending: ReadingTimerManager.PendingCompletion
 
-    @State private var pagesText: String = ""
+    @State private var progressState = ReadingProgressInputState()
     @State private var noteText: String = ""
     @State private var lastError: String? = nil
     @State private var challengeProgressByID: [UUID: ChallengeEngine.ChallengeProgress] = [:]
@@ -82,11 +82,6 @@ struct TimerSessionCompletionSheet: View {
                         .padding(.vertical, 2)
                     }
 
-                    if let err = lastError {
-                        Text(err)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
                 } header: {
                     Text("Session")
                 }
@@ -101,12 +96,16 @@ struct TimerSessionCompletionSheet: View {
                     }
                 }
 
-                Section("Optional") {
-                    TextField(pagesFieldPlaceholder, text: $pagesText)
-                        .keyboardType(.numberPad)
+                ReadingProgressInputView(
+                    state: $progressState,
+                    configuration: progressInputContext.configuration,
+                    errorMessage: lastError
+                )
 
+                Section("Notiz") {
                     TextEditor(text: $noteText)
                         .frame(minHeight: 90)
+                        .accessibilityLabel("Notiz zur Lesesession")
                 }
 
                 if book == nil {
@@ -142,6 +141,9 @@ struct TimerSessionCompletionSheet: View {
         .task(id: preferencesSignature) {
             await refreshChallengeProgress()
         }
+        .onChange(of: progressState) { _, _ in
+            lastError = nil
+        }
         .onDisappear {
             // If the user dismisses the sheet interactively (swipe down),
             // treat it like "Abbruch" (i.e. nothing saved).
@@ -156,18 +158,26 @@ struct TimerSessionCompletionSheet: View {
         return t.isEmpty ? "Session" : t
     }
 
-    private var pagesFieldPlaceholder: String {
-        if let remainingPagesForBook {
-            return "Seiten gelesen (max. \(remainingPagesForBook))"
+    @MainActor
+    private var progressInputContext: ReadingSessionProgressInputContext {
+        guard let book else {
+            let snapshot = ReadingProgressSnapshot.unknown(unit: .pages)
+            return ReadingSessionProgressInputContext(
+                source: ReadingSessionSource(origin: .timer),
+                currentProgress: snapshot,
+                configuration: ReadingProgressInputConfiguration(
+                    unit: .pages,
+                    currentProgress: snapshot,
+                    sourceTitle: ReadingSourceSelection.physical.title,
+                    isManuallyTracked: true
+                )
+            )
         }
-        return "Seiten gelesen"
-    }
 
-    private var remainingPagesForBook: Int? {
-        guard let book else { return nil }
-        return ReadingAttemptSessionCoordinator.currentRemainingPages(
-            for: book,
-            allSessions: book.readingSessionsSafe
+        return ReadingSessionMutationService.makeProgressInputContext(
+            book: book,
+            allSessions: book.readingSessionsSafe,
+            origin: .timer
         )
     }
 
@@ -175,16 +185,22 @@ struct TimerSessionCompletionSheet: View {
     private var pendingChallengeImpact: ChallengeSessionImpact? {
         guard let book else { return nil }
 
-        let pages = parsePositiveInt(pagesText)
         let timing = ReadingSessionLogging.Timing(endedAt: pending.endedAt, durationSeconds: pending.durationSeconds)
         let didMarkBookFinished: Bool
+        let submission = try? ReadingProgressInputBuilder.makeSubmission(
+            state: progressState,
+            configuration: progressInputContext.configuration,
+            occurredAt: pending.endedAt
+        ).get()
 
         let planResult = ReadingSessionMutationService.makePlan(
             book: book,
             allSessions: book.readingSessionsSafe,
             timing: timing,
-            pages: pages,
-            note: nil
+            progressUpdate: submission?.progressUpdate,
+            note: nil,
+            source: progressInputContext.source,
+            mutationMode: submission?.mutationMode ?? .standard
         )
 
         switch planResult {
@@ -199,7 +215,7 @@ struct TimerSessionCompletionSheet: View {
             startedAt: pending.startedAt,
             endedAt: pending.endedAt,
             durationSeconds: pending.durationSeconds,
-            pagesRead: pages,
+            pagesRead: submission?.pagesDelta,
             didMarkBookFinished: didMarkBookFinished,
             hasNote: !noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         )
@@ -234,17 +250,31 @@ struct TimerSessionCompletionSheet: View {
 
         lastError = nil
 
-        let pages = parsePositiveInt(pagesText)
         let timing = ReadingSessionLogging.Timing(endedAt: pending.endedAt, durationSeconds: pending.durationSeconds)
+        let submission: ReadingProgressInputSubmission
+        switch ReadingProgressInputBuilder.makeSubmission(
+            state: progressState,
+            configuration: progressInputContext.configuration,
+            occurredAt: pending.endedAt
+        ) {
+        case .failure(let error):
+            lastError = error.message
+            return
+        case .success(let value):
+            submission = value
+        }
+
         let saveResult = ReadingSessionMutationService.saveSession(
             book: book,
             modelContext: modelContext,
             timing: timing,
-            pages: pages,
+            progressUpdate: submission.progressUpdate,
             note: noteText,
+            source: progressInputContext.source,
+            mutationMode: submission.mutationMode,
             allSessions: book.readingSessionsSafe,
             now: pending.endedAt,
-            origin: .timer
+            externalEventIdentifier: nil
         )
 
         switch saveResult {
@@ -260,12 +290,6 @@ struct TimerSessionCompletionSheet: View {
                 mutation: mutation
             )
         }
-    }
-
-    private func parsePositiveInt(_ s: String) -> Int? {
-        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let val = Int(trimmed), val > 0 else { return nil }
-        return val
     }
 
     private static let dateTimeFormatter: DateFormatter = {

@@ -31,27 +31,13 @@ private struct ReadingJourneyAttemptRow: View {
     let book: Book
     let attempt: ReadingAttempt
 
-    private var sessions: [ReadingSession] {
-        attempt.sessionsSafe.sorted { left, right in
-            if left.startedAt != right.startedAt {
-                return left.startedAt < right.startedAt
-            }
-            return left.id.uuidString < right.id.uuidString
-        }
-    }
-
-    private var totalPages: Int? {
-        ReadingSessionLogging.normalizedTotalPages(attempt.pageCountSnapshot ?? book.pageCount)
-    }
-
-    private var pagesRead: Int {
-        ReadingSessionLogging.pagesReadTotal(in: sessions)
-    }
-
-    private var progressFraction: Double? {
-        if attempt.status == .finished { return 1.0 }
-        guard let totalPages else { return nil }
-        return min(1.0, max(0.0, Double(max(0, pagesRead)) / Double(totalPages)))
+    private var progress: ReadingProgressPresentation {
+        ReadingProgressPresentationBuilder.make(
+            snapshot: attempt.readingProgressSnapshot,
+            medium: attempt.readingMedium,
+            provider: attempt.defaultProvider,
+            status: attempt.status == .finished ? .finished : .reading
+        )
     }
 
     private var statusText: String {
@@ -75,28 +61,6 @@ private struct ReadingJourneyAttemptRow: View {
             }
             return "abgebrochen"
         }
-    }
-
-    private var progressText: String {
-        if attempt.status == .finished {
-            if let totalPages {
-                return "100 % · \(totalPages) Seiten"
-            }
-            return "100 %"
-        }
-
-        if let totalPages {
-            let clampedRead = min(max(0, pagesRead), totalPages)
-            let remaining = max(0, totalPages - clampedRead)
-            let percent = Int((Double(clampedRead) / Double(totalPages) * 100.0).rounded())
-            return "\(percent) % · noch \(remaining) Seiten"
-        }
-
-        if pagesRead > 0 {
-            return "\(pagesRead) Seiten geloggt"
-        }
-
-        return "Noch keine Seiten geloggt"
     }
 
     var body: some View {
@@ -125,21 +89,33 @@ private struct ReadingJourneyAttemptRow: View {
                         .clipShape(Capsule())
                 }
 
+                Label(progress.source.title, systemImage: progress.source.systemImage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 Text(statusText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                if let progressFraction {
-                    ProgressView(value: progressFraction)
+                if let progressValue = progress.normalizedProgress {
+                    ProgressView(value: progressValue)
                         .progressViewStyle(.linear)
                 }
 
-                Text(progressText)
+                Text(progress.detailText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                if let supportingText = progress.supportingText {
+                    Text(supportingText)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
         .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(attempt.displayName), \(progress.source.title)")
+        .accessibilityValue("\(statusText), \(progress.accessibilityValue)")
     }
 
     private var iconName: String {

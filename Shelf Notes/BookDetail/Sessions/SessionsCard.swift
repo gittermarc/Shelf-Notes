@@ -24,6 +24,8 @@ struct SessionsCard: View {
     @State private var latestChallengeImpact: ChallengeSessionImpact?
     @State private var showingRereadStartSheet: Bool = false
     @State private var pendingRereadAction: RereadStartAction?
+    @State private var showingInitialSourceSelectionSheet: Bool = false
+    @State private var pendingInitialSourceAction: RereadStartAction?
 
     @AppStorage(ChallengePreferencesStorageKey.enabledKinds) private var enabledKindsRaw: String = ChallengePreferencesStore.defaultEnabledKindsRaw
     @AppStorage(ChallengePreferencesStorageKey.preset) private var presetRaw: String = ChallengePreferencesStore.defaultPresetRaw
@@ -77,6 +79,18 @@ struct SessionsCard: View {
 
     private var needsRereadChoice: Bool {
         book.status == .finished && book.activeReadingAttempt == nil
+    }
+
+    private var needsInitialSourceChoice: Bool {
+        book.status == .toRead && book.activeReadingAttempt == nil
+    }
+
+    private var quickLogInputContext: ReadingSessionProgressInputContext {
+        ReadingSessionMutationService.makeProgressInputContext(
+            book: book,
+            allSessions: sessions,
+            origin: .quickLog
+        )
     }
 
     private var nextAttemptName: String {
@@ -168,10 +182,9 @@ struct SessionsCard: View {
         .sheet(isPresented: $showingQuickLogSheet) {
             QuickSessionLogSheet(
                 bookTitle: safeTitle(book),
-                remainingPages: remainingPagesForBook,
-                totalPages: (book.pageCount ?? 0) > 0 ? book.pageCount : nil,
-                onCreate: { minutes, pages, note in
-                    addSession(minutes: minutes, pages: pages, note: note)
+                progressConfiguration: quickLogInputContext.configuration,
+                onCreate: { minutes, progress, note in
+                    addSession(minutes: minutes, progress: progress, note: note)
                 }
             )
         }
@@ -179,13 +192,28 @@ struct SessionsCard: View {
             ReReadStartSheet(
                 bookTitle: safeTitle(book),
                 nextAttemptName: nextAttemptName,
-                onStartNewAttempt: {
-                    continueAfterRereadChoice(shouldStartNewAttempt: true)
+                onStartNewAttempt: { sourceDraft in
+                    continueAfterRereadChoice(newAttemptSource: sourceDraft)
                 },
                 onSupplementExistingCompletion: {
-                    continueAfterRereadChoice(shouldStartNewAttempt: false)
+                    continueAfterRereadChoice(newAttemptSource: nil)
                 }
             )
+        }
+        .sheet(
+            isPresented: $showingInitialSourceSelectionSheet,
+            onDismiss: {
+                if showingInitialSourceSelectionSheet == false {
+                    pendingInitialSourceAction = nil
+                }
+            }
+        ) {
+            ReadingSourceSelectionSheet(
+                title: "Wie liest du dieses Buch?",
+                initialDraft: ReadingSourceDraft()
+            ) { draft in
+                continueAfterInitialSourceSelection(draft)
+            }
         }
         .task(id: refreshID) {
             await refreshChallengeHints()
@@ -352,55 +380,69 @@ struct SessionsCard: View {
     }
 
     private var activeRereadDetailLine: String {
-        if let totalPages = ReadingSessionLogging.normalizedTotalPages(book.pageCount) {
-            let pagesRead = ReadingSessionLogging.pagesReadTotal(in: currentProgressSessions)
-            let clampedRead = min(max(0, pagesRead), totalPages)
-            let remaining = max(0, totalPages - clampedRead)
-            let percent = Int((Double(clampedRead) / Double(totalPages) * 100.0).rounded())
-            return "\(percent) % · noch \(remaining) Seiten"
+        guard let activeAttempt = book.activeReadingAttempt else {
+            return "Der Fortschritt startet für diesen Durchgang neu."
         }
 
-        let pagesRead = ReadingSessionLogging.pagesReadTotal(in: currentProgressSessions)
-        if pagesRead > 0 {
-            return "\(pagesRead) Seiten im aktuellen Durchgang geloggt"
-        }
-        return "Der Fortschritt startet für diesen Durchgang neu."
+        let presentation = ReadingProgressPresentationBuilder.make(
+            snapshot: activeAttempt.readingProgressSnapshot,
+            medium: activeAttempt.readingMedium,
+            provider: activeAttempt.defaultProvider,
+            status: .reading
+        )
+        return "\(presentation.source.title) · \(presentation.detailText)"
     }
 
     private func requestQuickLog() {
-        guard needsRereadChoice else {
-            showingQuickLogSheet = true
+        if needsRereadChoice {
+            pendingRereadAction = .quickLog
+            showingRereadStartSheet = true
             return
         }
 
-        pendingRereadAction = .quickLog
-        showingRereadStartSheet = true
+        if needsInitialSourceChoice {
+            pendingInitialSourceAction = .quickLog
+            showingInitialSourceSelectionSheet = true
+            return
+        }
+
+        showingQuickLogSheet = true
     }
 
     @MainActor
     private func requestTimerStart() {
-        guard needsRereadChoice else {
-            startTimer()
+        if needsRereadChoice {
+            pendingRereadAction = .timer
+            showingRereadStartSheet = true
             return
         }
 
-        pendingRereadAction = .timer
-        showingRereadStartSheet = true
+        if needsInitialSourceChoice {
+            pendingInitialSourceAction = .timer
+            showingInitialSourceSelectionSheet = true
+            return
+        }
+
+        startTimer()
     }
 
     @MainActor
-    private func continueAfterRereadChoice(shouldStartNewAttempt: Bool) {
+    private func continueAfterRereadChoice(newAttemptSource: ReadingSourceDraft?) {
         lastError = nil
         let action = pendingRereadAction
         pendingRereadAction = nil
         showingRereadStartSheet = false
 
-        if shouldStartNewAttempt {
+        if let newAttemptSource {
             let now = Date()
             ReadingAttemptSessionCoordinator.startNewRereadAttempt(
                 for: book,
                 startedAt: now,
                 now: now,
+                source: newAttemptSource.sessionSource(
+                    origin: .legacy,
+                    bookPageCount: book.pageCount
+                ),
                 insertAttempt: { modelContext.insert($0) }
             )
             if let error = modelContext.saveWithDiagnostics() {
@@ -412,6 +454,43 @@ struct SessionsCard: View {
         Task { @MainActor in
             await Task.yield()
 
+            switch action {
+            case .timer:
+                startTimer()
+            case .quickLog:
+                showingQuickLogSheet = true
+            case .none:
+                break
+            }
+        }
+    }
+
+    @MainActor
+    private func continueAfterInitialSourceSelection(_ draft: ReadingSourceDraft) {
+        lastError = nil
+        let action = pendingInitialSourceAction
+        pendingInitialSourceAction = nil
+        showingInitialSourceSelectionSheet = false
+        let now = Date()
+
+        _ = ReadingAttemptSessionCoordinator.ensureActiveAttemptForSessionIfNeeded(
+            book: book,
+            startedAt: now,
+            now: now,
+            source: draft.sessionSource(
+                origin: .legacy,
+                bookPageCount: book.pageCount
+            ),
+            insertAttempt: { modelContext.insert($0) }
+        )
+
+        if let error = modelContext.saveWithDiagnostics() {
+            lastError = "Konnte Lesequelle nicht speichern: " + error.localizedDescription
+            return
+        }
+
+        Task { @MainActor in
+            await Task.yield()
             switch action {
             case .timer:
                 startTimer()
@@ -468,7 +547,11 @@ struct SessionsCard: View {
     }
 
     @MainActor
-    private func addSession(minutes: Int, pages: Int?, note: String?) {
+    private func addSession(
+        minutes: Int,
+        progress: ReadingProgressInputSubmission,
+        note: String?
+    ) {
         lastError = nil
 
         let m = max(0, minutes)
@@ -478,17 +561,24 @@ struct SessionsCard: View {
         }
 
         let seconds = m * 60
-        let end = Date()
+        let end = progress.progressUpdate?.occurredAt ?? Date()
         let timing = ReadingSessionLogging.Timing(endedAt: end, durationSeconds: seconds)
+        let inputContext = ReadingSessionMutationService.makeProgressInputContext(
+            book: book,
+            allSessions: sessions,
+            origin: .quickLog
+        )
         let saveResult = ReadingSessionMutationService.saveSession(
             book: book,
             modelContext: modelContext,
             timing: timing,
-            pages: pages,
+            progressUpdate: progress.progressUpdate,
             note: note,
+            source: inputContext.source,
+            mutationMode: progress.mutationMode,
             allSessions: sessions,
             now: end,
-            origin: .quickLog
+            externalEventIdentifier: nil
         )
 
         switch saveResult {

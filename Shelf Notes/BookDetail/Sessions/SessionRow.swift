@@ -12,15 +12,26 @@ struct SessionRow: View {
     let session: ReadingSession
     let onDelete: () -> Void
 
+    private var presentation: ReadingSessionPresentation {
+        ReadingSessionPresentationBuilder.make(session: session)
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(primaryLine)
+                Text(presentation.primaryLine)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
 
-                if !secondaryLine.isEmpty {
-                    Text(secondaryLine)
+                if presentation.metadataLine.isEmpty == false {
+                    Text(presentation.metadataLine)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                if let note = presentation.note {
+                    Text(note)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -48,28 +59,4 @@ struct SessionRow: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var primaryLine: String {
-        let when = Self.whenFormatter.string(from: session.startedAt)
-        let minutes = max(1, Int(round(Double(max(0, session.durationSeconds)) / 60.0)))
-        return "\(when) · \(minutes) Min."
-    }
-
-    private var secondaryLine: String {
-        var parts: [String] = []
-        if let p = session.pagesReadNormalized {
-            parts.append("\(p) Seiten")
-        }
-        if let n = session.note?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty {
-            parts.append(n)
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    static let whenFormatter: DateFormatter = {
-        let df = DateFormatter()
-        df.locale = .current
-        df.dateStyle = .medium
-        df.timeStyle = .short
-        return df
-    }()
 }

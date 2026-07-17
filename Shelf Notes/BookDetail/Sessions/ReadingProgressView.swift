@@ -2,9 +2,6 @@
 //  ReadingProgressView.swift
 //  Shelf Notes
 //
-//  Split out of the former BookDetailSessionsViews.swift
-//  (No functional changes)
-//
 
 import SwiftUI
 import SwiftData
@@ -15,117 +12,115 @@ struct ReadingProgressView: View {
     let book: Book
     let sessions: [ReadingSession]
 
-    @State private var showingPageCountPrompt: Bool = false
-    @State private var pageCountText: String = ""
-    @State private var inlineError: String? = nil
+    @State private var showingPageCountPrompt = false
+    @State private var showingSourceSelection = false
+    @State private var pageCountText = ""
+    @State private var inlineError: String?
+
+    private var displayedAttempt: ReadingAttempt? {
+        book.activeReadingAttempt ?? book.orderedReadingAttempts.last
+    }
+
+    private var progressSnapshot: ReadingProgressSnapshot {
+        book.currentReadingProgressSnapshot
+    }
+
+    private var readingMedium: ReadingMedium {
+        displayedAttempt?.readingMedium ?? .physical
+    }
+
+    private var readingProvider: ReadingProvider {
+        displayedAttempt?.defaultProvider ?? .none
+    }
+
+    private var presentation: ReadingProgressPresentation {
+        ReadingProgressPresentationBuilder.make(
+            snapshot: progressSnapshot,
+            medium: readingMedium,
+            provider: readingProvider,
+            status: book.status
+        )
+    }
+
+    private var sourceDraft: ReadingSourceDraft {
+        ReadingSourceDraft.resolved(
+            medium: readingMedium,
+            provider: readingProvider,
+            progressUnit: progressSnapshot.unit
+        )
+    }
+
+    private var canChangeSource: Bool {
+        guard let attempt = book.activeReadingAttempt else { return false }
+        return ReadingSourceAttemptMutation.canChangeSource(of: attempt)
+    }
 
     private var pageCountPromptTitle: String {
-        // Vorher gab es diese Option nur, wenn `pageCount` fehlte/0 war.
-        // Da die API auch falsche Werte liefern kann, darf der Nutzer die Seitenzahl immer anpassen.
-        return (totalPages == nil) ? "Seitenzahl nachtragen" : "Seitenzahl bearbeiten"
+        normalizedPageCount == nil ? "Seitenzahl nachtragen" : "Seitenzahl bearbeiten"
     }
 
     private var pageCountPromptMessage: String {
-        if totalPages == nil {
-            return "Ohne Gesamtseiten kann die App den Fortschritt nicht korrekt berechnen."
+        if normalizedPageCount == nil {
+            return "Ohne Gesamtseiten kann Shelf Notes den Seitenfortschritt nicht korrekt berechnen."
         }
-        return "Wenn die API danebenliegt (andere Ausgabe, anderes Format), kannst du hier die Seitenzahl korrigieren."
+        return "Wenn Metadaten zu einer anderen Ausgabe gehören, kannst du die Seitenzahl hier korrigieren."
     }
 
-    private var totalPages: Int? {
+    private var normalizedPageCount: Int? {
         ReadingSessionLogging.normalizedTotalPages(book.pageCount)
     }
 
-    private var pagesRead: Int {
-        ReadingSessionLogging.pagesReadTotal(in: sessions)
-    }
-
-    private var isFinished: Bool {
-        book.status == .finished
-    }
-
-    /// Returns nil when we can't compute progress (no pageCount) and the book isn't finished.
-    private var progressFraction: Double? {
-        ReadingSessionLogging.progressFraction(status: book.status, totalPages: book.pageCount, sessions: sessions)
-    }
-
-    private var percentText: String {
-        if isFinished { return "100%" }
-        guard let fraction = progressFraction else { return "—" }
-        let pct = Int((fraction * 100.0).rounded())
-        return "\(pct)%"
-    }
-
-    private var detailLine: String {
-        if isFinished {
-            if let totalPages {
-                return "Gelesen · \(totalPages) Seiten"
-            } else {
-                return "Als gelesen markiert"
-            }
-        }
-
-        if let totalPages {
-            let clampedRead = min(max(0, pagesRead), totalPages)
-            let remaining = max(0, totalPages - clampedRead)
-            return "\(clampedRead)/\(totalPages) Seiten · Noch \(remaining)"
-        }
-
-        // No pageCount
-        if pagesRead > 0 {
-            return "\(pagesRead) Seiten geloggt · Gesamtseiten unbekannt"
-        }
-        return "Gesamtseiten unbekannt"
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text("Fortschritt")
                     .font(.subheadline.weight(.semibold))
 
                 Spacer(minLength: 8)
 
-                // ✏️ Seitenzahl immer bearbeitbar (auch wenn ein Wert vorhanden ist)
-                Button {
-                    inlineError = nil
-                    if let current = totalPages {
-                        pageCountText = String(current)
-                    } else {
-                        pageCountText = ""
+                if presentation.canEditPageCount {
+                    Button {
+                        inlineError = nil
+                        pageCountText = normalizedPageCount.map(String.init) ?? ""
+                        showingPageCountPrompt = true
+                    } label: {
+                        Image(systemName: "pencil.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
                     }
-                    showingPageCountPrompt = true
-                } label: {
-                    Image(systemName: "pencil.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(normalizedPageCount == nil ? "Seitenzahl nachtragen" : "Seitenzahl bearbeiten")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(totalPages == nil ? "Seitenzahl nachtragen" : "Seitenzahl bearbeiten")
 
-                Text(percentText)
+                Text(presentation.percentText)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
 
-            if let progressFraction {
-                ProgressView(value: progressFraction)
+            sourceLine
+
+            if let progress = presentation.normalizedProgress {
+                ProgressView(value: progress)
                     .progressViewStyle(.linear)
-            } else {
-                // Unknown total pages → keep the UI stable.
-                ProgressView(value: 0)
-                    .progressViewStyle(.linear)
-                    .opacity(0.35)
+                    .accessibilityLabel("Lesefortschritt")
+                    .accessibilityValue(presentation.percentText)
             }
 
-            Text(detailLine)
+            Text(presentation.detailText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
 
-            if let err = inlineError {
-                Text(err)
+            if let supportingText = presentation.supportingText {
+                Text(supportingText)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let inlineError {
+                Text(inlineError)
                     .font(.caption)
                     .foregroundStyle(.red)
             }
@@ -134,37 +129,89 @@ struct ReadingProgressView: View {
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Fortschritt")
-        .accessibilityValue(percentText)
+        .accessibilityLabel("Fortschritt, \(presentation.source.title)")
+        .accessibilityValue(presentation.accessibilityValue)
         .alert(pageCountPromptTitle, isPresented: $showingPageCountPrompt) {
             TextField("z.B. 384", text: $pageCountText)
                 .keyboardType(.numberPad)
 
-            Button("Speichern") {
-                savePageCount()
-            }
-
+            Button("Speichern") { savePageCount() }
             Button("Abbrechen", role: .cancel) { }
         } message: {
             Text(pageCountPromptMessage)
+        }
+        .sheet(isPresented: $showingSourceSelection) {
+            ReadingSourceSelectionSheet(
+                title: "Lesequelle ändern",
+                initialDraft: sourceDraft
+            ) { draft in
+                saveSource(draft)
+            }
+        }
+    }
+
+    private var sourceLine: some View {
+        HStack(spacing: 8) {
+            Image(systemName: presentation.source.systemImage)
+                .foregroundStyle(.secondary)
+                .frame(width: 20)
+
+            Text(presentation.source.title)
+                .font(.caption.weight(.semibold))
+
+            Spacer(minLength: 8)
+
+            if canChangeSource {
+                Button("Ändern") {
+                    inlineError = nil
+                    showingSourceSelection = true
+                }
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.plain)
+                .accessibilityLabel("Lesequelle ändern")
+            }
         }
     }
 
     private func savePageCount() {
         inlineError = nil
-
         let trimmed = pageCountText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let val = Int(trimmed), val > 0 else {
-            inlineError = "Bitte eine gültige Seitenzahl (> 0) eingeben."
+        guard let value = Int(trimmed), value > 0 else {
+            inlineError = "Bitte eine gültige Seitenzahl größer als 0 eingeben."
             return
         }
 
-        book.pageCount = val
+        book.pageCount = value
+        if let attempt = book.activeReadingAttempt,
+           attempt.progressUnit == .pages {
+            attempt.pageCountSnapshot = value
+            attempt.totalValueSnapshot = Double(value)
+            attempt.updatedAt = Date()
+        }
 
         if let error = modelContext.saveWithDiagnostics() {
             inlineError = "Konnte Seitenzahl nicht speichern: " + error.localizedDescription
-        } else {
-            inlineError = nil
+        }
+    }
+
+    private func saveSource(_ draft: ReadingSourceDraft) {
+        inlineError = nil
+        guard draft.isAvailable else {
+            inlineError = "Diese Lesequelle ist noch nicht verfügbar."
+            return
+        }
+        guard let attempt = book.activeReadingAttempt else {
+            inlineError = "Die Lesequelle kann erst für einen aktiven Lesedurchgang gespeichert werden."
+            return
+        }
+        guard ReadingSourceAttemptMutation.canChangeSource(of: attempt) else {
+            inlineError = "Nach der ersten Session bleibt die Lesequelle dieses Durchgangs unverändert."
+            return
+        }
+
+        ReadingSourceAttemptMutation.apply(draft, to: attempt, book: book)
+        if let error = modelContext.saveWithDiagnostics() {
+            inlineError = "Konnte Lesequelle nicht speichern: " + error.localizedDescription
         }
     }
 }
