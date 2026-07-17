@@ -10,6 +10,13 @@ extension ReadingAttempt {
     /// Value snapshot used by the format-neutral progress engine.
     var progressInputSnapshot: ReadingProgressAttemptSnapshot {
         let attemptID = id
+        let effectivePageCountSnapshot: Int?
+        if progressUnit == .pages {
+            effectivePageCountSnapshot = ReadingAttemptRepair.normalizedPageCount(pageCountSnapshot)
+                ?? ReadingAttemptRepair.normalizedPageCount(book?.pageCount)
+        } else {
+            effectivePageCountSnapshot = pageCountSnapshot
+        }
         let relatedSessions = sessionsSafe.filter { session in
             guard let relatedAttemptID = session.readingAttempt?.id else {
                 return true
@@ -39,7 +46,7 @@ extension ReadingAttempt {
             attemptID: attemptID,
             status: status,
             unit: progressUnit,
-            pageCountSnapshot: pageCountSnapshot,
+            pageCountSnapshot: effectivePageCountSnapshot,
             totalValueSnapshot: totalValueSnapshot,
             sessionPageValues: relatedSessions.compactMap(\.pagesRead),
             updates: sessionUpdates + eventUpdates

@@ -13,6 +13,7 @@ struct GoalsYearMetricsBuilderTests {
         calendar.date(from: DateComponents(year: year, month: month, day: day)) ?? .distantPast
     }
 
+    @MainActor
     private func makeBook(
         title: String,
         status: ReadingStatus,
@@ -30,7 +31,7 @@ struct GoalsYearMetricsBuilderTests {
         return book
     }
 
-    @Test func yearOptionsIncludeCurrentNextBooksAndGoals() {
+    @Test @MainActor func yearOptionsIncludeCurrentNextBooksAndGoals() {
         let now = date(2026, 4, 15)
         let books = [
             makeBook(
@@ -53,7 +54,7 @@ struct GoalsYearMetricsBuilderTests {
         #expect(metrics.availableYears == [2028, 2027, 2026, 2024])
     }
 
-    @Test func yearOptionsKeepSelectedYearAvailable() {
+    @Test @MainActor func yearOptionsKeepSelectedYearAvailable() {
         let now = date(2026, 4, 15)
 
         let metrics = GoalsYearMetricsBuilder.make(
@@ -67,7 +68,7 @@ struct GoalsYearMetricsBuilderTests {
         #expect(metrics.availableYears == [2030, 2027, 2026])
     }
 
-    @Test func filtersFinishedBooksBySelectedYearUsingReadToOrReadFrom() {
+    @Test @MainActor func filtersFinishedBooksBySelectedYearUsingReadToOrReadFrom() {
         let now = date(2026, 4, 15)
         let finishedInYear = makeBook(
             title: "In Year",
@@ -104,7 +105,7 @@ struct GoalsYearMetricsBuilderTests {
         #expect(metrics.pagesReadInSelectedYear == 320)
     }
 
-    @Test func includesLegacyFinishedStatus() {
+    @Test @MainActor func includesLegacyFinishedStatus() {
         let now = date(2026, 4, 15)
         let legacyFinished = makeBook(
             title: "Legacy",
@@ -159,7 +160,7 @@ struct GoalsYearMetricsBuilderTests {
         #expect(original != pageCountChanged)
     }
 
-    @Test func sortsFinishedBooksDeterministicallyByReadDate() {
+    @Test @MainActor func sortsFinishedBooksDeterministicallyByReadDate() {
         let now = date(2026, 4, 15)
         let alpha = makeBook(
             title: "Alpha",
@@ -194,7 +195,7 @@ struct GoalsYearMetricsBuilderTests {
         #expect(metrics.finishedBooks.map(\.title) == ["Beta", "Alpha", "Gamma"])
     }
 
-    @Test func computesAveragePagesIgnoringBooksWithoutPageCount() {
+    @Test @MainActor func computesAveragePagesIgnoringBooksWithoutPageCount() {
         let now = date(2026, 4, 15)
         let books = [
             makeBook(
@@ -240,7 +241,7 @@ struct GoalsYearMetricsBuilderTests {
         #expect(metrics.averagePagesPerBook == 200)
     }
 
-    @Test func computesPagesPerMonthForPastCurrentAndFutureYears() {
+    @Test @MainActor func computesPagesPerMonthForPastCurrentAndFutureYears() {
         let now = date(2026, 4, 15)
         let books = [
             makeBook(
@@ -296,7 +297,7 @@ struct GoalsYearMetricsBuilderTests {
         #expect(future.pagesPerMonth == 20)
     }
 
-    @Test func returnsRobustDefaultsForEmptyData() {
+    @Test @MainActor func returnsRobustDefaultsForEmptyData() {
         let now = date(2026, 4, 15)
 
         let metrics = GoalsYearMetricsBuilder.make(

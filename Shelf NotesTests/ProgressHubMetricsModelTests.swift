@@ -217,15 +217,15 @@ struct ProgressHubMetricsModelTests {
             book: ebook,
             startedAt: date(2026, 4, 15, 8),
             endedAt: date(2026, 4, 15, 8, 30),
-            progressUnit: .percentage,
-            origin: .providerImport
+            origin: .providerImport,
+            progressUnit: .percentage
         )
         let realSession = ReadingSession(
             book: ebook,
             startedAt: date(2026, 4, 14, 8),
             endedAt: date(2026, 4, 14, 8, 20),
-            progressUnit: .percentage,
-            origin: .quickLog
+            origin: .quickLog,
+            progressUnit: .percentage
         )
         let recent = ReadingAnalyticsRecentActivityBuilder.make(
             sessions: ReadingAnalyticsInputMapper.sessionRecords(from: [providerImport, realSession]),

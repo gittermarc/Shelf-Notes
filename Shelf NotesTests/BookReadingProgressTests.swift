@@ -110,6 +110,29 @@ struct BookReadingProgressTests {
         #expect(book.readingProgressFraction == 0.2)
     }
 
+    @Test @MainActor func activeLegacyAttemptFallsBackToBookPageCountWhenSnapshotIsMissing() {
+        let book = Book(title: "Legacy Attempt", status: .reading)
+        book.pageCount = 300
+        let attempt = ReadingAttempt(
+            book: book,
+            sequenceNumber: 1,
+            status: .active
+        )
+        let session = makeSession(book: book, pagesRead: 30)
+        session.readingAttempt = attempt
+        attempt.sessionsSafe = [session]
+        book.readingAttemptsSafe = [attempt]
+        book.readingSessionsSafe = [session]
+
+        let snapshot = attempt.readingProgressSnapshot
+
+        #expect(snapshot.pagesRead == 30)
+        #expect(snapshot.totalValue == 300)
+        #expect(snapshot.remainingPages == 270)
+        #expect(snapshot.normalizedProgress == 0.1)
+        #expect(book.readingProgressFraction == 0.1)
+    }
+
     @Test @MainActor func legacyProgressIgnoresPercentageAndProviderImportSessions() {
         let book = Book(title: "Mixed Legacy", status: .reading)
         book.pageCount = 100

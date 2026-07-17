@@ -141,11 +141,11 @@ struct StatisticsSourceStoreTests {
         book.readingAttemptsSafe = [attempt]
         let session = ReadingSession(
             book: book,
-            readingAttempt: attempt,
             startedAt: date(2026, 1, 2, 20, 0),
             endedAt: date(2026, 1, 2, 21, 0),
             pagesRead: 40
         )
+        session.readingAttempt = attempt
         attempt.sessionsSafe = [session]
         book.readingSessionsSafe = [session]
 
@@ -278,11 +278,14 @@ struct StatisticsSourceStoreTests {
             scope: .all,
             activityMetric: .readingMinutes
         )
+        let metricChangedKey = try #require(metricChanged.heatmapKey)
 
         #expect(sameState.heatmapDecision == .reusable)
-        #expect(metricChanged.heatmapDecision == .missing)
-        #expect(metricChanged.heatmapKey == nil)
-        #expect(metricChanged.sessionSourceRequestToken != nil)
+        #expect(metricChanged.heatmapDecision == .stale)
+        #expect(metricChangedKey != heatmapKey)
+        #expect(metricChangedKey.activityMetric == .readingMinutes)
+        #expect(metricChangedKey.activitySignature == heatmapKey.activitySignature)
+        #expect(metricChanged.sessionSourceRequestToken == nil)
     }
 
     @MainActor

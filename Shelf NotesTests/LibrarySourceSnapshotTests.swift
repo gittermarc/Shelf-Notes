@@ -99,11 +99,11 @@ struct LibrarySourceSnapshotTests {
         )
         let oldSession = ReadingSession(
             book: book,
-            readingAttempt: completed,
             startedAt: date(2025, 1, 2),
             endedAt: date(2025, 1, 3),
             pagesRead: 400
         )
+        oldSession.readingAttempt = completed
         completed.sessionsSafe = [oldSession]
         let event = ReadingProgressEvent(
             book: book,
