@@ -31,6 +31,19 @@ final class ReadingAttempt {
     /// This keeps old attempts stable if metadata is corrected later.
     var pageCountSnapshot: Int?
 
+    /// Format-neutral source metadata for this concrete reading pass.
+    var readingMediumRawValue: String = ReadingMedium.physical.rawValue
+    var defaultProviderRawValue: String = ReadingProvider.none.rawValue
+    var progressUnitRawValue: String = ReadingProgressUnit.pages.rawValue
+
+    /// Optional total in the native progress unit used by this pass.
+    var totalValueSnapshot: Double?
+
+    /// Provider-side item identifier. Never stores credentials or file paths.
+    var providerItemIdentifier: String?
+
+    var lastExternalSyncAt: Date?
+
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
 
@@ -46,6 +59,14 @@ final class ReadingAttempt {
     @Relationship(deleteRule: .nullify, inverse: \ReadingSession.readingAttempt)
     var sessions: [ReadingSession]?
 
+    /// Progress history survives deletion of an individual reading attempt.
+    @Relationship(deleteRule: .nullify, inverse: \ReadingProgressEvent.readingAttempt)
+    var progressEvents: [ReadingProgressEvent]?
+
+    /// Imported or manually created annotations survive attempt deletion.
+    @Relationship(deleteRule: .nullify, inverse: \ReadingAnnotation.readingAttempt)
+    var annotations: [ReadingAnnotation]?
+
     init(
         book: Book? = nil,
         sequenceNumber: Int = 1,
@@ -53,6 +74,12 @@ final class ReadingAttempt {
         startedAt: Date? = nil,
         finishedAt: Date? = nil,
         pageCountSnapshot: Int? = nil,
+        readingMedium: ReadingMedium = .physical,
+        defaultProvider: ReadingProvider = .none,
+        progressUnit: ReadingProgressUnit = .pages,
+        totalValueSnapshot: Double? = nil,
+        providerItemIdentifier: String? = nil,
+        lastExternalSyncAt: Date? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -63,9 +90,17 @@ final class ReadingAttempt {
         self.startedAt = startedAt
         self.finishedAt = finishedAt
         self.pageCountSnapshot = pageCountSnapshot
+        self.readingMediumRawValue = readingMedium.rawValue
+        self.defaultProviderRawValue = defaultProvider.rawValue
+        self.progressUnitRawValue = progressUnit.rawValue
+        self.totalValueSnapshot = totalValueSnapshot
+        self.providerItemIdentifier = providerItemIdentifier
+        self.lastExternalSyncAt = lastExternalSyncAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.sessions = nil
+        self.progressEvents = nil
+        self.annotations = nil
     }
 }
 

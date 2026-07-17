@@ -40,6 +40,18 @@ final class Book {
     @Relationship(deleteRule: .cascade, inverse: \ReadingAttempt.book)
     var readingAttempts: [ReadingAttempt]?
 
+    // ✅ Format-neutral progress history (one-to-many)
+    @Relationship(deleteRule: .cascade, inverse: \ReadingProgressEvent.book)
+    var readingProgressEvents: [ReadingProgressEvent]?
+
+    // ✅ Provider-specific external references (one-to-many)
+    @Relationship(deleteRule: .cascade, inverse: \BookExternalReference.book)
+    var externalReferences: [BookExternalReference]?
+
+    // ✅ Provider-independent highlights, notes and bookmarks (one-to-many)
+    @Relationship(deleteRule: .cascade, inverse: \ReadingAnnotation.book)
+    var readingAnnotations: [ReadingAnnotation]?
+
     // Imported metadata (bisher)
     var googleVolumeID: String?
     var isbn13: String?
@@ -116,5 +128,8 @@ final class Book {
         self.notes = notes
         self.collections = nil
         self.readingAttempts = nil
+        self.readingProgressEvents = nil
+        self.externalReferences = nil
+        self.readingAnnotations = nil
     }
 }

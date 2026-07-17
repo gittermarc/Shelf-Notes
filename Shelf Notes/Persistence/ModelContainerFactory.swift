@@ -14,6 +14,9 @@ enum ModelContainerFactory {
             Book.self,
             ReadingAttempt.self,
             ReadingSession.self,
+            ReadingProgressEvent.self,
+            BookExternalReference.self,
+            ReadingAnnotation.self,
             ReadingGoal.self,
             BookCollection.self,
             ChallengeRecord.self

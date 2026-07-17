@@ -1,16 +1,21 @@
 # PROJECT_CONTEXT.md
 
-Stand: Analyse des Projekt-ZIPs `sn_context.zip` vom 2026-06-06. Der aktuelle Code ist die Quelle der Wahrheit. Es wurde keine Build- oder Testausführung durchgeführt.
+Stand: E-Book-Erweiterung PR 1 vom 2026-07-17 auf Basis des aktuellen Projektarchivs. Der aktuelle Code ist die Quelle der Wahrheit.
 
 ## TL;DR
 
-Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlichen Buchbibliothek mit Lesestatus, Lesesessions, Zielen, Challenges, Statistiken, Tags, Listen/Sammlungen, CSV-Import/-Export, Google-Books-Import, Cover-Caching und Live-Activity-Unterstützung. Persistenz läuft über SwiftData; die primäre Store-Konfiguration nutzt CloudKit über `ModelConfiguration(cloudKitDatabase: .automatic)`. Das Deployment Target ist laut `Shelf Notes.xcodeproj/project.pbxproj` iOS 26.0.
+Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlichen Buchbibliothek mit Lesestatus, Lesesessions, Zielen, Challenges, Statistiken, Tags, Listen/Sammlungen, CSV-Import/-Export, Google-Books-Import, Cover-Caching und Live-Activity-Unterstützung. Das Persistenzmodell besitzt zusätzlich ein formatneutrales Fundament für physische Bücher, externe E-Books und später lokal gelesene EPUBs/PDFs. Persistenz läuft über SwiftData; die primäre Store-Konfiguration nutzt CloudKit über `ModelConfiguration(cloudKitDatabase: .automatic)`. Das Deployment Target ist laut `Shelf Notes.xcodeproj/project.pbxproj` iOS 26.0.
 
 ## Key Concepts / Domänenbegriffe
 
 - `Book`: Zentrale Entität für Bücher, Metadaten, Lesestatus, Tags, Notizen, Cover-Daten, Bewertungen und Beziehungen zu Sessions/Sammlungen. Pfad: `Shelf Notes/BookModel/Book.swift`.
+- `ReadingAttempt`: Primärer Anker für Medium, Standardanbieter und Fortschrittseinheit eines konkreten Lesedurchgangs. `Book` bleibt der Bibliothekseintrag. Pfad: `Shelf Notes/ReadingAttempts/ReadingAttempt.swift`.
 - `ReadingStatus`: Fachlicher Lesestatus mit stabilen Raw Values `toRead`, `reading`, `finished`. Legacy-Werte auf Deutsch werden in `Shelf Notes/BookModel/Book+Status.swift` gemappt.
-- `ReadingSession`: Einzelne Leseeinheit mit Start, Ende, Dauer, Seiten und optionaler Notiz. Pfad: `Shelf Notes/ReadingSession.swift`.
+- `ReadingSession`: Einzelne Leseeinheit mit Start, Ende, Dauer, Seiten und optionaler Notiz sowie formatneutralen Source-Snapshots. Pfad: `Shelf Notes/ReadingSession.swift`.
+- Reading-Source Raw Values: `ReadingMedium`, `ReadingProvider`, `ReadingProgressUnit`, `ReadingSessionOrigin` und `ReadingAnnotationKind` besitzen stabile englische Raw Values und sichere Fallbacks. Pfad: `Shelf Notes/ReadingSources/*`.
+- `ReadingProgressEvent`: Provider- und formatneutrales Fortschrittsereignis mit nativen und optional normalisierten Werten. Pfad: `Shelf Notes/ReadingSources/ReadingProgressEvent.swift`.
+- `BookExternalReference`: Provider-spezifische Referenz eines Bibliothekseintrags ohne Tokens, Zugangsdaten oder lokale Dateipfade. Pfad: `Shelf Notes/ReadingSources/BookExternalReference.swift`.
+- `ReadingAnnotation`: Provider-neutrales Modell für Highlight, Notiz oder Lesezeichen. Pfad: `Shelf Notes/ReadingSources/ReadingAnnotation.swift`.
 - `ReadingGoal`: Jahresziel für gelesene Bücher. Pfad: `Shelf Notes/ReadingGoal.swift`.
 - `BookCollection`: Nutzerdefinierte Liste/Sammlung von Büchern. Pfad: `Shelf Notes/BookCollection.swift`.
 - `ChallengeRecord`: Persistierte Challenge für Wochen-/Monatszeiträume mit Metrik, Zielwert, Completion und Reroll-Status. Pfad: `Shelf Notes/Challenges/ChallengeModels.swift`.
@@ -99,6 +104,8 @@ Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlic
 - `Shelf Notes/LibraryView`: Bibliotheksansicht, Filter, Sortierung, Grid/List, Header, Derived State.
 - `Shelf Notes/BookDetail`: Detailansicht, Karten, Bindings, Sessions, Notizen und Timer-Integration.
 - `Shelf Notes/BookDetail/Sessions`: Session-UI, Session-Formulare, Timer-Manager, Live-Activity-Brücke.
+- `Shelf Notes/ReadingAttempts`: Reading-Attempt-Modell, Repair-Logik und Session-Zuordnung für Lesedurchgänge und Rereads.
+- `Shelf Notes/ReadingSources`: Stabile Reading-Source Raw Values, formatneutrale Fortschrittsereignisse, externe Buchreferenzen, Annotationen und typisierte Modellzugriffe.
 - `Shelf Notes/AddBook`: Klassischer Buch-Hinzufügen-Flow mit Google-Books-Suche und Formularlogik.
 - `Shelf Notes/BookImport`: Moderner Import-Flow mit Query Builder, Filter Engine, Result Views und Seed Queries.
 - `Shelf Notes/CSVImportExport`: CSV-Import/-Export und Import-Ausführung.
@@ -137,10 +144,27 @@ Wichtige Felder:
 - Google-Books-Verfügbarkeit: `viewability`, `isPublicDomain`, `isEmbeddable`, `isEpubAvailable`, `isPdfAvailable`, `epubAcsTokenLink`, `pdfAcsTokenLink`, `saleability`, `isEbook`
 - Ratings: sechs Integer-Felder für Plot, Charaktere, Schreibstil, Atmosphäre, Genre Fit und Präsentation
 
+Wichtig: `Book.isEbook` bleibt ausschließlich importierte Google-Books-Metainformation. Die vom Nutzer verwendete Leseart liegt auf `ReadingAttempt.readingMediumRawValue`.
+
 Beziehungen:
 
 - `collections: [BookCollection]?`
 - `readingSessions: [ReadingSession]?` mit Cascade Delete
+- `readingAttempts: [ReadingAttempt]?` mit Cascade Delete
+- `readingProgressEvents: [ReadingProgressEvent]?` mit Cascade Delete
+- `externalReferences: [BookExternalReference]?` mit Cascade Delete
+- `readingAnnotations: [ReadingAnnotation]?` mit Cascade Delete
+
+### `ReadingAttempt`
+
+Pfad: `Shelf Notes/ReadingAttempts/ReadingAttempt.swift`
+
+- Identität und Lifecycle: `id`, `sequenceNumber`, `statusRawValue`, `startedAt`, `finishedAt`, `createdAt`, `updatedAt`
+- Kompatibilität: `pageCountSnapshot` bleibt unverändert erhalten
+- Reading Source: `readingMediumRawValue`, `defaultProviderRawValue`, `progressUnitRawValue`
+- Externe Metadaten: `totalValueSnapshot`, `providerItemIdentifier`, `lastExternalSyncAt`
+- Beziehungen: `book`, `sessions`, `progressEvents`, `annotations`
+- Delete Rules: Session-, Event- und Annotation-Beziehungen werden beim Löschen eines Attempts nullifiziert, damit Historie erhalten bleibt
 
 ### `ReadingSession`
 
@@ -148,10 +172,45 @@ Pfad: `Shelf Notes/ReadingSession.swift`
 
 - `id`
 - `book: Book?`
+- `readingAttempt: ReadingAttempt?`
 - `startedAt`, `endedAt`, `durationSeconds`
 - `pagesRead`
 - `note`
+- Source-Snapshots: `mediumRawValue`, `providerRawValue`, `originRawValue`, `progressUnitRawValue`
+- Fortschritts-Snapshots: `startValue`, `endValue`, `startNormalizedProgress`, `endNormalizedProgress`, `startLocator`, `endLocator`
+- Externe Zuordnung: `externalEventIdentifier`
 - `createdAt`
+
+Legacy-Defaults bleiben `physical`, `none`, `legacy` und `pages`.
+
+### `ReadingProgressEvent`
+
+Pfad: `Shelf Notes/ReadingSources/ReadingProgressEvent.swift`
+
+- Beziehungen: `book`, optional `readingAttempt`
+- Zeit und Quelle: `occurredAt`, Medium, Provider, Unit, Origin
+- Fortschritt: `nativeValue`, optional `totalValue`, `normalizedProgress`, `locator`
+- Import/Deduplizierung: `externalIdentifier`, `deduplicationKey`, `sourceSessionID`, `importedAt`
+- Audit: `createdAt`, `updatedAt`
+
+### `BookExternalReference`
+
+Pfad: `Shelf Notes/ReadingSources/BookExternalReference.swift`
+
+- Beziehung: `book`
+- Provider: `providerRawValue`, `providerItemIdentifier`
+- Edition: `canonicalURL`, `isbn13`, `editionNote`
+- Audit: `createdAt`, `updatedAt`
+
+### `ReadingAnnotation`
+
+Pfad: `Shelf Notes/ReadingSources/ReadingAnnotation.swift`
+
+- Beziehungen: `book`, optional `readingAttempt`
+- Klassifikation: `kindRawValue`, `providerRawValue`, `originRawValue`
+- Inhalt und Position: `selectedText`, `note`, `locator`, `normalizedProgress`
+- Import/Deduplizierung: `externalIdentifier`, `deduplicationKey`, `importedAt`
+- Audit: `createdAt`, `updatedAt`
 
 ### `ReadingGoal`
 
@@ -191,7 +250,11 @@ Pfad: `Shelf Notes/Persistence/ModelContainerFactory.swift`
 Schema enthält:
 
 - `Book`
+- `ReadingAttempt`
 - `ReadingSession`
+- `ReadingProgressEvent`
+- `BookExternalReference`
+- `ReadingAnnotation`
 - `ReadingGoal`
 - `BookCollection`
 - `ChallengeRecord`
@@ -219,6 +282,7 @@ Schema enthält:
   - Search History: `Shelf Notes/SearchHistoryStore.swift`.
 - Migration:
   - Status-Legacy-Werte werden über `Shelf Notes/BookModel/Book+Status.swift` und `Shelf Notes/Persistence/ReadingStatusMigrator.swift` behandelt.
+  - Reading-Source-Erweiterungen sind additiv. Neue nicht-optionale Raw-Value-Felder besitzen migrationssichere Defaults; unbekannte persistierte Werte werden typisiert auf sichere Fallbacks abgebildet.
   - Eine explizite SwiftData-Versionierung oder umfassende Migration Strategy wurde im Scan nicht als zentrale Policy gefunden: **UNKNOWN**.
 
 ## UI Map
@@ -303,7 +367,7 @@ Root-Level AppStorage/SceneStorage:
 - Keine `@Attribute(.unique)` auf Modell-IDs verwenden, solange CloudKit-Kompatibilität Priorität hat.
 - Beziehungen optional halten, wenn CloudKit-Kompatibilität relevant ist.
 - Nicht-optionale Modellfelder mit Defaults versehen.
-- Neue Modelle in `ModelContainerFactory.makeSchema()` aufnehmen.
+- Neue Modelle in `ModelContainerFactory.schema` aufnehmen.
 - Bei Model-Änderungen immer Migration, Backfill oder Repair-Job mitdenken.
 - Mutationen möglichst über `modelContext.saveWithDiagnostics()` speichern.
 

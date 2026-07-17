@@ -1,6 +1,6 @@
 # ARCHITECTURE_NOTES.md
 
-Stand: Analyse des Projekt-ZIPs `sn_context.zip` vom 2026-06-06. Es wurde keine Build- oder Testausführung durchgeführt. Aussagen beziehen sich auf den geprüften Codebestand. Unklare Punkte sind als **UNKNOWN** markiert.
+Stand: E-Book-Erweiterung PR 1 vom 2026-07-17 auf Basis des aktuellen Projektarchivs. Aussagen beziehen sich auf den geprüften Codebestand. Unklare Punkte sind als **UNKNOWN** markiert.
 
 ## Scope und Methode
 
@@ -415,7 +415,9 @@ Empfehlung:
 Betroffene Dateien:
 
 - `Shelf Notes/BookModel/Book.swift`
+- `Shelf Notes/ReadingAttempts/ReadingAttempt.swift`
 - `Shelf Notes/ReadingSession.swift`
+- `Shelf Notes/ReadingSources/*`
 - `Shelf Notes/ReadingGoal.swift`
 - `Shelf Notes/BookCollection.swift`
 - `Shelf Notes/Challenges/ChallengeModels.swift`
@@ -426,10 +428,16 @@ Beobachtung:
 - IDs sind nicht unique markiert.
 - Beziehungen sind optional.
 - Defaults sind vorhanden.
+- Die Reading-Source-Erweiterung speichert Enums als stabile englische Raw Values und kapselt unbekannte Werte über sichere Fallbacks.
+- `Book` bleibt Bibliothekseintrag; `ReadingAttempt` ist der konkrete Anker für Medium, Provider und Fortschrittseinheit.
+- `Book.isEbook` bleibt importierte Google-Books-Metainformation und ist nicht mit `ReadingMedium` gekoppelt.
+- Neue Book-Beziehungen löschen abhängige Fortschrittsereignisse, externe Referenzen und Annotationen per Cascade nur zusammen mit dem Buch.
+- Das Löschen eines `ReadingAttempt` nullifiziert dessen Sessions, Progress Events und Annotationen, damit Historie nicht verloren geht.
 
 Risiko:
 
 - Ohne Unique Constraints sind Dubletten fachlich möglich.
+- `deduplicationKey` ist bewusst kein Unique Attribute; Deduplizierung muss in Import- oder Mutation-Services erfolgen.
 - Konfliktauflösung zwischen Geräten ist nicht zentral dokumentiert: **UNKNOWN**.
 - Merge-Regeln für gleiche ISBN oder gleiche Google Volume ID sind nicht als globale Policy sichtbar: **UNKNOWN**.
 
@@ -464,6 +472,40 @@ Empfehlung:
 - `MIGRATIONS.md` einführen.
 - Jede Modelländerung mit Migration/Repair/Backfill-Plan dokumentieren.
 - Tests für Migration-Helfer ergänzen.
+
+### Formatneutrales Reading-Source-Fundament
+
+Betroffene Dateien:
+
+- `Shelf Notes/ReadingSources/ReadingMedium.swift`
+- `Shelf Notes/ReadingSources/ReadingProvider.swift`
+- `Shelf Notes/ReadingSources/ReadingProgressUnit.swift`
+- `Shelf Notes/ReadingSources/ReadingSessionOrigin.swift`
+- `Shelf Notes/ReadingSources/ReadingAnnotationKind.swift`
+- `Shelf Notes/ReadingSources/ReadingProgressEvent.swift`
+- `Shelf Notes/ReadingSources/BookExternalReference.swift`
+- `Shelf Notes/ReadingSources/ReadingAnnotation.swift`
+- `Shelf Notes/ReadingAttempts/ReadingAttempt.swift`
+- `Shelf Notes/ReadingSession.swift`
+
+Architekturentscheidung:
+
+- Persistiert werden Strings mit stabilen englischen Raw Values, nicht Swift-Enums direkt als SwiftData-Attribute.
+- Typisierte Computed Properties bilden unbekannte Raw Values auf sichere Defaults ab.
+- Bestehende Reading Attempts migrieren semantisch auf `physical`, `none` und `pages`.
+- Bestehende Reading Sessions migrieren semantisch auf `physical`, `none`, `legacy` und `pages`.
+- `ReadingProgressEvent` speichert native Fortschrittswerte und optional normalisierte Werte, ohne bestehende Seitenlogik zu ersetzen.
+- `BookExternalReference` trennt Bibliotheksmetadaten von provider-spezifischen Identifikatoren.
+- `ReadingAnnotation` hält Highlights, Notizen und Lesezeichen providerunabhängig.
+- Tokens, Zugangsdaten und lokale Dateipfade gehören ausdrücklich nicht in SwiftData oder CloudKit.
+
+Noch nicht Teil dieser Stufe:
+
+- Keine Provider-API und kein Token-Handling
+- Keine lokale EPUB-/PDF-Dateiverwaltung
+- Kein Readium und kein integrierter Reader
+- Keine neue Oberfläche
+- Keine Änderung an der bestehenden Fortschrittsberechnung
 
 ### Secrets und Konfiguration
 
@@ -892,6 +934,8 @@ Empfehlung:
 - Keine Unique Constraints bedeutet fachliche Dubletten sind möglich.
 - Optionale Beziehungen schützen CloudKit-Kompatibilität, erhöhen aber Nil-Handling-Aufwand.
 - Migration Strategy ist **UNKNOWN**.
+- Die neuen Reading-Source-Felder sind additiv und besitzen Defaults. Der reale CloudKit-Schema-Rollout auf Produktionsdaten bleibt dennoch ein manueller Testpunkt.
+- Externe IDs und Deduplizierungsschlüssel dürfen nicht als Unique Attribute modelliert werden; Konflikte und Doppelimporte müssen fachlich behandelt werden.
 
 Empfehlung:
 
@@ -1045,6 +1089,8 @@ Empfehlung:
 
 - Ist iOS 26.0 als Deployment Target fachlich bewusst gesetzt oder nur aktueller Xcode-Stand? **UNKNOWN**.
 - Gibt es eine verbindliche SwiftData-Migrationsstrategie für zukünftige Modelländerungen? **UNKNOWN**.
+- Wie werden `deduplicationKey`-Kollisionen und konkurrierende Provider-Imports geräteübergreifend aufgelöst? **UNKNOWN**.
+- Welche Locator-Formate werden je Provider und für lokale EPUB/PDF-Dateien verbindlich unterstützt? **UNKNOWN**.
 - Soll Local-only jemals zurück in CloudKit migriert werden können? **UNKNOWN**.
 - Wie sollen Dubletten über ISBN, Google Volume ID und Titel/Autor global behandelt werden? **UNKNOWN**.
 - Welche Konfliktauflösung wird bei Multi-Device-Edits fachlich erwartet? **UNKNOWN**.

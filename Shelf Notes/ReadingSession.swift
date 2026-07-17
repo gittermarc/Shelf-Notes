@@ -49,6 +49,20 @@ final class ReadingSession {
     /// Optional short note (e.g. "Kapitel 12 war wild").
     var note: String?
 
+    /// Snapshot of the source that produced this session.
+    var mediumRawValue: String = ReadingMedium.physical.rawValue
+    var providerRawValue: String = ReadingProvider.none.rawValue
+    var originRawValue: String = ReadingSessionOrigin.legacy.rawValue
+    var progressUnitRawValue: String = ReadingProgressUnit.pages.rawValue
+
+    var startValue: Double?
+    var endValue: Double?
+    var startNormalizedProgress: Double?
+    var endNormalizedProgress: Double?
+    var startLocator: String?
+    var endLocator: String?
+    var externalEventIdentifier: String?
+
     /// Creation timestamp (useful for sorting even if startedAt is edited).
     var createdAt: Date = Date()
 
@@ -68,7 +82,18 @@ final class ReadingSession {
         startedAt: Date,
         endedAt: Date,
         pagesRead: Int? = nil,
-        note: String? = nil
+        note: String? = nil,
+        medium: ReadingMedium = .physical,
+        provider: ReadingProvider = .none,
+        origin: ReadingSessionOrigin = .legacy,
+        progressUnit: ReadingProgressUnit = .pages,
+        startValue: Double? = nil,
+        endValue: Double? = nil,
+        startNormalizedProgress: Double? = nil,
+        endNormalizedProgress: Double? = nil,
+        startLocator: String? = nil,
+        endLocator: String? = nil,
+        externalEventIdentifier: String? = nil
     ) {
         self.book = book
         self.startedAt = startedAt
@@ -76,6 +101,17 @@ final class ReadingSession {
         self.durationSeconds = max(0, Int(endedAt.timeIntervalSince(startedAt).rounded()))
         self.pagesRead = pagesRead
         self.note = note
+        self.mediumRawValue = medium.rawValue
+        self.providerRawValue = provider.rawValue
+        self.originRawValue = origin.rawValue
+        self.progressUnitRawValue = progressUnit.rawValue
+        self.startValue = startValue
+        self.endValue = endValue
+        self.startNormalizedProgress = startNormalizedProgress
+        self.endNormalizedProgress = endNormalizedProgress
+        self.startLocator = startLocator
+        self.endLocator = endLocator
+        self.externalEventIdentifier = externalEventIdentifier
         self.createdAt = Date()
     }
 
@@ -85,7 +121,18 @@ final class ReadingSession {
         startAt: Date = Date(),
         durationSeconds: Int,
         pagesRead: Int? = nil,
-        note: String? = nil
+        note: String? = nil,
+        medium: ReadingMedium = .physical,
+        provider: ReadingProvider = .none,
+        origin: ReadingSessionOrigin = .legacy,
+        progressUnit: ReadingProgressUnit = .pages,
+        startValue: Double? = nil,
+        endValue: Double? = nil,
+        startNormalizedProgress: Double? = nil,
+        endNormalizedProgress: Double? = nil,
+        startLocator: String? = nil,
+        endLocator: String? = nil,
+        externalEventIdentifier: String? = nil
     ) {
         self.book = book
         self.startedAt = startAt
@@ -93,6 +140,17 @@ final class ReadingSession {
         self.durationSeconds = max(0, durationSeconds)
         self.pagesRead = pagesRead
         self.note = note
+        self.mediumRawValue = medium.rawValue
+        self.providerRawValue = provider.rawValue
+        self.originRawValue = origin.rawValue
+        self.progressUnitRawValue = progressUnit.rawValue
+        self.startValue = startValue
+        self.endValue = endValue
+        self.startNormalizedProgress = startNormalizedProgress
+        self.endNormalizedProgress = endNormalizedProgress
+        self.startLocator = startLocator
+        self.endLocator = endLocator
+        self.externalEventIdentifier = externalEventIdentifier
         self.createdAt = Date()
     }
 
