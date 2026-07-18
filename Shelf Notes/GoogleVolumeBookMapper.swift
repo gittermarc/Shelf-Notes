@@ -64,6 +64,14 @@ struct GoogleVolumeBookMapper {
         newBook.saleability = volume.saleability
         newBook.isEbook = volume.isEbook
 
+        if let reference = BookExternalReferenceFactory.googleBooksReference(
+            for: newBook,
+            volumeID: volume.id,
+            canonicalURL: volume.canonicalVolumeLink
+        ) {
+            newBook.externalReferencesSafe = [reference]
+        }
+
         return newBook
     }
 }

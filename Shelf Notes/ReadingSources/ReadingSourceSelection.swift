@@ -36,8 +36,10 @@ nonisolated enum ReadingSourceSelection: String, CaseIterable, Identifiable, Equ
         switch self {
         case .physical:
             return "Gelesene Seiten manuell erfassen"
-        case .appleBooks, .kindle, .googleBooks, .otherEbook:
+        case .appleBooks, .kindle, .otherEbook:
             return "Lesestand manuell in Prozent erfassen"
+        case .googleBooks:
+            return "Noch ohne Konto-Sync; Lesestand manuell in Prozent erfassen"
         case .localFile:
             return "Der integrierte Reader folgt in einem späteren Update"
         }
@@ -61,11 +63,29 @@ nonisolated enum ReadingSourceSelection: String, CaseIterable, Identifiable, Equ
     }
 
     var isAvailable: Bool {
-        self != .localFile
+        switch self {
+        case .physical:
+            return true
+        case .localFile:
+            return false
+        case .appleBooks, .kindle, .googleBooks, .otherEbook:
+            return integration?.manualSourceSelectable ?? true
+        }
     }
 
     var isManuallyTracked: Bool {
-        self != .localFile
+        switch self {
+        case .localFile:
+            return false
+        case .physical:
+            return true
+        case .appleBooks, .kindle, .googleBooks, .otherEbook:
+            return integration?.progressMode == .manual
+        }
+    }
+
+    var integration: ReadingIntegration? {
+        ReadingIntegrationRegistry.default.integration(for: provider)
     }
 
     var medium: ReadingMedium {

@@ -60,6 +60,14 @@ extension GoogleBookVolume {
         b.saleability = saleability
         b.isEbook = isEbook
 
+        if let reference = BookExternalReferenceFactory.googleBooksReference(
+            for: b,
+            volumeID: id,
+            canonicalURL: canonicalVolumeLink
+        ) {
+            b.externalReferencesSafe = [reference]
+        }
+
         return b
     }
 }

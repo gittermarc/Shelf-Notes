@@ -1,8 +1,20 @@
 # ARCHITECTURE_NOTES.md
 
-Stand: E-Book-Erweiterung PR 7 vom 2026-07-18 auf Basis des aktuellen Projektarchivs. Aussagen beziehen sich auf den geprüften Codebestand. Unklare Punkte sind als **UNKNOWN** markiert.
+Stand: E-Book-Erweiterung PR 8 vom 2026-07-18 auf Basis des aktuellen Projektarchivs. Aussagen beziehen sich auf den geprüften Codebestand. Unklare Punkte sind als **UNKNOWN** markiert.
 
 ## Scope und Methode
+
+## PR 8 Architekturergänzung
+
+- Die neue Integrationsschicht liegt unter `Shelf Notes/ReadingIntegrations`. Sie trennt Provider-Beschreibung, Fähigkeiten, Verfügbarkeit, Präsentation, Launch-Policy und Companion-Koordination in kleine Dateien.
+- `ReadingIntegrationCapabilities` ist ein OptionSet. Die Architektur setzt nicht voraus, dass alle Anbieter dieselben Fähigkeiten besitzen. Apple Books, Kindle und Other haben aktuell nur `canOpenReadingDestination`; Google Books und Local File erhalten keine nicht implementierten Fähigkeiten.
+- `ReadingIntegrationRegistry.default` ist die zentrale Quelle für Provider-Konfigurationen. SwiftUI liest daraus Availability- und Capability-State, statt Provider-Fähigkeiten in Views zu duplizieren.
+- `ReadingProviderLaunchPolicy` ist der einzige Gatekeeper für externe URLs. Die Policy erlaubt nur HTTPS, prüft öffentliche Hosts und validiert providerbezogene Host-/Pfadfamilien. Ungültige Links werden nicht geöffnet.
+- `ReadingIntegrationCoordinator` bildet den Begleitfluss: Timer und Live Activity starten zuerst über den vorhandenen Timer-Pfad; danach wird ein validierter Link geöffnet oder eine nicht-fehlerhafte Anleitung für den manuellen Wechsel in die Reader-App zurückgegeben. Blockierte Links werden als Fehler an die UI gemeldet.
+- `BookExternalReference` bleibt der einzige Speicherort für Provider-Identifier und kanonische URLs. PR 8 ergänzt Mapping auf `ReadingProviderLaunchReference` und `BookExternalReferenceFactory` für Google-Books-Importe, aber keine neuen Provider-Felder am `Book`.
+- Im Buchdetail rendert `ReadingAttemptSourceControl` eine kompakte Quelle für den aktiven Attempt. Änderungen werden über `ReadingSourceAttemptMutation` nur zugelassen, solange der Attempt keine Sessions oder Progress Events hat und für das Buch kein Timer läuft.
+- Die Einstellungen enthalten `ReadingIntegrationsSettingsView`. Sie zeigt Verfügbarkeit, Fortschrittsmodus und aktuell implementierte Fähigkeiten, aber keine Verbunden-Anzeige. OAuth, Kontosync, Share Extension und lokaler Reader bleiben explizit außerhalb dieses PRs.
+- Tests decken Registry/Capabilities, Verfügbarkeiten, Launch-Policy, URL-Ablehnung, Presentation-State, Companion-Start, fehlende Leselinks, Attempt-Source-Wechsel und unveränderte physische Timer-UX ab.
 
 ## PR 7 Architekturergänzung
 
@@ -38,15 +50,15 @@ Nicht durchgeführt:
 - Baut Statistics-Snapshots, Jahres-/Monatswerte, Top-Listen und Nerd-Metriken.
 - Risiko: viele fachliche Regeln, Calendar-Logik und Präsentationsableitungen in einer Datei; Mixed-Media-Seitenregeln müssen zentral bleiben.
 
-### 2. `Shelf Notes/LibraryView/LibraryView.swift` - 643 Zeilen
+### 2. `Shelf Notes/BookDetail/Sessions/SessionsCard.swift` - 659 Zeilen
+
+- Session-Start, Timer, Companion-Start, Quick Log, Source-Auswahl, Listen und Mutationsaufrufe im Buchdetail.
+- Risiko: UI-, Sheet-, Timer- und Persistenzpfade liegen weiterhin eng beieinander; PR 8 lagert Provider-Launch-Entscheidungen immerhin in `ReadingIntegrationCoordinator` und `ReadingProviderLaunchPolicy` aus.
+
+### 3. `Shelf Notes/LibraryView/LibraryView.swift` - 643 Zeilen
 
 - Zentraler Library-Screen mit Source-Tracking, Navigation und Dashboard-Einbindung.
 - Risiko: großer SwiftUI-Invalidationsbereich und viele Main-Actor-Abhängigkeiten.
-
-### 3. `Shelf Notes/BookDetail/Sessions/SessionsCard.swift` - 633 Zeilen
-
-- Session-Start, Timer, Quick Log, Source-Auswahl, Listen und Mutationsaufrufe im Buchdetail.
-- Risiko: UI-, Sheet-, Timer- und Persistenzpfade liegen weiterhin eng beieinander.
 
 ### 4. `Shelf Notes/Challenges/ChallengeEngine+Compute.swift` - 528 Zeilen
 

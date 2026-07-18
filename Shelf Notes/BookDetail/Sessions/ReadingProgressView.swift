@@ -11,6 +11,7 @@ struct ReadingProgressView: View {
 
     let book: Book
     let sessions: [ReadingSession]
+    var sourceChangeLocked: Bool = false
 
     @State private var showingPageCountPrompt = false
     @State private var showingSourceSelection = false
@@ -52,6 +53,7 @@ struct ReadingProgressView: View {
 
     private var canChangeSource: Bool {
         guard let attempt = book.activeReadingAttempt else { return false }
+        guard sourceChangeLocked == false else { return false }
         return ReadingSourceAttemptMutation.canChangeSource(of: attempt)
     }
 

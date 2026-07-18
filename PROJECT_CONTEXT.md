@@ -1,12 +1,22 @@
 # PROJECT_CONTEXT.md
 
-Stand: E-Book-Erweiterung PR 7 vom 2026-07-18 auf Basis des aktuellen Projektarchivs. Stufe 1 der formatneutralen manuellen Lesebegleitung ist abgeschlossen. Der aktuelle Code ist die Quelle der Wahrheit.
+Stand: E-Book-Erweiterung PR 8 vom 2026-07-18 auf Basis des aktuellen Projektarchivs. Stufe 2 ergänzt eine capability-basierte Integrationsarchitektur und den Companion-Startfluss für externe Reader-Apps. Der aktuelle Code ist die Quelle der Wahrheit.
 
 ## TL;DR
 
-Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlichen Buchbibliothek mit Lesestatus, Lesesessions, Zielen, Challenges, Statistiken, Tags, Listen/Sammlungen, CSV-Import/-Export, Google-Books-Import, Cover-Caching und Live-Activity-Unterstützung. Das Persistenzmodell, die Session-UX, zentrale Derived States, Challenges und das Bibliothekswidget sind formatneutral für physische Bücher und manuell getrackte externe E-Books. Eine zentrale value-basierte Fortschritts-Engine berechnet Seiten-, Prozent- und Locator-Fortschritt pro `ReadingAttempt`; ein idempotenter Startup-Repair klassifiziert Legacy-Daten und pflegt stabile Baseline-Events nach. Die Mixed-Media-Kompatibilitätsschicht trennt universelle Session-/Zeit-/Abschlussmetriken von ausschließlich addierbaren Seitenmetriken. Prozentstände bleiben Einzelbuch-Fortschritt und werden nie bibliotheksweit summiert; reine Provider-Imports erzeugen weder Sessionzeit, Session, Lesetag noch Streak. Quick Log und Timer nutzen denselben adaptiven Fortschrittseditor und dieselbe Mutationslogik. Stufe 1 erlaubt damit eine manuell getrackte E-Book-Session mit Prozentfortschritt, ohne Statistiken, Challenges oder Widget-Darstellung zu verfälschen. Provider-Konten, Provider-Öffnungslogik, automatische Synchronisierung, Share Extension und ein lokaler EPUB-/PDF-Reader sind noch nicht integriert; die Live Activity ist formatneutral und unterstützt externe manuelle E-Book-Timer. Persistenz läuft über SwiftData; die primäre Store-Konfiguration nutzt CloudKit über `ModelConfiguration(cloudKitDatabase: .automatic)`. Das Deployment Target ist laut `Shelf Notes.xcodeproj/project.pbxproj` iOS 26.0.
+Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlichen Buchbibliothek mit Lesestatus, Lesesessions, Zielen, Challenges, Statistiken, Tags, Listen/Sammlungen, CSV-Import/-Export, Google-Books-Import, Cover-Caching und Live-Activity-Unterstützung. Das Persistenzmodell, die Session-UX, zentrale Derived States, Challenges und das Bibliothekswidget sind formatneutral für physische Bücher und manuell getrackte externe E-Books. Eine zentrale value-basierte Fortschritts-Engine berechnet Seiten-, Prozent- und Locator-Fortschritt pro `ReadingAttempt`; ein idempotenter Startup-Repair klassifiziert Legacy-Daten und pflegt stabile Baseline-Events nach. Die Mixed-Media-Kompatibilitätsschicht trennt universelle Session-/Zeit-/Abschlussmetriken von ausschließlich addierbaren Seitenmetriken. Prozentstände bleiben Einzelbuch-Fortschritt und werden nie bibliotheksweit summiert; reine Provider-Imports erzeugen weder Sessionzeit, Session, Lesetag noch Streak. Quick Log und Timer nutzen denselben adaptiven Fortschrittseditor und dieselbe Mutationslogik. PR 8 ergänzt eine ehrliche capability-basierte Integrationsschicht: Apple Books, Kindle und Other starten als Companion-Integrationen den Timer plus Live Activity und öffnen nur validierte HTTPS-/Universal-Leselinks; ohne Link bleibt der Timer aktiv und die UI zeigt eine kurze Anleitung. Google Books ist als später erweiterbare, noch nicht verbundene Integration sichtbar. Local File bleibt bis zum echten lokalen Reader deaktiviert. Kontosynchronisierung, OAuth, Share Extension, automatische Fortschrittssynchronisierung und lokaler EPUB-/PDF-Reader sind weiterhin nicht Teil des aktuellen Stands. Persistenz läuft über SwiftData; die primäre Store-Konfiguration nutzt CloudKit über `ModelConfiguration(cloudKitDatabase: .automatic)`. Das Deployment Target ist laut `Shelf Notes.xcodeproj/project.pbxproj` iOS 26.0.
 
 ## Key Concepts / Domänenbegriffe
+
+## PR 8 Integrations- und Companion-Kontext
+
+- `Shelf Notes/ReadingIntegrations/*` kapselt Provider-Fähigkeiten als Werttypen. `ReadingIntegrationCapabilities` beschreibt unabhängig voneinander, ob ein Anbieter Leselinks öffnen, Shares empfangen, Bibliotheken importieren, Fortschritt synchronisieren, lokal lesen oder Autorisierung benötigen kann. Die Registry setzt nur Fähigkeiten, die im aktuellen Stand wirklich nutzbar sind.
+- `ReadingIntegrationRegistry.default` enthält Apple Books, Kindle und Other als Companion-Integrationen mit `canOpenReadingDestination`. Google Books ist bewusst `notConnected` ohne Sync- oder OAuth-Fähigkeit. Local File ist als zukünftiger Reader-Eintrag vorhanden, aber ohne `canReadLocally` und deshalb nicht als aktive Reader-Funktion verfügbar.
+- `ReadingProviderLaunchPolicy` validiert zentral alle externen Leselinks. Erlaubt werden nur öffentliche HTTPS-Links zu dokumentierten beziehungsweise belastbaren Provider-Webzielen; private URL-Schemes, lokale Hosts, private IPs und providerfremde Hosts werden abgelehnt.
+- `ReadingIntegrationCoordinator` startet zuerst Timer und Live Activity über den bestehenden Timer-Pfad und entscheidet danach, ob ein externer Leselink geöffnet, eine Anleitung gezeigt oder ein unsicherer Link blockiert wird. SwiftUI-Views duplizieren diese Policy nicht.
+- Einstellungen zeigen unter „Lesequellen und Integrationen“ pro Provider Verfügbarkeit, aktuelle Fähigkeiten und Fortschrittsmodus. Es gibt keine irreführende Verbunden-Anzeige.
+- Das Buchdetail zeigt die Quelle des aktiven `ReadingAttempt` kompakt an und erlaubt einen Wechsel nur, solange der Attempt noch keine Sessions oder Progress Events enthält und kein Timer für das Buch läuft.
+- Externe Referenzen laufen weiterhin über `BookExternalReference`; Google-Books-Importe legen daraus eine providerbezogene Referenz mit Volume-ID und validierter kanonischer URL an. Es werden keine neuen Provider-Felder an `Book` ergänzt und Provider-Referenzen werden nicht automatisch unsicher zusammengeführt.
 
 ## PR 7 Timer- und Live-Activity-Kontext
 
@@ -129,6 +139,7 @@ Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlic
 - `Shelf Notes/BookDetail/Sessions`: Gemeinsame Quellenwahl, adaptiver Fortschrittseditor, formatneutrale Präsentation, Session-Kontexte, atomare Session-Mutationen, zentrale Löschung, Timer-Manager und Live-Activity-Brücke.
 - `Shelf Notes/ReadingAttempts`: Reading-Attempt-Modell, Repair-Logik und Session-Zuordnung für Lesedurchgänge und Rereads.
 - `Shelf Notes/ReadingSources`: Stabile Reading-Source Raw Values, formatneutrale Fortschrittsereignisse, externe Buchreferenzen, Annotationen und typisierte Modellzugriffe.
+- `Shelf Notes/ReadingIntegrations`: Provider-Registry, Capabilities, Verfügbarkeit, URL-Policy, Companion-Koordination und Integrations-Präsentationszustände.
 - `Shelf Notes/ReadingProgress`: Value-Snapshots, zentrale Fortschritts-Engine, Mutationsplanung, reine Progress-Imports, SwiftData-Adapter, deterministische Event-Fingerprints und idempotenter Legacy-Repair.
 - `Shelf Notes/AddBook`: Klassischer Buch-Hinzufügen-Flow mit Google-Books-Suche und Formularlogik.
 - `Shelf Notes/BookImport`: Moderner Import-Flow mit Query Builder, Filter Engine, Result Views und Seed Queries.
@@ -143,7 +154,7 @@ Shelf Notes ist eine SwiftUI-App für iOS/iPadOS zur Verwaltung einer persönlic
 - `Shelf Notes/Challenges`: Challenge-Modelle, Engine, Templates, Rewards, Dashboard, Hints und Refresh-Koordination.
 - `Shelf Notes/Collections`: Collections Hub, Detail, Mutationen, Dashboard und Smart Actions.
 - `Shelf Notes/TagsView`: Tags Dashboard, Detail, Index, Suggestions, Hygiene Insights und Cleanup.
-- `Shelf Notes/Settings`: Einstellungen, Sync-Diagnose, Pro-Screen, Appearance und Library Appearance.
+- `Shelf Notes/Settings`: Einstellungen, Lesequellen-/Integrationsübersicht, Sync-Diagnose, Pro-Screen, Appearance und Library Appearance.
 - `Shelf Notes/Analytics`: Leseanalyse-Indizes und Hilfsmodelle.
 - `Shelf Notes/Shared/LiveActivity`: Gemeinsame Typen zwischen App und Live-Activity-Extension.
 - `ShelfNotesLiveActivity`: Live-Activity-Extension Target.

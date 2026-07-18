@@ -24,6 +24,7 @@ struct SettingsView: View {
     private enum SettingsRoute: String, Hashable, Codable {
         case appearance
         case challenges
+        case readingIntegrations
     }
 
     @EnvironmentObject private var pro: ProManager
@@ -106,6 +107,16 @@ struct SettingsView: View {
                     }
 
                     Text("Diese Einstellung setzt die Standardsprache für die Google-Books-Suche. Beim Öffnen der Suche ist der Sprachfilter direkt passend voreingestellt – du kannst ihn dort aber jederzeit ändern.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("Lesequellen und Integrationen") {
+                    NavigationLink(value: SettingsRoute.readingIntegrations) {
+                        Label("Lesequellen", systemImage: "books.vertical")
+                    }
+
+                    Text("Sieh, welche Anbieter aktuell nur als Begleitmodus funktionieren, welche Fähigkeiten fehlen und wie der Fortschritt erfasst wird.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -235,6 +246,8 @@ struct SettingsView: View {
                     AppearanceSettingsView()
                 case .challenges:
                     ChallengeSettingsView()
+                case .readingIntegrations:
+                    ReadingIntegrationsSettingsView()
                 }
             }
             .onAppear {
