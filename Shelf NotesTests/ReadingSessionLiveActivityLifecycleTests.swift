@@ -87,7 +87,10 @@ struct ReadingSessionLiveActivityLifecycleTests {
             liveActivitySnapshot: snapshot
         )
 
-        let data = try #require(ReadingTimerSharedCodec.encodeActive(blob))
+        guard let data = ReadingTimerSharedCodec.encodeActive(blob) else {
+            Issue.record("Expected active blob encoding to succeed")
+            return
+        }
         let decoded = try #require(ReadingTimerSharedCodec.decodeActive(from: data))
 
         #expect(decoded.schemaVersion == ReadingTimerActiveBlob.currentSchemaVersion)
@@ -191,7 +194,10 @@ struct ReadingSessionLiveActivityLifecycleTests {
             autoStopMinutes: nil
         )
 
-        let data = try #require(ReadingTimerSharedCodec.encodePendingCompletion(pending))
+        guard let data = ReadingTimerSharedCodec.encodePendingCompletion(pending) else {
+            Issue.record("Expected pending completion encoding to succeed")
+            return
+        }
         let decoded = try #require(ReadingTimerSharedCodec.decodePendingCompletion(from: data))
 
         #expect(decoded.schemaVersion == ReadingTimerPendingCompletionBlob.currentSchemaVersion)
@@ -241,8 +247,14 @@ struct ReadingSessionLiveActivityLifecycleTests {
             autoStopMinutes: nil
         )
 
-        let activeData = try #require(ReadingTimerSharedCodec.encodeActive(active))
-        let pendingData = try #require(ReadingTimerSharedCodec.encodePendingCompletion(pending))
+        guard let activeData = ReadingTimerSharedCodec.encodeActive(active) else {
+            Issue.record("Expected active blob encoding to succeed")
+            return
+        }
+        guard let pendingData = ReadingTimerSharedCodec.encodePendingCompletion(pending) else {
+            Issue.record("Expected pending completion encoding to succeed")
+            return
+        }
 
         #expect(ReadingTimerSharedCodec.decodeActive(from: activeData) != nil)
         #expect(ReadingTimerSharedCodec.decodePendingCompletion(from: pendingData) != nil)

@@ -50,7 +50,7 @@ enum ReadingShareMatchResolver {
 
     static func preparedImport(item: ReadingShareInboxItem) -> ReadingSharePreparedImport {
         let payload = item.payload
-        if let isbn = payload.isbn13Candidates.first {
+        if let isbn = isbnCandidates(for: payload).first {
             return ReadingSharePreparedImport(query: isbn, reason: "ISBN aus dem Share")
         }
 
@@ -95,7 +95,7 @@ enum ReadingShareMatchResolver {
     }
 
     private static func isbnMatch(item: ReadingShareInboxItem, books: [Book]) -> ReadingShareBookMatch? {
-        let isbns = Set(item.payload.isbn13Candidates)
+        let isbns = Set(isbnCandidates(for: item.payload))
         guard !isbns.isEmpty else { return nil }
 
         let matches = books.filter { book in
@@ -160,6 +160,16 @@ enum ReadingShareMatchResolver {
         guard let value else { return nil }
         let digits = value.filter(\.isNumber)
         return digits.count == 13 ? digits : nil
+    }
+
+    private static func isbnCandidates(for payload: ReadingSharePayload) -> [String] {
+        ReadingShareURLClassifier.normalizedISBNs(
+            payload.isbn13Candidates
+                + ReadingShareURLClassifier.isbnCandidates(in: payload.text)
+                + ReadingShareURLClassifier.isbnCandidates(in: payload.title)
+                + ReadingShareURLClassifier.isbnCandidates(in: payload.canonicalURL)
+                + ReadingShareURLClassifier.isbnCandidates(in: payload.url?.absoluteString)
+        )
     }
 
     private static func normalizedTitle(_ value: String?) -> String? {

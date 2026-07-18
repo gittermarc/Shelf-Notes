@@ -30,8 +30,8 @@ struct ReadingShareInboxCodecTests {
 
     @Test func codecRejectsFutureItemSchema() throws {
         let item = ReadingShareInboxItem(
-            schemaVersion: 99,
-            payload: ReadingSharePayload(kind: .text, provider: .other, text: "Future")
+            payload: ReadingSharePayload(kind: .text, provider: .other, text: "Future"),
+            schemaVersion: 99
         )
         let file = ReadingShareInboxFile(items: [item])
         let encoder = JSONEncoder()

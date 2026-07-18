@@ -38,7 +38,10 @@ struct ReadingTimerExternalSessionTests {
             liveActivitySnapshot: snapshot
         )
 
-        let data = try #require(ReadingTimerSharedCodec.encodeActive(blob))
+        guard let data = ReadingTimerSharedCodec.encodeActive(blob) else {
+            Issue.record("Expected active blob encoding to succeed")
+            return
+        }
         let decoded = try #require(ReadingTimerSharedCodec.decodeSupportedActive(from: data))
 
         #expect(decoded.schemaVersion == ReadingTimerActiveBlob.currentSchemaVersion)
@@ -74,7 +77,10 @@ struct ReadingTimerExternalSessionTests {
             totalValue: 100
         )
 
-        let data = try #require(ReadingTimerSharedCodec.encodePendingCompletion(pending))
+        guard let data = ReadingTimerSharedCodec.encodePendingCompletion(pending) else {
+            Issue.record("Expected pending completion encoding to succeed")
+            return
+        }
         let decoded = try #require(ReadingTimerSharedCodec.decodeSupportedPendingCompletion(from: data))
 
         #expect(decoded.schemaVersion == ReadingTimerPendingCompletionBlob.currentSchemaVersion)
@@ -329,7 +335,11 @@ struct ReadingTimerExternalSessionTests {
             origin: .timer,
             totalValue: 100
         )
-        defaults.set(try #require(ReadingTimerSharedCodec.encodeActive(active)), forKey: ReadingTimerSharedKeys.activeBlob)
+        guard let activeData = ReadingTimerSharedCodec.encodeActive(active) else {
+            Issue.record("Expected active blob encoding to succeed")
+            return
+        }
+        defaults.set(activeData, forKey: ReadingTimerSharedKeys.activeBlob)
 
         let pauseResult = LiveActivitySharedStore.togglePauseForActiveSession(
             bookID: bookID,
@@ -394,7 +404,11 @@ struct ReadingTimerExternalSessionTests {
             totalValue: 100,
             lastBackgroundedAt: now.addingTimeInterval(-60 * 60)
         )
-        shared.set(try #require(ReadingTimerSharedCodec.encodeActive(active)), forKey: ReadingTimerSharedKeys.activeBlob)
+        guard let activeData = ReadingTimerSharedCodec.encodeActive(active) else {
+            Issue.record("Expected active blob encoding to succeed")
+            return
+        }
+        shared.set(activeData, forKey: ReadingTimerSharedKeys.activeBlob)
 
         let manager = ReadingTimerManager()
 
