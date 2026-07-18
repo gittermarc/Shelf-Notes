@@ -12,7 +12,7 @@ nonisolated enum AppleBooksCompanionIntegration {
         subtitle: "Begleitmodus für externes Lesen in Apple Books.",
         systemImage: "books.vertical.fill",
         kind: .companion,
-        capabilities: .companion,
+        capabilities: .companionWithShares,
         progressMode: .manual,
         baseAvailability: .companionAvailable(detail: "Timer und Live Activity laufen in Shelf Notes. Ein gespeicherter Apple-Books-Link kann geöffnet werden."),
         manualSourceSelectable: true

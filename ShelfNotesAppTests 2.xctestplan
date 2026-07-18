@@ -1,0 +1,31 @@
+{
+  "configurations" : [
+    {
+      "id" : "9CAEE009-94B8-46B6-B35C-6E55E3D030CA",
+      "name" : "Configuration 1",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:Shelf Notes.xcodeproj",
+        "identifier" : "60A8A8062EEB1E7800BED10B",
+        "name" : "Shelf NotesTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Shelf Notes.xcodeproj",
+        "identifier" : "60A8A8102EEB1E7800BED10B",
+        "name" : "Shelf NotesUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

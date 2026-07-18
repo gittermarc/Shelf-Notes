@@ -12,7 +12,7 @@ nonisolated enum OtherEbookCompanionIntegration {
         subtitle: "Generischer Begleitmodus für dokumentierte HTTPS-Links.",
         systemImage: "apps.iphone",
         kind: .companion,
-        capabilities: .companion,
+        capabilities: .companionWithShares,
         progressMode: .manual,
         baseAvailability: .companionAvailable(detail: "Timer und Live Activity laufen in Shelf Notes. Nur geprüfte HTTPS-Links werden geöffnet."),
         manualSourceSelectable: true

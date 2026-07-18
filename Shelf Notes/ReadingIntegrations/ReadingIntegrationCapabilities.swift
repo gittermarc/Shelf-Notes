@@ -20,6 +20,10 @@ nonisolated struct ReadingIntegrationCapabilities: OptionSet, Hashable, Sendable
     static let requiresAuthorization = ReadingIntegrationCapabilities(rawValue: 1 << 5)
 
     static let companion: ReadingIntegrationCapabilities = [.canOpenReadingDestination]
+    static let companionWithShares: ReadingIntegrationCapabilities = [
+        .canOpenReadingDestination,
+        .canReceiveShares
+    ]
 
     var orderedItems: [ReadingIntegrationCapabilityItem] {
         ReadingIntegrationCapabilityItem.allCases.filter { contains($0.capability) }

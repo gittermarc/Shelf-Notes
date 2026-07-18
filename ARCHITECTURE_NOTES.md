@@ -1,20 +1,31 @@
 # ARCHITECTURE_NOTES.md
 
-Stand: E-Book-Erweiterung PR 8 vom 2026-07-18 auf Basis des aktuellen Projektarchivs. Aussagen beziehen sich auf den geprüften Codebestand. Unklare Punkte sind als **UNKNOWN** markiert.
+Stand: E-Book-Erweiterung PR 9 vom 2026-07-18 auf Basis des aktuellen Projektarchivs. Aussagen beziehen sich auf den geprüften Codebestand. Unklare Punkte sind als **UNKNOWN** markiert.
 
 ## Scope und Methode
+
+## PR 9 Architekturergänzung
+
+- `ShelfNotesShareExtension` ist ein neues, CloudKit-freies Share-Extension-Target. Es besitzt eigene Entitlements, eine eigene `Info.plist` mit Share-Extension-Point und eingeschränkten Activation Rules für URL- und Textinhalte.
+- Die Extension schreibt nur in eine versionierte App-Group-Inbox. Sie importiert keine SwiftData-Modelle, öffnet keine Netzwerkverbindungen, speichert keine Credentials und startet keine Provider-Autorisierung.
+- `Shelf Notes/Shared/Sharing` enthält die gemeinsam genutzten DTOs und Pure-Funktionen: `ReadingSharePayload`, `ReadingSharePayloadKind`, `ReadingShareInboxItem`, `ReadingShareInboxCodec`, `ReadingShareInboxStore`, `ReadingSharePayloadParser`, `ReadingShareURLClassifier` und Textnormalisierung.
+- Die URL-Sicherheitsgrenze für Shares liegt zentral in `ReadingShareURLClassifier`: nur HTTPS mit öffentlichen Hosts wird akzeptiert. Apple Books, Kindle/Amazon, Google Books und generische HTTPS-Buchlinks werden klassifiziert; private Schemes, localhost und private IPs werden abgelehnt.
+- Die Haupt-App konsumiert die Inbox über `ReadingShareInboxProcessor` und `ReadingShareInboxView`. Einträge werden erst nach erfolgreichem Speichern oder bewusstem Verwerfen gelöscht. Beschädigte Inbox-Dateien werden nicht blind gelöscht, sondern können in eine Recovery-Datei verschoben werden.
+- Matching ist bewusst konservativ: bestehende `BookExternalReference` und eindeutige ISBN-Treffer sind sichere Matches; Titelkandidaten bleiben unsicher und verlangen Nutzerbestätigung. Kanonische URLs werden nur nach Bestätigung als `BookExternalReference` ergänzt.
+- Shares erzeugen ausschließlich `ReadingAnnotation` mit `origin == .shareExtension`. Sie erzeugen keine `ReadingSession`, keine Lesezeit, keinen Lesetag, keinen Streak und keinen Provider-Sync. Unterschiedliche Highlights desselben Buchs bleiben erhalten; derselbe Inbox-Eintrag wird über Inhaltsfingerprint und Annotation-Dedup-Key nicht doppelt gespeichert.
+- PR 9 erweitert die Integrations-Capabilities ehrlich um `canReceiveShares` für Apple Books, Kindle, Google Books und Other. Google Books bleibt trotzdem nicht verbunden und bietet weiterhin kein OAuth oder Kontosync an.
 
 ## PR 8 Architekturergänzung
 
 - Die neue Integrationsschicht liegt unter `Shelf Notes/ReadingIntegrations`. Sie trennt Provider-Beschreibung, Fähigkeiten, Verfügbarkeit, Präsentation, Launch-Policy und Companion-Koordination in kleine Dateien.
-- `ReadingIntegrationCapabilities` ist ein OptionSet. Die Architektur setzt nicht voraus, dass alle Anbieter dieselben Fähigkeiten besitzen. Apple Books, Kindle und Other haben aktuell nur `canOpenReadingDestination`; Google Books und Local File erhalten keine nicht implementierten Fähigkeiten.
+- `ReadingIntegrationCapabilities` ist ein OptionSet. Die Architektur setzt nicht voraus, dass alle Anbieter dieselben Fähigkeiten besitzen. Apple Books, Kindle und Other haben aktuell `canOpenReadingDestination` und `canReceiveShares`; Google Books kann Shares entgegennehmen, bleibt aber ohne Kontoverbindung, Sync oder Launch-Fähigkeit. Local File erhält keine nicht implementierten Fähigkeiten.
 - `ReadingIntegrationRegistry.default` ist die zentrale Quelle für Provider-Konfigurationen. SwiftUI liest daraus Availability- und Capability-State, statt Provider-Fähigkeiten in Views zu duplizieren.
 - `ReadingProviderLaunchPolicy` ist der einzige Gatekeeper für externe URLs. Die Policy erlaubt nur HTTPS, prüft öffentliche Hosts und validiert providerbezogene Host-/Pfadfamilien. Ungültige Links werden nicht geöffnet.
 - `ReadingIntegrationCoordinator` bildet den Begleitfluss: Timer und Live Activity starten zuerst über den vorhandenen Timer-Pfad; danach wird ein validierter Link geöffnet oder eine nicht-fehlerhafte Anleitung für den manuellen Wechsel in die Reader-App zurückgegeben. Blockierte Links werden als Fehler an die UI gemeldet.
 - `BookExternalReference` bleibt der einzige Speicherort für Provider-Identifier und kanonische URLs. PR 8 ergänzt Mapping auf `ReadingProviderLaunchReference` und `BookExternalReferenceFactory` für Google-Books-Importe, aber keine neuen Provider-Felder am `Book`.
 - Im Buchdetail rendert `ReadingAttemptSourceControl` eine kompakte Quelle für den aktiven Attempt. Änderungen werden über `ReadingSourceAttemptMutation` nur zugelassen, solange der Attempt keine Sessions oder Progress Events hat und für das Buch kein Timer läuft.
-- Die Einstellungen enthalten `ReadingIntegrationsSettingsView`. Sie zeigt Verfügbarkeit, Fortschrittsmodus und aktuell implementierte Fähigkeiten, aber keine Verbunden-Anzeige. OAuth, Kontosync, Share Extension und lokaler Reader bleiben explizit außerhalb dieses PRs.
-- Tests decken Registry/Capabilities, Verfügbarkeiten, Launch-Policy, URL-Ablehnung, Presentation-State, Companion-Start, fehlende Leselinks, Attempt-Source-Wechsel und unveränderte physische Timer-UX ab.
+- Die Einstellungen enthalten `ReadingIntegrationsSettingsView`. Sie zeigt Verfügbarkeit, Fortschrittsmodus und aktuell implementierte Fähigkeiten, aber keine Verbunden-Anzeige. OAuth, Kontosync und lokaler Reader bleiben weiterhin außerhalb des aktuellen Stands.
+- Tests decken Registry/Capabilities, Verfügbarkeiten, Launch-Policy, URL-Ablehnung, Presentation-State, Companion-Start, fehlende Leselinks, Attempt-Source-Wechsel, unveränderte physische Timer-UX und Share-Inbox-Verarbeitung ab.
 
 ## PR 7 Architekturergänzung
 
@@ -1127,6 +1138,23 @@ Empfehlung:
 - Thumbnail-Größe hart begrenzen und testen.
 - Full-res als bewusst lokales Feature dokumentieren.
 - Cover-Refresh nur außerhalb des Scrollpfads persistieren.
+
+### Share Extension
+
+- Share-Capture läuft über `ShelfNotesShareExtension` und den App-Group-Pfad `ReadingShareInbox/inbox-v1.json`.
+- Das Target teilt nur SwiftData-freie Share-DTOs mit der App. Alle SwiftData-Schreibvorgänge bleiben in der Haupt-App.
+- `shelfnotes://share-inbox` dient als Rücksprung in die App; zusätzlich liest `RootView` die Inbox beim Aktivwerden.
+
+Risiken:
+
+- Host-Apps liefern Shares unterschiedlich als URL, Plain Text oder Webpage. Der Parser muss defensiv bleiben und darf keine privaten URL-Schemes akzeptieren.
+- Mehrfaches Teilen desselben Inhalts und App-Neustarts dürfen keine doppelten Annotationen erzeugen.
+- Unsichere Titelmatches dürfen nicht automatisch zusammengeführt werden.
+
+Empfehlung:
+
+- Reale Shares aus Apple Books, Kindle, Google Books, Safari und generischen Readern manuell testen.
+- Beschädigte App-Group-Dateien und parallele Shares auf Gerät prüfen.
 
 ### Live Activity
 

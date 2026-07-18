@@ -12,7 +12,7 @@ nonisolated enum KindleCompanionIntegration {
         subtitle: "Begleitmodus für externes Lesen in Kindle.",
         systemImage: "rectangle.portrait.fill",
         kind: .companion,
-        capabilities: .companion,
+        capabilities: .companionWithShares,
         progressMode: .manual,
         baseAvailability: .companionAvailable(detail: "Timer und Live Activity laufen in Shelf Notes. Ein gespeicherter Amazon- oder Kindle-Weblink kann geöffnet werden."),
         manualSourceSelectable: true

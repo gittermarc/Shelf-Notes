@@ -10,11 +10,11 @@ struct ReadingIntegrationPresentationTests {
 
         #expect(apple.availabilityTitle == "Begleitmodus")
         #expect(apple.progressModeTitle == "Manuell erfasst")
-        #expect(apple.capabilityTitles == ["Leselink öffnen"])
+        #expect(apple.capabilityTitles == ["Leselink öffnen", "Shares empfangen"])
         #expect(!apple.showsConnectedBadge)
 
         #expect(google.availabilityTitle == "Nicht verbunden")
-        #expect(google.capabilityTitles.isEmpty)
+        #expect(google.capabilityTitles == ["Shares empfangen"])
         #expect(!google.showsConnectedBadge)
 
         #expect(local.availabilityTitle == "Folgt später")

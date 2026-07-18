@@ -11,6 +11,7 @@ nonisolated enum ShelfNotesDeepLinkDestination: Equatable, Sendable {
     case library
     case book(UUID)
     case progress
+    case shareInbox
 }
 
 nonisolated struct ShelfNotesDeepLink: Equatable, Sendable {
@@ -20,6 +21,7 @@ nonisolated struct ShelfNotesDeepLink: Equatable, Sendable {
     static let libraryHost = "library"
     static let bookHost = "book"
     static let progressHost = "progress"
+    static let shareInboxHost = "share-inbox"
 
     static func route(from url: URL) -> ShelfNotesDeepLink? {
         guard url.scheme == scheme else { return nil }
@@ -31,6 +33,9 @@ nonisolated struct ShelfNotesDeepLink: Equatable, Sendable {
 
         case progressHost:
             return ShelfNotesDeepLink(destination: .progress)
+
+        case shareInboxHost:
+            return ShelfNotesDeepLink(destination: .shareInbox)
 
         case bookHost:
             guard let bookID = bookID(from: url) else {

@@ -13,6 +13,11 @@ struct ShelfNotesDeepLinkTests {
         #expect(route.destination == .progress)
     }
 
+    @Test func parsesShareInboxDeepLink() throws {
+        let route = try #require(ShelfNotesDeepLink.route(from: url("shelfnotes://share-inbox")))
+        #expect(route.destination == .shareInbox)
+    }
+
     @Test func parsesBookDeepLinkWithID() throws {
         let id = fixedID(42)
         let route = try #require(ShelfNotesDeepLink.route(from: url("shelfnotes://book?id=\(id.uuidString)")))

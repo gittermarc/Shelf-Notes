@@ -23,6 +23,8 @@ struct RootView: View {
     @State private var showingCSVFirstRun = false
     @State private var lastKnownBookCount: Int? = nil
     @State private var liveActivityRouteBook: Book? = nil
+    @State private var pendingShareInboxItems: [ReadingShareInboxItem] = []
+    @State private var showingShareInbox = false
 
     // MARK: - Appearance
     @AppStorage(AppearanceStorageKey.colorScheme) private var colorSchemeRaw: String = AppColorSchemeOption.system.rawValue
@@ -133,6 +135,11 @@ struct RootView: View {
                     .environmentObject(tagsIndexStore)
             }
         }
+        .sheet(isPresented: $showingShareInbox, onDismiss: { refreshShareInbox() }) {
+            ReadingShareInboxView(items: pendingShareInboxItems) {
+                refreshShareInbox()
+            }
+        }
     }
 
     private var resolvedColorSchemeOption: AppColorSchemeOption {
@@ -189,6 +196,7 @@ struct RootView: View {
 
         if state.shouldRefreshLibraryCaches {
             refreshBookCountAndTagsIndex(shouldOfferCSVImport: false)
+            refreshShareInbox()
             LibraryWidgetSnapshotSyncService.shared.scheduleRefresh(
                 modelContext: modelContext,
                 reason: .appBecameActive
@@ -240,6 +248,10 @@ struct RootView: View {
         case .progress:
             selectedTab = 1
 
+        case .shareInbox:
+            selectedTab = 0
+            refreshShareInbox(forcePresentation: true)
+
         case .book(let bookID):
             selectedTab = 0
             guard timer.pendingCompletion == nil else {
@@ -256,6 +268,7 @@ struct RootView: View {
     private func runStartupMaintenance() async {
         await AppStartupMaintenanceService.migrateReadingStatusIfNeeded(modelContext: modelContext)
         refreshBookCountAndTagsIndex(shouldOfferCSVImport: true)
+        refreshShareInbox()
         LibraryWidgetSnapshotSyncService.shared.scheduleRefresh(
             modelContext: modelContext,
             reason: .startup,
@@ -271,6 +284,13 @@ struct RootView: View {
 
         guard shouldOfferCSVImport else { return }
         offerCSVImportOnFirstRunIfNeeded(bookCount: bookCount)
+    }
+
+    private func refreshShareInbox(forcePresentation: Bool = false) {
+        pendingShareInboxItems = ReadingShareInboxProcessor.pendingItems()
+        if forcePresentation || !pendingShareInboxItems.isEmpty {
+            showingShareInbox = !pendingShareInboxItems.isEmpty
+        }
     }
 
     private func offerCSVImportOnFirstRunIfNeeded(bookCount: Int?) {

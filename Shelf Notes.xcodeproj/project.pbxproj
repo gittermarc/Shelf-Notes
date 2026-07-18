@@ -12,6 +12,7 @@
 		60CF7A4F2F4F22A1000F12A7 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 60CF7A4E2F4F22A1000F12A7 /* WidgetKit.framework */; };
 		60CF7A512F4F22A1000F12A7 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 60CF7A502F4F22A1000F12A7 /* SwiftUI.framework */; };
 		60CF7A622F4F22A3000F12A7 /* ShelfNotesLiveActivityExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 60CF7A4C2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		60D0000C2F5000000000000C /* ShelfNotesShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 60D000022F50000000000002 /* ShelfNotesShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -36,6 +37,13 @@
 			remoteGlobalIDString = 60CF7A4B2F4F22A1000F12A7;
 			remoteInfo = ShelfNotesLiveActivityExtension;
 		};
+		60D0000D2F5000000000000D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 60A8A7EE2EEB1E7600BED10B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 60D000012F50000000000001;
+			remoteInfo = ShelfNotesShareExtension;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -46,6 +54,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				60CF7A622F4F22A3000F12A7 /* ShelfNotesLiveActivityExtension.appex in Embed Foundation Extensions */,
+				60D0000C2F5000000000000C /* ShelfNotesShareExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -62,6 +71,8 @@
 		60CF7A4E2F4F22A1000F12A7 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		60CF7A502F4F22A1000F12A7 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		60CF7A7B2F4F373D000F12A7 /* ShelfNotesLiveActivityExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShelfNotesLiveActivityExtension.entitlements; sourceTree = "<group>"; };
+		60D000022F50000000000002 /* ShelfNotesShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShelfNotesShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		60D0000F2F5000000000000F /* ShelfNotesShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShelfNotesShareExtension.entitlements; sourceTree = "<group>"; };
 		60F3960C2FC0520900FD171D /* Shelf NotesUITests */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Shelf NotesUITests"; sourceTree = "<group>"; };
 		60F3960D2FC0520900FD171D /* Shelf NotesTests */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Shelf NotesTests"; sourceTree = "<group>"; };
 		60F397F22FC0584100FD171D /* ShelfNotesAppTests.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = ShelfNotesAppTests.xctestplan; sourceTree = "<group>"; };
@@ -105,6 +116,28 @@
 			);
 			target = 60A8A7F52EEB1E7600BED10B /* Shelf Notes */;
 		};
+		60D0000A2F5000000000000A /* Exceptions for "ShelfNotesShareExtension" folder in "ShelfNotesShareExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 60D000012F50000000000001 /* ShelfNotesShareExtension */;
+		};
+		60D0000B2F5000000000000B /* Exceptions for "Shelf Notes" folder in "ShelfNotesShareExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				ReadingSources/ReadingProvider.swift,
+				Shared/Sharing/ReadingShareInboxCodec.swift,
+				Shared/Sharing/ReadingShareInboxItem.swift,
+				Shared/Sharing/ReadingShareInboxStore.swift,
+				Shared/Sharing/ReadingSharePayload.swift,
+				Shared/Sharing/ReadingSharePayloadKind.swift,
+				Shared/Sharing/ReadingSharePayloadParser.swift,
+				Shared/Sharing/ReadingShareTextNormalizer.swift,
+				Shared/Sharing/ReadingShareURLClassifier.swift,
+			);
+			target = 60D000012F50000000000001 /* ShelfNotesShareExtension */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -113,6 +146,7 @@
 			exceptions = (
 				60A8A8192EEB1E7800BED10B /* Exceptions for "Shelf Notes" folder in "Shelf Notes" target */,
 				60CF7A702F4F276A000F12A7 /* Exceptions for "Shelf Notes" folder in "ShelfNotesLiveActivityExtension" target */,
+				60D0000B2F5000000000000B /* Exceptions for "Shelf Notes" folder in "ShelfNotesShareExtension" target */,
 			);
 			path = "Shelf Notes";
 			sourceTree = "<group>";
@@ -134,6 +168,14 @@
 				60CF7A662F4F22A3000F12A7 /* Exceptions for "ShelfNotesLiveActivity" folder in "ShelfNotesLiveActivityExtension" target */,
 			);
 			path = ShelfNotesLiveActivity;
+			sourceTree = "<group>";
+		};
+		60D000032F50000000000003 /* ShelfNotesShareExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				60D0000A2F5000000000000A /* Exceptions for "ShelfNotesShareExtension" folder in "ShelfNotesShareExtension" target */,
+			);
+			path = ShelfNotesShareExtension;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -169,6 +211,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		60D000052F50000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -181,10 +230,12 @@
 				60F3960D2FC0520900FD171D /* Shelf NotesTests */,
 				60F3960C2FC0520900FD171D /* Shelf NotesUITests */,
 				60CF7A7B2F4F373D000F12A7 /* ShelfNotesLiveActivityExtension.entitlements */,
+				60D0000F2F5000000000000F /* ShelfNotesShareExtension.entitlements */,
 				60A8A7F82EEB1E7600BED10B /* Shelf Notes */,
 				60A8A80A2EEB1E7800BED10B /* Shelf NotesTests */,
 				60A8A8142EEB1E7800BED10B /* Shelf NotesUITests */,
 				60CF7A522F4F22A1000F12A7 /* ShelfNotesLiveActivity */,
+				60D000032F50000000000003 /* ShelfNotesShareExtension */,
 				60CF7A4D2F4F22A1000F12A7 /* Frameworks */,
 				60A8A7F72EEB1E7600BED10B /* Products */,
 			);
@@ -197,6 +248,7 @@
 				60A8A8072EEB1E7800BED10B /* Shelf NotesTests.xctest */,
 				60A8A8112EEB1E7800BED10B /* Shelf NotesUITests.xctest */,
 				60CF7A4C2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension.appex */,
+				60D000022F50000000000002 /* ShelfNotesShareExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -226,6 +278,7 @@
 			);
 			dependencies = (
 				60CF7A612F4F22A3000F12A7 /* PBXTargetDependency */,
+				60D0000E2F5000000000000E /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				60A8A7F82EEB1E7600BED10B /* Shelf Notes */,
@@ -305,6 +358,28 @@
 			productReference = 60CF7A4C2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		60D000012F50000000000001 /* ShelfNotesShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 60D000072F50000000000007 /* Build configuration list for PBXNativeTarget "ShelfNotesShareExtension" */;
+			buildPhases = (
+				60D000042F50000000000004 /* Sources */,
+				60D000052F50000000000005 /* Frameworks */,
+				60D000062F50000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				60D000032F50000000000003 /* ShelfNotesShareExtension */,
+			);
+			name = ShelfNotesShareExtension;
+			packageProductDependencies = (
+			);
+			productName = ShelfNotesShareExtension;
+			productReference = 60D000022F50000000000002 /* ShelfNotesShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -329,6 +404,9 @@
 					60CF7A4B2F4F22A1000F12A7 = {
 						CreatedOnToolsVersion = 26.2;
 					};
+					60D000012F50000000000001 = {
+						CreatedOnToolsVersion = 26.2;
+					};
 				};
 			};
 			buildConfigurationList = 60A8A7F12EEB1E7600BED10B /* Build configuration list for PBXProject "Shelf Notes" */;
@@ -349,6 +427,7 @@
 				60A8A8062EEB1E7800BED10B /* Shelf NotesTests */,
 				60A8A8102EEB1E7800BED10B /* Shelf NotesUITests */,
 				60CF7A4B2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension */,
+				60D000012F50000000000001 /* ShelfNotesShareExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -378,6 +457,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		60CF7A4A2F4F22A1000F12A7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		60D000062F50000000000006 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -415,6 +501,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		60D000042F50000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -432,6 +525,11 @@
 			isa = PBXTargetDependency;
 			target = 60CF7A4B2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension */;
 			targetProxy = 60CF7A602F4F22A3000F12A7 /* PBXContainerItemProxy */;
+		};
+		60D0000E2F5000000000000E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 60D000012F50000000000001 /* ShelfNotesShareExtension */;
+			targetProxy = 60D0000D2F5000000000000D /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -779,6 +877,68 @@
 			};
 			name = Release;
 		};
+		60D000082F50000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ShelfNotesShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = HPJKAPZ8A3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShelfNotesShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ShelfNotesShareExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.08;
+				PRODUCT_BUNDLE_IDENTIFIER = "de.marcfechner.Shelf-Notes.ShelfNotesShareExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		60D000092F50000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ShelfNotesShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = HPJKAPZ8A3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShelfNotesShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ShelfNotesShareExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.08;
+				PRODUCT_BUNDLE_IDENTIFIER = "de.marcfechner.Shelf-Notes.ShelfNotesShareExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -823,6 +983,15 @@
 			buildConfigurations = (
 				60CF7A642F4F22A3000F12A7 /* Debug */,
 				60CF7A652F4F22A3000F12A7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		60D000072F50000000000007 /* Build configuration list for PBXNativeTarget "ShelfNotesShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				60D000082F50000000000008 /* Debug */,
+				60D000092F50000000000009 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

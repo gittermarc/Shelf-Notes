@@ -12,7 +12,7 @@ nonisolated enum GoogleBooksFutureIntegration {
         subtitle: "Noch keine Kontoverbindung und keine Fortschrittssynchronisierung.",
         systemImage: "book.pages.fill",
         kind: .futureSync,
-        capabilities: [],
+        capabilities: [.canReceiveShares],
         progressMode: .manual,
         baseAvailability: .notConnected(detail: "Google Books bleibt in diesem PR eine manuelle Quelle. OAuth und Sync folgen erst in einer späteren Stufe."),
         manualSourceSelectable: true
