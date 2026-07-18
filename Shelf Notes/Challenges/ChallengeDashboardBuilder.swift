@@ -215,7 +215,7 @@ enum ChallengeDashboardBuilder {
         case .shortSessions:
             return "Noch \(item.remainingValue) kurze Session(s). 5 bis 25 Minuten zählen."
         case .booksProgressed:
-            return "Noch \(item.remainingValue) Buch/Bücher mit Seitenfortschritt. Ein Eintrag genügt."
+            return "Noch \(item.remainingValue) Buch/Bücher mit echtem Fortschritt. Ein Eintrag genügt."
         case .sessionNotes:
             return "Noch \(item.remainingValue) Session-Notiz(en). Ein Satz reicht."
         case .finishedBooksRated:
@@ -234,8 +234,10 @@ enum ChallengeDashboardBuilder {
             return "Session starten oder Minuten nachtragen"
         case .readingDays, .sessions, .shortSessions:
             return "Kurze Session loggen"
-        case .pagesRead, .booksProgressed:
+        case .pagesRead:
             return "Seitenfortschritt eintragen"
+        case .booksProgressed:
+            return "Fortschritt aktualisieren"
         case .booksFinished:
             return "Buch abschließen"
         case .sessionNotes:
@@ -321,7 +323,7 @@ enum ChallengeDashboardBuilder {
         case .shortSessions:
             return "Noch \(remaining) kurze Session(s). 5 bis 25 Minuten reichen."
         case .booksProgressed:
-            return "Noch \(remaining) Buch/Bücher mit Seitenfortschritt. Ein Eintrag genügt."
+            return "Noch \(remaining) Buch/Bücher mit echtem Fortschritt. Ein Eintrag genügt."
         case .sessionNotes:
             return "Noch \(remaining) Session-Notiz(en). Ein kurzer Gedanke reicht."
         case .finishedBooksRated:

@@ -587,7 +587,47 @@ Risiken und Tradeoffs:
 - `ReadingSessionAggregates.swift` bleibt ein wachsender Hotspot. Die neue Kompatibilitätsschicht reduziert fachliche Duplikation, der Builder sollte später dennoch in Records, Bucketing und Signaturbildung aufgeteilt werden.
 - Seitenstatistiken sind bei gemischten Bibliotheken bewusst partielle Kennzahlen. UI-Texte kennzeichnen dies dezent; eine globale Prozentleistung wäre fachlich irreführend.
 - Locator- oder reine Provider-Metadatenänderungen invalidieren globale Statistiken absichtlich nicht. Ändert ein späterer Provider daraus abgeleitete Metriksemantik, muss die jeweilige Signatur gezielt erweitert werden.
-- Challenge Engine, Widgets und Live Activity verwenden in diesem PR weiterhin ihre bestehenden Contracts. Ihre Mixed-Media-Anpassung bleibt ein separater Schritt.
+- Challenge Engine und Bibliothekswidget sind seit PR 6 Mixed-Media-fähig. Die Reading-Session-Live-Activity verwendet weiterhin ihren bewusst seitenbasierten Legacy-Contract und bleibt ein separater Ausbau.
+
+### Stufe-1-Abschluss: Challenges und Widget-Snapshots
+
+Betroffene Dateien:
+
+- `Shelf Notes/ReadingMetrics/ReadingProgressIncreaseDetector.swift`
+- `Shelf Notes/Challenges/ChallengeEngine+Snapshot.swift`
+- `Shelf Notes/Challenges/ChallengeEngine+Compute.swift`
+- `Shelf Notes/Challenges/ChallengeSessionImpactBuilder.swift`
+- `Shelf Notes/Challenges/ChallengeActionHintBuilder.swift`
+- `Shelf Notes/Challenges/ChallengeRefreshPipeline.swift`
+- `Shelf Notes/Widgets/LibraryWidgetSnapshotInputMapper.swift`
+- `Shelf Notes/Widgets/LibraryWidgetSnapshotBuilder.swift`
+- `Shelf Notes/Shared/Widgets/LibraryWidgetSnapshot.swift`
+- `Shelf Notes/Shared/Widgets/LibraryWidgetSnapshotPresentation.swift`
+- `ShelfNotesLiveActivity/LibraryOverviewWidget/*`
+
+Architekturentscheidung:
+
+- Challenge-Snapshots sind weiterhin kleine `Sendable`-Werte. SwiftData-Sessions und reine Provider-Progress-Events werden am Main Actor eingelesen; `ChallengeEngine+Compute` arbeitet danach SwiftData-frei.
+- Sessionmetriken greifen auf `ReadingSessionMetricMapper` zurück. Dadurch zählen echte Sessions medienübergreifend für Zeit, Sessionanzahl und Lesetage, während `providerImport` diese Metriken nicht beeinflusst.
+- `booksProgressed` basiert nicht auf Provider-Namen. `ReadingProgressIncreaseDetector` vergleicht je Progress Unit nur belastbare Werte: absolute Seiten, normalisierte Prozentstände und ausschließlich explizit normalisierte Locator-Werte.
+- Provider-Events werden für Challenge-Zwecke pro Book-/Attempt-Scope und stabilem Deduplizierungsschlüssel kanonisiert. Derselbe externe Sync-Stand kann ein Buch im Zeitraum nicht mehrfach zählen; gleiche Schlüssel verschiedener Bücher werden nicht zusammengeführt.
+- Das Widget-DTO wurde ausschließlich um optionale Source-/Progress-Felder ergänzt. Dadurch bleiben bestehende JSON-Payloads kompatibel und der Payload-Zuwachs begrenzt.
+- `pageCount`, `pagesRead` und `remainingPages` werden im Widget nur bei `.pages` geschrieben. Prozent und Locator verwenden `progressFraction`, optional `progressNativeValue` beziehungsweise `progressLocator`.
+- App und Widget Extension besitzen weiterhin getrennte DTO-Mirror. Änderungen an optionalen Feldern müssen deshalb in beiden Targets parallel erfolgen und über Legacy-Decoding-Tests abgesichert bleiben.
+
+Pages-Read-Audit:
+
+- Bewusst seitenbasiert: `ReadingProgressEngine`, `ReadingProgressMutationPlanner`, Legacy-Repair, Session-Logging-Kompatibilitätsaufrufe und die aktuelle Reading-Session-Live-Activity.
+- Zentral abgesichert: Analytics, Statistics, Goals, Progress Hub, Challenges und Widget-Input verwenden `ReadingMetricEligibility`, `ReadingSessionMetricMapper` oder eine explizite `progressUnit == .pages`-Schranke.
+- Reine Presentation-/DTO-Felder namens `pagesRead` bleiben aus Rückwärtskompatibilität bestehen, werden für Prozent, Locator und `none` jedoch nicht befüllt.
+- CSV bleibt absichtlich unverändert und exportiert weder Source-Metadaten noch Progress Events.
+
+Risiken und Tradeoffs:
+
+- Für einen echten Fortschrittsanstieg durch Provider-Importe benötigt die Challenge Engine den vorherigen belastbaren Stand desselben Attempts. Der Snapshot lädt deshalb Provider-Events vor dem Periodenende und kann bei sehr großen Importhistorien später einen begrenzten Index beziehungsweise eine Baseline-Projektion benötigen.
+- `booksProgressed` ist eine Distinct-Book-Metrik. Mehrere echte Anstiege desselben Buchs innerhalb eines Challenge-Zeitraums erhöhen den Wert bewusst nur einmal.
+- Die Widget-Schema-Version bleibt bei `1`, weil nur optionale Felder ergänzt wurden. Eine spätere verpflichtende Source-Struktur benötigt eine neue Schema-Version und explizite Migration.
+- Die Reading-Session-Live-Activity ist noch nicht formatneutral. E-Book-Sessions dürfen dort keine erfundenen Seiten erzeugen; eine vollwertige Prozent-/Locator-Präsentation folgt separat.
 
 ### Secrets und Konfiguration
 

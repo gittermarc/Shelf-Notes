@@ -209,7 +209,8 @@ private extension LibraryWidgetSnapshot {
             currentReadingStreakDays: currentReadingStreakDays,
             recentShelfItems: recentShelfItems.map { item in
                 item.withCoverAvailability(availableBookIDs.contains(item.id))
-            }
+            },
+            privacy: privacy
         )
     }
 }
@@ -226,6 +227,11 @@ private extension LibraryWidgetBookSnapshot {
             pagesRead: pagesRead,
             remainingPages: remainingPages,
             progressFraction: progressFraction,
+            progressNativeValue: progressNativeValue,
+            progressLocator: progressLocator,
+            mediumRawValue: mediumRawValue,
+            providerRawValue: providerRawValue,
+            progressUnitRawValue: progressUnitRawValue,
             referenceDate: referenceDate,
             hasCover: hasCover && isAvailable,
             coverRevision: hasCover && isAvailable ? coverRevision : nil

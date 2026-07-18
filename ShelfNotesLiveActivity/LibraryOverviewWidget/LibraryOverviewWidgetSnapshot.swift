@@ -29,6 +29,11 @@ struct LibraryOverviewBookSnapshot: Codable, Hashable, Identifiable, Sendable {
     var pagesRead: Int?
     var remainingPages: Int?
     var progressFraction: Double?
+    var progressNativeValue: Double? = nil
+    var progressLocator: String? = nil
+    var mediumRawValue: String? = nil
+    var providerRawValue: String? = nil
+    var progressUnitRawValue: String? = nil
     var referenceDate: Date?
     var hasCover: Bool
     var coverRevision: Int?
@@ -130,6 +135,10 @@ struct LibraryOverviewWidgetSnapshot: Codable, Hashable, Sendable {
                 pagesRead: 420,
                 remainingPages: 860,
                 progressFraction: 0.328,
+                progressNativeValue: 420,
+                mediumRawValue: "physical",
+                providerRawValue: "none",
+                progressUnitRawValue: "pages",
                 referenceDate: generatedAt,
                 hasCover: false,
                 coverRevision: nil

@@ -226,7 +226,15 @@ private nonisolated extension ChallengeRefreshPipeline {
                 durationSeconds: sessionSnapshot.durationSeconds,
                 pagesRead: sessionSnapshot.pagesRead,
                 didMarkBookFinished: payload.didMarkBookFinished,
-                hasNote: sessionSnapshot.hasNote
+                hasNote: sessionSnapshot.hasNote,
+                progressUnit: sessionSnapshot.progressUnit,
+                origin: sessionSnapshot.origin,
+                startValue: sessionSnapshot.startValue,
+                endValue: sessionSnapshot.endValue,
+                startNormalizedProgress: sessionSnapshot.startNormalizedProgress,
+                endNormalizedProgress: sessionSnapshot.endNormalizedProgress,
+                startLocator: sessionSnapshot.startLocator,
+                endLocator: sessionSnapshot.endLocator
             )
             return ChallengeSessionImpactBuilder.makeSavedSessionImpact(
                 challengeSnapshots: progressSnapshots,

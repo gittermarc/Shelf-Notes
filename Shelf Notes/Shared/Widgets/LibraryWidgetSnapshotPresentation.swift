@@ -128,21 +128,74 @@ nonisolated struct LibraryWidgetSnapshotPresentation: Hashable, Sendable {
     }
 
     private static func bookDetailText(for book: LibraryWidgetBookSnapshot) -> String {
+        let source = sourceTitle(for: book)
         if let author = book.author, !author.isEmpty {
+            if let source {
+                return "\(author) · \(source)"
+            }
             return author
         }
-        return "Aktuelles Buch"
+        return source ?? "Aktuelles Buch"
     }
 
     private static func progressText(for book: LibraryWidgetBookSnapshot) -> String? {
-        guard let pagesRead = book.pagesRead, let pageCount = book.pageCount else {
+        switch progressUnit(for: book) {
+        case .pages:
+            guard let pagesRead = book.pagesRead, let pageCount = book.pageCount else {
+                return nil
+            }
+
+            if let remainingPages = book.remainingPages {
+                return "\(pagesRead) von \(pageCount) Seiten · noch \(remainingPages)"
+            }
+
+            return "\(pagesRead) von \(pageCount) Seiten"
+        case .percentage:
+            guard let fraction = book.progressFraction else { return "Fortschritt manuell erfassen" }
+            return "Lesestand \(percentText(fraction)) · manuell"
+        case .locator:
+            if let locator = book.progressLocator, let fraction = book.progressFraction {
+                return "\(locator) · \(percentText(fraction))"
+            }
+            if let locator = book.progressLocator {
+                return "Leseposition: \(locator)"
+            }
+            if book.providerRawValue == ReadingProvider.localFile.rawValue {
+                return "Fortschritt noch nicht automatisch verfügbar"
+            }
+            return "Leseposition vorhanden, Prozent nicht verfügbar"
+        case .none:
             return nil
         }
+    }
 
-        if let remainingPages = book.remainingPages {
-            return "\(pagesRead) von \(pageCount) Seiten · noch \(remainingPages)"
+    private static func progressUnit(for book: LibraryWidgetBookSnapshot) -> ReadingProgressUnit {
+        if let raw = book.progressUnitRawValue {
+            return ReadingProgressUnit.fromPersisted(raw)
         }
+        return book.pagesRead != nil || book.pageCount != nil ? .pages : .none
+    }
 
-        return "\(pagesRead) von \(pageCount) Seiten"
+    private static func sourceTitle(for book: LibraryWidgetBookSnapshot) -> String? {
+        let medium = ReadingMedium.fromPersisted(book.mediumRawValue ?? ReadingMedium.physical.rawValue)
+        let provider = ReadingProvider.fromPersisted(book.providerRawValue ?? ReadingProvider.none.rawValue)
+        guard medium == .ebook else { return nil }
+
+        switch provider {
+        case .appleBooks:
+            return "Apple Books"
+        case .kindle:
+            return "Kindle"
+        case .googleBooks:
+            return "Google Books"
+        case .localFile:
+            return "EPUB/PDF"
+        case .other, .none:
+            return "E-Book"
+        }
+    }
+
+    private static func percentText(_ fraction: Double) -> String {
+        "\(Int((min(1, max(0, fraction)) * 100).rounded())) %"
     }
 }

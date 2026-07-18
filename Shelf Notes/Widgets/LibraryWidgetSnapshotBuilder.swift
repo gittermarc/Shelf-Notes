@@ -47,6 +47,12 @@ nonisolated struct LibraryWidgetBookRecord: Hashable, Sendable {
     var readTo: Date?
     var pageCount: Int?
     var pagesRead: Int
+    var progressFraction: Double?
+    var progressNativeValue: Double?
+    var progressLocator: String?
+    var mediumRawValue: String
+    var providerRawValue: String
+    var progressUnitRawValue: String
     var lastSessionAt: Date?
     var hasCover: Bool
     var coverRevision: Int?
@@ -62,6 +68,12 @@ nonisolated struct LibraryWidgetBookRecord: Hashable, Sendable {
         readTo: Date? = nil,
         pageCount: Int? = nil,
         pagesRead: Int = 0,
+        progressFraction: Double? = nil,
+        progressNativeValue: Double? = nil,
+        progressLocator: String? = nil,
+        mediumRawValue: String = ReadingMedium.physical.rawValue,
+        providerRawValue: String = ReadingProvider.none.rawValue,
+        progressUnitRawValue: String = ReadingProgressUnit.pages.rawValue,
         lastSessionAt: Date? = nil,
         hasCover: Bool = false,
         coverRevision: Int? = nil,
@@ -76,6 +88,12 @@ nonisolated struct LibraryWidgetBookRecord: Hashable, Sendable {
         self.readTo = readTo
         self.pageCount = Self.normalizedPositiveInt(pageCount)
         self.pagesRead = max(0, pagesRead)
+        self.progressFraction = Self.normalizedFraction(progressFraction)
+        self.progressNativeValue = Self.finite(progressNativeValue)
+        self.progressLocator = progressLocator?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        self.mediumRawValue = mediumRawValue
+        self.providerRawValue = providerRawValue
+        self.progressUnitRawValue = progressUnitRawValue
         self.lastSessionAt = lastSessionAt
         self.hasCover = hasCover
         self.coverRevision = Self.normalizedPositiveInt(coverRevision)
@@ -95,12 +113,16 @@ nonisolated struct LibraryWidgetBookRecord: Hashable, Sendable {
             return 1.0
         }
 
-        guard let pageCount, pageCount > 0 else { return nil }
+        if let progressFraction {
+            return progressFraction
+        }
+
+        guard progressUnit == .pages, let pageCount, pageCount > 0 else { return nil }
         return min(1.0, max(0.0, Double(max(0, pagesRead)) / Double(pageCount)))
     }
 
     var remainingPages: Int? {
-        guard let pageCount, pageCount > 0 else { return nil }
+        guard progressUnit == .pages, let pageCount, pageCount > 0 else { return nil }
         if status == .finished {
             return 0
         }
@@ -109,7 +131,9 @@ nonisolated struct LibraryWidgetBookRecord: Hashable, Sendable {
 
     func makeSnapshot(kind: LibraryWidgetShelfItemKind, referenceDate: Date?) -> LibraryWidgetBookSnapshot {
         let normalizedPagesRead: Int?
-        if pagesRead > 0 {
+        if progressUnit != .pages {
+            normalizedPagesRead = nil
+        } else if pagesRead > 0 {
             if let pageCount, pageCount > 0 {
                 normalizedPagesRead = min(pagesRead, pageCount)
             } else {
@@ -125,10 +149,15 @@ nonisolated struct LibraryWidgetBookRecord: Hashable, Sendable {
             author: author,
             kind: kind,
             statusRawValue: statusRawValue,
-            pageCount: pageCount,
+            pageCount: progressUnit == .pages ? pageCount : nil,
             pagesRead: normalizedPagesRead,
             remainingPages: remainingPages,
             progressFraction: currentProgressFraction,
+            progressNativeValue: progressNativeValue,
+            progressLocator: progressLocator,
+            mediumRawValue: medium.rawValue,
+            providerRawValue: provider.rawValue,
+            progressUnitRawValue: progressUnit.rawValue,
             referenceDate: referenceDate,
             hasCover: hasCover,
             coverRevision: coverRevision
@@ -137,6 +166,28 @@ nonisolated struct LibraryWidgetBookRecord: Hashable, Sendable {
 
     private static func normalizedPositiveInt(_ raw: Int?) -> Int? {
         guard let raw, raw > 0 else { return nil }
+        return raw
+    }
+
+    var medium: ReadingMedium {
+        ReadingMedium.fromPersisted(mediumRawValue)
+    }
+
+    var provider: ReadingProvider {
+        ReadingProvider.fromPersisted(providerRawValue)
+    }
+
+    var progressUnit: ReadingProgressUnit {
+        ReadingProgressUnit.fromPersisted(progressUnitRawValue)
+    }
+
+    private static func normalizedFraction(_ raw: Double?) -> Double? {
+        guard let raw, raw.isFinite else { return nil }
+        return min(1, max(0, raw))
+    }
+
+    private static func finite(_ raw: Double?) -> Double? {
+        guard let raw, raw.isFinite else { return nil }
         return raw
     }
 
@@ -151,6 +202,12 @@ nonisolated struct LibraryWidgetBookRecord: Hashable, Sendable {
             return lhs.sequenceNumber < rhs.sequenceNumber
         }
         return lhs.id < rhs.id
+    }
+}
+
+private nonisolated extension String {
+    var nonEmpty: String? {
+        isEmpty ? nil : self
     }
 }
 

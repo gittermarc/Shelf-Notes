@@ -12,14 +12,24 @@ nonisolated enum ChallengeActionHintBuilder {
         from items: [ChallengeDashboardItem],
         bookTitle: String,
         remainingPages: Int?,
+        progressUnit: ReadingProgressUnit = .pages,
         limit: Int = 2
     ) -> [ChallengeActionHint] {
         items
             .filter { item in
-                item.status == .active && isSessionRelevant(item.metric, remainingPages: remainingPages)
+                item.status == .active && isSessionRelevant(
+                    item.metric,
+                    remainingPages: remainingPages,
+                    progressUnit: progressUnit
+                )
             }
             .map { item in
-                makeHint(item: item, bookTitle: bookTitle, remainingPages: remainingPages)
+                makeHint(
+                    item: item,
+                    bookTitle: bookTitle,
+                    remainingPages: remainingPages,
+                    progressUnit: progressUnit
+                )
             }
             .sorted { lhs, rhs in
                 if lhs.priority != rhs.priority { return lhs.priority < rhs.priority }
@@ -31,14 +41,20 @@ nonisolated enum ChallengeActionHintBuilder {
             .map { $0 }
     }
 
-    private static func isSessionRelevant(_ metric: ChallengeMetric, remainingPages: Int?) -> Bool {
+    private static func isSessionRelevant(
+        _ metric: ChallengeMetric,
+        remainingPages: Int?,
+        progressUnit: ReadingProgressUnit
+    ) -> Bool {
         switch metric {
         case .readingMinutes, .readingDays, .sessions, .shortSessions, .sessionNotes:
             return true
-        case .pagesRead, .booksProgressed:
-            return remainingPages != 0
+        case .pagesRead:
+            return progressUnit == .pages && remainingPages != 0
+        case .booksProgressed:
+            return progressUnit != .none && (progressUnit != .pages || remainingPages != 0)
         case .booksFinished:
-            return remainingPages == nil || (remainingPages ?? 0) > 0
+            return progressUnit != .pages || remainingPages == nil || (remainingPages ?? 0) > 0
         case .finishedBooksRated, .finishedBooksNoted:
             return false
         }
@@ -47,7 +63,8 @@ nonisolated enum ChallengeActionHintBuilder {
     private static func makeHint(
         item: ChallengeDashboardItem,
         bookTitle: String,
-        remainingPages: Int?
+        remainingPages: Int?,
+        progressUnit: ReadingProgressUnit
     ) -> ChallengeActionHint {
         let safeBookTitle = bookTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "dieses Buch"
@@ -59,8 +76,17 @@ nonisolated enum ChallengeActionHintBuilder {
             kind: item.kind,
             metric: item.metric,
             title: item.title,
-            message: makeMessage(item: item, bookTitle: safeBookTitle, remainingPages: remainingPages),
-            detail: makeDetail(item: item, remainingPages: remainingPages),
+            message: makeMessage(
+                item: item,
+                bookTitle: safeBookTitle,
+                remainingPages: remainingPages,
+                progressUnit: progressUnit
+            ),
+            detail: makeDetail(
+                item: item,
+                remainingPages: remainingPages,
+                progressUnit: progressUnit
+            ),
             progressText: item.progressText,
             remainingText: item.remainingText,
             progressFraction: item.progressFraction,
@@ -81,7 +107,8 @@ nonisolated enum ChallengeActionHintBuilder {
     private static func makeMessage(
         item: ChallengeDashboardItem,
         bookTitle: String,
-        remainingPages: Int?
+        remainingPages: Int?,
+        progressUnit: ReadingProgressUnit
     ) -> String {
         switch item.metric {
         case .readingMinutes:
@@ -105,7 +132,7 @@ nonisolated enum ChallengeActionHintBuilder {
             }
             return "Trag gelesene Seiten ein, damit diese Challenge Fortschritt bekommt."
         case .booksFinished:
-            if let remainingPages {
+            if progressUnit == .pages, let remainingPages {
                 return "Noch \(remainingPages) Seiten im Buch. Ein Abschluss kann diese Challenge knacken."
             }
             return "Wenn du dieses Buch abschließt, kann das direkt auf die Challenge einzahlen."
@@ -115,10 +142,19 @@ nonisolated enum ChallengeActionHintBuilder {
             }
             return "Eine kurze Session mit „\(bookTitle)“ kann diese Mission direkt weiterbringen."
         case .booksProgressed:
-            if let remainingPages {
+            if progressUnit == .pages, let remainingPages {
                 return "Logge Seitenfortschritt. Für dieses Buch sind noch \(remainingPages) Seiten offen."
             }
-            return "Logge Seitenfortschritt, damit dieses Buch für die Mission zählt."
+            switch progressUnit {
+            case .percentage:
+                return "Aktualisiere den Prozentstand von „\(bookTitle)“, damit dieses Buch für die Mission zählt."
+            case .locator:
+                return "Erfasse einen belastbaren Fortschrittsstand für „\(bookTitle)“, damit dieses Buch für die Mission zählt."
+            case .pages:
+                return "Logge Seitenfortschritt, damit dieses Buch für die Mission zählt."
+            case .none:
+                return "Ein messbarer Fortschrittsstand ist für diese Mission erforderlich."
+            }
         case .sessionNotes:
             if item.kind == .daily {
                 return "Speichere heute eine Session mit kurzer Notiz. Ein Satz reicht."
@@ -131,7 +167,11 @@ nonisolated enum ChallengeActionHintBuilder {
         }
     }
 
-    private static func makeDetail(item: ChallengeDashboardItem, remainingPages: Int?) -> String {
+    private static func makeDetail(
+        item: ChallengeDashboardItem,
+        remainingPages: Int?,
+        progressUnit: ReadingProgressUnit
+    ) -> String {
         if item.progressFraction >= 0.85 {
             return "Fast erledigt: \(item.remainingText)."
         }
@@ -149,8 +189,19 @@ nonisolated enum ChallengeActionHintBuilder {
             return "Timer oder manuelle Session zählen beide."
         case .shortSessions:
             return "5 bis 25 Minuten reichen für diese Mission."
-        case .pagesRead, .booksProgressed:
+        case .pagesRead:
             return remainingPages == nil ? "Ohne Seitenangabe bleibt diese Mission blind." : "Seitenangaben machen deinen Fortschritt messbar."
+        case .booksProgressed:
+            switch progressUnit {
+            case .pages:
+                return remainingPages == nil ? "Ohne Seitenangabe bleibt diese Mission blind." : "Seitenangaben machen deinen Fortschritt messbar."
+            case .percentage:
+                return "Ein höherer Prozentstand zählt dieses Buch genau einmal im Zeitraum."
+            case .locator:
+                return "Nur ein belastbarer Fortschrittsanstieg zählt, nicht ein unbekanntes Locator-Format."
+            case .none:
+                return "Diese Quelle liefert aktuell keinen messbaren Fortschritt."
+            }
         case .booksFinished:
             return "Zählt, sobald das Buch wirklich abgeschlossen ist."
         case .sessionNotes:

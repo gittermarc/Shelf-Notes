@@ -29,6 +29,11 @@ nonisolated struct LibraryWidgetBookSnapshot: Codable, Hashable, Identifiable, S
     var pagesRead: Int?
     var remainingPages: Int?
     var progressFraction: Double?
+    var progressNativeValue: Double?
+    var progressLocator: String?
+    var mediumRawValue: String?
+    var providerRawValue: String?
+    var progressUnitRawValue: String?
     var referenceDate: Date?
     var hasCover: Bool
     var coverRevision: Int?
@@ -43,6 +48,11 @@ nonisolated struct LibraryWidgetBookSnapshot: Codable, Hashable, Identifiable, S
         pagesRead: Int? = nil,
         remainingPages: Int? = nil,
         progressFraction: Double? = nil,
+        progressNativeValue: Double? = nil,
+        progressLocator: String? = nil,
+        mediumRawValue: String? = nil,
+        providerRawValue: String? = nil,
+        progressUnitRawValue: String? = nil,
         referenceDate: Date? = nil,
         hasCover: Bool = false,
         coverRevision: Int? = nil
@@ -56,6 +66,11 @@ nonisolated struct LibraryWidgetBookSnapshot: Codable, Hashable, Identifiable, S
         self.pagesRead = Self.normalizedNonNegativeInt(pagesRead)
         self.remainingPages = Self.normalizedNonNegativeInt(remainingPages)
         self.progressFraction = Self.normalizedFraction(progressFraction)
+        self.progressNativeValue = Self.normalizedFinite(progressNativeValue)
+        self.progressLocator = Self.normalizedOptionalText(progressLocator, maxLength: 120)
+        self.mediumRawValue = Self.normalizedOptionalText(mediumRawValue, maxLength: 40)
+        self.providerRawValue = Self.normalizedOptionalText(providerRawValue, maxLength: 40)
+        self.progressUnitRawValue = Self.normalizedOptionalText(progressUnitRawValue, maxLength: 40)
         self.referenceDate = referenceDate
         self.hasCover = hasCover
         self.coverRevision = Self.normalizedPositiveInt(coverRevision)
@@ -92,6 +107,11 @@ nonisolated struct LibraryWidgetBookSnapshot: Codable, Hashable, Identifiable, S
     private static func normalizedFraction(_ raw: Double?) -> Double? {
         guard let raw, raw.isFinite else { return nil }
         return min(1.0, max(0.0, raw))
+    }
+
+    private static func normalizedFinite(_ raw: Double?) -> Double? {
+        guard let raw, raw.isFinite else { return nil }
+        return raw
     }
 }
 

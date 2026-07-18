@@ -137,6 +137,11 @@ nonisolated enum LibraryWidgetPrivacyApplier {
             pagesRead: book.pagesRead,
             remainingPages: book.remainingPages,
             progressFraction: book.progressFraction,
+            progressNativeValue: book.progressNativeValue,
+            progressLocator: book.progressLocator,
+            mediumRawValue: book.mediumRawValue,
+            providerRawValue: book.providerRawValue,
+            progressUnitRawValue: book.progressUnitRawValue,
             referenceDate: book.referenceDate,
             hasCover: privacy.hidesCovers ? false : book.hasCover,
             coverRevision: privacy.hidesCovers ? nil : book.coverRevision

@@ -168,7 +168,15 @@ enum ChallengeSessionImpactBuilder {
             endedAt: contribution.endedAt,
             durationSeconds: contribution.durationSeconds,
             pagesRead: contribution.pagesRead,
-            hasNote: contribution.hasNote
+            hasNote: contribution.hasNote,
+            progressUnitRawValue: contribution.progressUnit.rawValue,
+            originRawValue: contribution.origin.rawValue,
+            startValue: contribution.startValue,
+            endValue: contribution.endValue,
+            startNormalizedProgress: contribution.startNormalizedProgress,
+            endNormalizedProgress: contribution.endNormalizedProgress,
+            startLocator: contribution.startLocator,
+            endLocator: contribution.endLocator
         )
         let finishedBooks: [ChallengeEngine.FinishedBookSnapshot] = contribution.didMarkBookFinished
             ? [ChallengeEngine.FinishedBookSnapshot(readTo: contribution.endedAt)]

@@ -18,6 +18,14 @@ nonisolated extension ChallengeEngine {
         let durationSeconds: Int
         let pagesRead: Int
         let hasNote: Bool
+        let progressUnitRawValue: String
+        let originRawValue: String
+        let startValue: Double?
+        let endValue: Double?
+        let startNormalizedProgress: Double?
+        let endNormalizedProgress: Double?
+        let startLocator: String?
+        let endLocator: String?
 
         init(
             bookID: UUID? = nil,
@@ -25,7 +33,15 @@ nonisolated extension ChallengeEngine {
             endedAt: Date,
             durationSeconds: Int,
             pagesRead: Int,
-            hasNote: Bool = false
+            hasNote: Bool = false,
+            progressUnitRawValue: String = ReadingProgressUnit.pages.rawValue,
+            originRawValue: String = ReadingSessionOrigin.legacy.rawValue,
+            startValue: Double? = nil,
+            endValue: Double? = nil,
+            startNormalizedProgress: Double? = nil,
+            endNormalizedProgress: Double? = nil,
+            startLocator: String? = nil,
+            endLocator: String? = nil
         ) {
             self.bookID = bookID
             self.startedAt = startedAt
@@ -33,6 +49,114 @@ nonisolated extension ChallengeEngine {
             self.durationSeconds = max(0, durationSeconds)
             self.pagesRead = max(0, pagesRead)
             self.hasNote = hasNote
+            self.progressUnitRawValue = progressUnitRawValue
+            self.originRawValue = originRawValue
+            self.startValue = startValue
+            self.endValue = endValue
+            self.startNormalizedProgress = startNormalizedProgress
+            self.endNormalizedProgress = endNormalizedProgress
+            self.startLocator = startLocator
+            self.endLocator = endLocator
+        }
+
+        var progressUnit: ReadingProgressUnit {
+            ReadingProgressUnit.fromPersisted(progressUnitRawValue)
+        }
+
+        var origin: ReadingSessionOrigin {
+            ReadingSessionOrigin.fromPersisted(originRawValue)
+        }
+
+        var metricContribution: ReadingMetricContribution {
+            ReadingSessionMetricMapper.contribution(
+                from: ReadingSessionMetricInput(
+                    startedAt: startedAt,
+                    durationSeconds: durationSeconds,
+                    pagesRead: pagesRead,
+                    nativeValue: endValue,
+                    normalizedProgress: endNormalizedProgress,
+                    locator: endLocator,
+                    progressUnitRawValue: progressUnitRawValue,
+                    originRawValue: originRawValue
+                )
+            )
+        }
+
+        var hasMeasuredProgressIncrease: Bool {
+            guard metricContribution.hasMeasuredProgress else { return false }
+            return ReadingProgressIncreaseDetector.sessionHasIncrease(
+                unit: progressUnit,
+                pagesRead: pagesRead,
+                startValue: startValue,
+                endValue: endValue,
+                startNormalizedProgress: startNormalizedProgress,
+                endNormalizedProgress: endNormalizedProgress,
+                startLocator: startLocator,
+                endLocator: endLocator
+            )
+        }
+    }
+
+    struct ProgressEventSnapshot: Sendable {
+        let id: UUID
+        let bookID: UUID?
+        let attemptID: UUID?
+        let occurredAt: Date
+        let progressUnitRawValue: String
+        let originRawValue: String
+        let nativeValue: Double?
+        let totalValue: Double?
+        let normalizedProgress: Double?
+        let locator: String?
+        let deduplicationKey: String
+
+        init(
+            id: UUID = UUID(),
+            bookID: UUID? = nil,
+            attemptID: UUID? = nil,
+            occurredAt: Date,
+            progressUnitRawValue: String,
+            originRawValue: String = ReadingSessionOrigin.providerImport.rawValue,
+            nativeValue: Double? = nil,
+            totalValue: Double? = nil,
+            normalizedProgress: Double? = nil,
+            locator: String? = nil,
+            deduplicationKey: String = ""
+        ) {
+            self.id = id
+            self.bookID = bookID
+            self.attemptID = attemptID
+            self.occurredAt = occurredAt
+            self.progressUnitRawValue = progressUnitRawValue
+            self.originRawValue = originRawValue
+            self.nativeValue = nativeValue
+            self.totalValue = totalValue
+            self.normalizedProgress = normalizedProgress
+            self.locator = locator
+            self.deduplicationKey = deduplicationKey
+        }
+
+        var progressUnit: ReadingProgressUnit {
+            ReadingProgressUnit.fromPersisted(progressUnitRawValue)
+        }
+
+        var origin: ReadingSessionOrigin {
+            ReadingSessionOrigin.fromPersisted(originRawValue)
+        }
+
+        var observation: ReadingProgressComparableObservation {
+            ReadingProgressComparableObservation(
+                unit: progressUnit,
+                nativeValue: nativeValue,
+                totalValue: totalValue,
+                normalizedProgress: normalizedProgress,
+                locator: locator
+            )
+        }
+
+        var stableDeduplicationKey: String {
+            let normalized = deduplicationKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            return normalized.isEmpty ? "event:\(id.uuidString.lowercased())" : normalized
         }
     }
 
@@ -83,6 +207,7 @@ nonisolated extension ChallengeEngine {
     struct Snapshot: Sendable {
         let sessions: [SessionSnapshot]
         let finishedBooks: [FinishedBookSnapshot]
+        let progressEvents: [ProgressEventSnapshot]
 
         var finishedBookReadTo: [Date] {
             finishedBooks.map(\.readTo)
@@ -91,11 +216,17 @@ nonisolated extension ChallengeEngine {
         init(sessions: [SessionSnapshot], finishedBookReadTo: [Date]) {
             self.sessions = sessions
             self.finishedBooks = finishedBookReadTo.map { FinishedBookSnapshot(readTo: $0) }
+            self.progressEvents = []
         }
 
-        init(sessions: [SessionSnapshot], finishedBooks: [FinishedBookSnapshot]) {
+        init(
+            sessions: [SessionSnapshot],
+            finishedBooks: [FinishedBookSnapshot],
+            progressEvents: [ProgressEventSnapshot] = []
+        ) {
             self.sessions = sessions
             self.finishedBooks = finishedBooks
+            self.progressEvents = progressEvents
         }
     }
 
@@ -166,7 +297,12 @@ nonisolated extension ChallengeEngine {
     static func buildSnapshot(range: Range<Date>, modelContext: ModelContext) -> Snapshot {
         let sessions = fetchSessionSnapshots(in: range, modelContext: modelContext)
         let finished = fetchFinishedBookSnapshots(in: range, modelContext: modelContext)
-        return Snapshot(sessions: sessions, finishedBooks: finished)
+        let progressEvents = fetchProgressEventSnapshots(before: range.upperBound, modelContext: modelContext)
+        return Snapshot(
+            sessions: sessions,
+            finishedBooks: finished,
+            progressEvents: progressEvents
+        )
     }
 
     @MainActor
@@ -230,7 +366,49 @@ private extension ChallengeEngine {
                 endedAt: session.endedAt,
                 durationSeconds: session.durationSeconds,
                 pagesRead: session.pagesReadNormalized ?? 0,
-                hasNote: !(session.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                hasNote: !(session.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                progressUnitRawValue: session.progressUnitRawValue,
+                originRawValue: session.originRawValue,
+                startValue: session.startValue,
+                endValue: session.endValue,
+                startNormalizedProgress: session.startNormalizedProgress,
+                endNormalizedProgress: session.endNormalizedProgress,
+                startLocator: session.startLocator,
+                endLocator: session.endLocator
+            )
+        }
+    }
+
+    @MainActor
+    static func fetchProgressEventSnapshots(
+        before end: Date,
+        modelContext: ModelContext
+    ) -> [ProgressEventSnapshot] {
+        let endValue = end
+        let descriptor = FetchDescriptor<ReadingProgressEvent>(
+            predicate: #Predicate<ReadingProgressEvent> {
+                $0.occurredAt < endValue && $0.sourceSessionID == nil
+            },
+            sortBy: [
+                SortDescriptor(\ReadingProgressEvent.occurredAt, order: .forward),
+                SortDescriptor(\ReadingProgressEvent.createdAt, order: .forward)
+            ]
+        )
+
+        return ((try? modelContext.fetch(descriptor)) ?? []).compactMap { event in
+            guard event.origin == .providerImport else { return nil }
+            return ProgressEventSnapshot(
+                id: event.id,
+                bookID: event.book?.id ?? event.readingAttempt?.book?.id,
+                attemptID: event.readingAttempt?.id,
+                occurredAt: event.occurredAt,
+                progressUnitRawValue: event.progressUnitRawValue,
+                originRawValue: event.originRawValue,
+                nativeValue: event.nativeValue,
+                totalValue: event.totalValue,
+                normalizedProgress: event.normalizedProgress,
+                locator: event.locator,
+                deduplicationKey: event.deduplicationKey
             )
         }
     }

@@ -30,6 +30,14 @@ nonisolated struct ChallengeSessionContribution: Equatable, Sendable {
     let pagesRead: Int
     let didMarkBookFinished: Bool
     let hasNote: Bool
+    let progressUnit: ReadingProgressUnit
+    let origin: ReadingSessionOrigin
+    let startValue: Double?
+    let endValue: Double?
+    let startNormalizedProgress: Double?
+    let endNormalizedProgress: Double?
+    let startLocator: String?
+    let endLocator: String?
 
     init(
         bookID: UUID,
@@ -38,7 +46,15 @@ nonisolated struct ChallengeSessionContribution: Equatable, Sendable {
         durationSeconds: Int,
         pagesRead: Int?,
         didMarkBookFinished: Bool,
-        hasNote: Bool = false
+        hasNote: Bool = false,
+        progressUnit: ReadingProgressUnit = .pages,
+        origin: ReadingSessionOrigin = .legacy,
+        startValue: Double? = nil,
+        endValue: Double? = nil,
+        startNormalizedProgress: Double? = nil,
+        endNormalizedProgress: Double? = nil,
+        startLocator: String? = nil,
+        endLocator: String? = nil
     ) {
         self.bookID = bookID
         self.startedAt = startedAt
@@ -47,6 +63,14 @@ nonisolated struct ChallengeSessionContribution: Equatable, Sendable {
         self.pagesRead = max(0, pagesRead ?? 0)
         self.didMarkBookFinished = didMarkBookFinished
         self.hasNote = hasNote
+        self.progressUnit = progressUnit
+        self.origin = origin
+        self.startValue = startValue
+        self.endValue = endValue
+        self.startNormalizedProgress = startNormalizedProgress
+        self.endNormalizedProgress = endNormalizedProgress
+        self.startLocator = startLocator
+        self.endLocator = endLocator
     }
 }
 

@@ -12,12 +12,26 @@ enum LibraryWidgetSnapshotInputMapper {
     static func bookRecords(from books: [Book]) -> [LibraryWidgetBookRecord] {
         books.map { book in
             let sessions = book.readingSessionsSafe
-            let progressSessions = ReadingAttemptSessionCoordinator.progressSessions(
-                for: book,
-                allSessions: sessions
-            )
-            let pagesRead = ReadingSessionLogging.pagesReadTotal(in: progressSessions)
-            let lastSessionAt = sessions.map(\.startedAt).max()
+            let progressSnapshot = book.currentReadingProgressSnapshot
+            let sourceAttempt = book.activeReadingAttempt ?? book.orderedReadingAttempts.last
+            let medium = sourceAttempt?.readingMedium ?? .physical
+            let provider = sourceAttempt?.defaultProvider ?? .none
+            let progressUnit = progressSnapshot.unit
+            let lastSessionAt = sessions.compactMap { session -> Date? in
+                let contribution = ReadingSessionMetricMapper.contribution(
+                    from: ReadingSessionMetricInput(
+                        startedAt: session.startedAt,
+                        durationSeconds: session.durationSeconds,
+                        pagesRead: session.pagesReadNormalized,
+                        nativeValue: session.endValue,
+                        normalizedProgress: session.endNormalizedProgress,
+                        locator: session.endLocator,
+                        progressUnitRawValue: session.progressUnitRawValue,
+                        originRawValue: session.originRawValue
+                    )
+                )
+                return contribution.sessionCount > 0 ? session.startedAt : nil
+            }.max()
             let completions = ReadingCompletionRecordBuilder.records(from: book).map { completion in
                 LibraryWidgetCompletionRecord(
                     id: completion.id,
@@ -37,8 +51,16 @@ enum LibraryWidgetSnapshotInputMapper {
                 createdAt: book.createdAt,
                 readFrom: book.readFrom,
                 readTo: book.readTo,
-                pageCount: book.pageCount,
-                pagesRead: pagesRead,
+                pageCount: progressUnit == .pages
+                    ? progressSnapshot.totalValue.flatMap(Self.positiveInt) ?? book.pageCount
+                    : nil,
+                pagesRead: progressUnit == .pages ? (progressSnapshot.pagesRead ?? 0) : 0,
+                progressFraction: progressSnapshot.normalizedProgress,
+                progressNativeValue: progressSnapshot.nativeValue,
+                progressLocator: progressSnapshot.locator,
+                mediumRawValue: medium.rawValue,
+                providerRawValue: provider.rawValue,
+                progressUnitRawValue: progressUnit.rawValue,
                 lastSessionAt: lastSessionAt,
                 hasCover: book.userCoverData != nil || book.userCoverFileName != nil || book.thumbnailURL != nil,
                 coverRevision: coverRevision(for: book),
@@ -71,6 +93,16 @@ enum LibraryWidgetSnapshotInputMapper {
         }
 
         return nil
+    }
+
+    private static func positiveInt(_ value: Double) -> Int? {
+        guard value.isFinite,
+              value > 0,
+              value.rounded(.towardZero) == value,
+              value <= Double(Int.max) else {
+            return nil
+        }
+        return Int(value)
     }
 
     private static func stablePositiveHash(for value: String) -> Int {

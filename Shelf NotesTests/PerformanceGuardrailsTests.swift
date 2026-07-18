@@ -133,4 +133,36 @@ struct PerformanceGuardrailsTests {
         #expect(first.booksByID.values.first?.pageBasedSeconds == 108_000)
         #expect(first.booksByID.values.first?.pagesPerHour == 120)
     }
+
+    @Test func mixedChallengeMetricsRemainDeterministicAtScale() {
+        let start = Date(timeIntervalSince1970: 1_767_225_600)
+        let end = start.addingTimeInterval(7 * 24 * 60 * 60)
+        let sessions = (0..<6_000).map { index in
+            let unit: ReadingProgressUnit = index.isMultiple(of: 3) ? .pages : .percentage
+            let origin: ReadingSessionOrigin = index.isMultiple(of: 10) ? .providerImport : .timer
+            let startedAt = start.addingTimeInterval(TimeInterval(index * 30))
+            return ChallengeEngine.SessionSnapshot(
+                bookID: UUID(uuidString: String(format: "00000000-0000-0000-0002-%012d", index % 500)),
+                startedAt: startedAt,
+                endedAt: startedAt.addingTimeInterval(120),
+                durationSeconds: 120,
+                pagesRead: unit == .pages ? 2 : 0,
+                progressUnitRawValue: unit.rawValue,
+                originRawValue: origin.rawValue,
+                startNormalizedProgress: unit == .percentage ? 0.2 : nil,
+                endNormalizedProgress: unit == .percentage ? 0.3 : nil
+            )
+        }
+        let forward = ChallengeEngine.Snapshot(sessions: sessions, finishedBooks: [])
+        let reversed = ChallengeEngine.Snapshot(sessions: Array(sessions.reversed()), finishedBooks: [])
+
+        for metric in [ChallengeMetric.readingMinutes, .sessions, .readingDays, .pagesRead, .booksProgressed] {
+            let first = ChallengeEngine.computeProgress(metric: metric, window: start..<end, snapshot: forward)
+            let second = ChallengeEngine.computeProgress(metric: metric, window: start..<end, snapshot: reversed)
+            #expect(first == second)
+        }
+
+        #expect(ChallengeEngine.computeProgress(metric: .sessions, window: start..<end, snapshot: forward).value == 5_400)
+        #expect(ChallengeEngine.computeProgress(metric: .pagesRead, window: start..<end, snapshot: forward).value == 3_600)
+    }
 }

@@ -187,6 +187,7 @@ struct TimerSessionCompletionSheet: View {
 
         let timing = ReadingSessionLogging.Timing(endedAt: pending.endedAt, durationSeconds: pending.durationSeconds)
         let didMarkBookFinished: Bool
+        let plannedProgress: ReadingProgressMutationPlan?
         let submission = try? ReadingProgressInputBuilder.makeSubmission(
             state: progressState,
             configuration: progressInputContext.configuration,
@@ -206,8 +207,10 @@ struct TimerSessionCompletionSheet: View {
         switch planResult {
         case .failure:
             didMarkBookFinished = false
+            plannedProgress = nil
         case .success(let mutationPlan):
             didMarkBookFinished = mutationPlan.plan.didMarkFinished
+            plannedProgress = mutationPlan.plan.progress
         }
 
         let contribution = ChallengeSessionContribution(
@@ -215,9 +218,17 @@ struct TimerSessionCompletionSheet: View {
             startedAt: pending.startedAt,
             endedAt: pending.endedAt,
             durationSeconds: pending.durationSeconds,
-            pagesRead: submission?.pagesDelta,
+            pagesRead: plannedProgress?.pagesDelta,
             didMarkBookFinished: didMarkBookFinished,
-            hasNote: !noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            hasNote: !noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            progressUnit: progressInputContext.source.progressUnit,
+            origin: .timer,
+            startValue: plannedProgress?.startValue,
+            endValue: plannedProgress?.endValue,
+            startNormalizedProgress: plannedProgress?.startNormalizedProgress,
+            endNormalizedProgress: plannedProgress?.endNormalizedProgress,
+            startLocator: plannedProgress?.startLocator,
+            endLocator: plannedProgress?.endLocator
         )
 
         return ChallengeSessionImpactBuilder.makePendingSessionImpact(

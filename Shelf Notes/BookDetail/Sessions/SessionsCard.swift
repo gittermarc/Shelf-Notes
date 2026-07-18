@@ -51,7 +51,8 @@ struct SessionsCard: View {
         return ChallengeActionHintBuilder.makeSessionHints(
             from: dashboard.sessionHintItems,
             bookTitle: safeTitle(book),
-            remainingPages: remainingPagesForBook
+            remainingPages: remainingPagesForBook,
+            progressUnit: quickLogInputContext.configuration.unit
         )
     }
 

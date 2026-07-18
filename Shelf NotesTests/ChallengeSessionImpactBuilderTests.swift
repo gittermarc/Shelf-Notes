@@ -185,4 +185,104 @@ struct ChallengeSessionImpactBuilderTests {
         #expect(impact?.title == "Tagesmission geknackt")
         #expect(impact?.entries.first?.didComplete == true)
     }
+
+    @Test func percentageContributionCountsBookProgressButNotPages() {
+        let now = date(2026, 6, 3, 10)
+        let pageID = UUID(uuidString: "00000000-0000-0000-0000-000000000707") ?? UUID()
+        let progressID = UUID(uuidString: "00000000-0000-0000-0000-000000000708") ?? UUID()
+        let snapshots = [
+            ChallengeEngine.ChallengeRecordSnapshot(
+                id: pageID,
+                kind: .weekly,
+                metric: .pagesRead,
+                periodStart: date(2026, 6, 1, 0),
+                periodEnd: date(2026, 6, 8, 0),
+                targetValue: 100,
+                completedAt: nil,
+                title: "Seiten"
+            ),
+            ChallengeEngine.ChallengeRecordSnapshot(
+                id: progressID,
+                kind: .weekly,
+                metric: .booksProgressed,
+                periodStart: date(2026, 6, 1, 0),
+                periodEnd: date(2026, 6, 8, 0),
+                targetValue: 3,
+                completedAt: nil,
+                title: "Bücher bewegt"
+            )
+        ]
+        let contribution = ChallengeSessionContribution(
+            bookID: UUID(),
+            startedAt: now,
+            endedAt: now.addingTimeInterval(15 * 60),
+            durationSeconds: 15 * 60,
+            pagesRead: nil,
+            didMarkBookFinished: false,
+            progressUnit: .percentage,
+            origin: .quickLog,
+            startValue: 20,
+            endValue: 40,
+            startNormalizedProgress: 0.2,
+            endNormalizedProgress: 0.4
+        )
+
+        let impact = ChallengeSessionImpactBuilder.makePendingSessionImpact(
+            challengeSnapshots: snapshots,
+            progressBeforeByID: [
+                pageID: ChallengeEngine.ChallengeProgress(value: 20, unitSuffix: "Seiten"),
+                progressID: ChallengeEngine.ChallengeProgress(value: 1, unitSuffix: "Bücher")
+            ],
+            contribution: contribution,
+            now: now
+        )
+
+        #expect(impact?.entries.map(\.metric) == [.booksProgressed])
+        #expect(impact?.entries.first?.contributionText == "+1 Bücher")
+    }
+
+    @Test func providerImportContributionHasNoSessionMetricImpact() {
+        let now = date(2026, 6, 3, 10)
+        let snapshots = [
+            ChallengeMetric.readingMinutes,
+            .sessions,
+            .readingDays,
+            .booksProgressed
+        ].enumerated().map { index, metric in
+            ChallengeEngine.ChallengeRecordSnapshot(
+                id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", 800 + index)) ?? UUID(),
+                kind: .weekly,
+                metric: metric,
+                periodStart: date(2026, 6, 1, 0),
+                periodEnd: date(2026, 6, 8, 0),
+                targetValue: 10,
+                completedAt: nil,
+                title: metric.rawValue
+            )
+        }
+        let progressBefore = Dictionary(uniqueKeysWithValues: snapshots.map { snapshot in
+            (snapshot.id, ChallengeEngine.ChallengeProgress(value: 0, unitSuffix: snapshot.metric.unitSuffix))
+        })
+        let contribution = ChallengeSessionContribution(
+            bookID: UUID(),
+            startedAt: now,
+            endedAt: now.addingTimeInterval(30 * 60),
+            durationSeconds: 30 * 60,
+            pagesRead: nil,
+            didMarkBookFinished: false,
+            progressUnit: .percentage,
+            origin: .providerImport,
+            startNormalizedProgress: 0.2,
+            endNormalizedProgress: 0.4
+        )
+
+        let impact = ChallengeSessionImpactBuilder.makePendingSessionImpact(
+            challengeSnapshots: snapshots,
+            progressBeforeByID: progressBefore,
+            contribution: contribution,
+            now: now
+        )
+
+        #expect(impact?.entries.map(\.metric) == [.booksProgressed])
+    }
 }

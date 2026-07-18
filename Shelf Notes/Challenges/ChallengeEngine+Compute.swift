@@ -360,6 +360,7 @@ private nonisolated extension ChallengeEngine {
 
         var sum = 0
         for s in snapshot.sessions {
+            guard s.metricContribution.durationSeconds > 0 else { continue }
             sum += overlapSeconds(start: s.startedAt, end: s.endedAt, window: range)
         }
         return sum
@@ -372,6 +373,7 @@ private nonisolated extension ChallengeEngine {
         var days: Set<Date> = []
 
         for s in snapshot.sessions {
+            guard s.metricContribution.readingDay != nil else { continue }
             let clamped = clampWindow(start: s.startedAt, end: s.endedAt, window: range)
             guard let cs = clamped.start, let ce = clamped.end, ce > cs else { continue }
 
@@ -396,6 +398,7 @@ private nonisolated extension ChallengeEngine {
 
         var count = 0
         for s in snapshot.sessions {
+            guard s.metricContribution.sessionCount > 0 else { continue }
             let secs = overlapSeconds(start: s.startedAt, end: s.endedAt, window: range)
             if secs >= 60 { count += 1 }
         }
@@ -409,7 +412,7 @@ private nonisolated extension ChallengeEngine {
         for s in snapshot.sessions {
             let secs = overlapSeconds(start: s.startedAt, end: s.endedAt, window: range)
             guard secs > 0 else { continue }
-            sum += s.pagesRead
+            sum += s.metricContribution.pagesRead
         }
         return sum
     }
@@ -426,6 +429,7 @@ private nonisolated extension ChallengeEngine {
 
         var count = 0
         for s in snapshot.sessions {
+            guard s.metricContribution.sessionCount > 0 else { continue }
             let secs = overlapSeconds(start: s.startedAt, end: s.endedAt, window: range)
             if secs >= 5 * 60 && secs <= 25 * 60 {
                 count += 1
@@ -435,19 +439,21 @@ private nonisolated extension ChallengeEngine {
     }
 
     static func progressedBooksCount(in range: Range<Date>, snapshot: Snapshot) -> Int {
-        if snapshot.sessions.isEmpty { return 0 }
-
         var bookIDs: Set<UUID> = []
         var anonymousProgressSessions = 0
 
         for s in snapshot.sessions {
             let secs = overlapSeconds(start: s.startedAt, end: s.endedAt, window: range)
-            guard secs > 0, s.pagesRead > 0 else { continue }
+            guard secs > 0, s.hasMeasuredProgressIncrease else { continue }
             if let bookID = s.bookID {
                 bookIDs.insert(bookID)
             } else {
                 anonymousProgressSessions += 1
             }
+        }
+
+        for bookID in progressedBookIDsFromProviderEvents(in: range, snapshot: snapshot) {
+            bookIDs.insert(bookID)
         }
 
         return bookIDs.count + anonymousProgressSessions
@@ -458,6 +464,7 @@ private nonisolated extension ChallengeEngine {
 
         var count = 0
         for s in snapshot.sessions {
+            guard s.metricContribution.sessionCount > 0 else { continue }
             let secs = overlapSeconds(start: s.startedAt, end: s.endedAt, window: range)
             if secs > 0 && s.hasNote {
                 count += 1
@@ -483,6 +490,81 @@ private nonisolated extension ChallengeEngine {
             book.readTo >= start && book.readTo < end && book.hasUserNote
         }.count
     }
+
+    static func progressedBookIDsFromProviderEvents(
+        in range: Range<Date>,
+        snapshot: Snapshot
+    ) -> Set<UUID> {
+        guard snapshot.progressEvents.isEmpty == false else { return [] }
+
+        let canonicalEvents = canonicalProviderEvents(snapshot.progressEvents)
+        let grouped = Dictionary(grouping: canonicalEvents) { event in
+            ProgressScope(bookID: event.bookID, attemptID: event.attemptID)
+        }
+        var progressedBookIDs: Set<UUID> = []
+
+        for (scope, events) in grouped {
+            guard let bookID = scope.bookID else { continue }
+            let sorted = events.sorted(by: compareProgressEvents)
+            var previous: ReadingProgressComparableObservation?
+
+            for event in sorted {
+                let current = event.observation
+                let increased = ReadingProgressIncreaseDetector.hasIncrease(
+                    from: previous,
+                    to: current
+                )
+                if event.occurredAt >= range.lowerBound,
+                   event.occurredAt < range.upperBound,
+                   increased {
+                    progressedBookIDs.insert(bookID)
+                }
+                if current.comparableValue != nil {
+                    previous = current
+                }
+            }
+        }
+
+        return progressedBookIDs
+    }
+
+    static func canonicalProviderEvents(
+        _ events: [ProgressEventSnapshot]
+    ) -> [ProgressEventSnapshot] {
+        let grouped = Dictionary(grouping: events) { event in
+            ProviderEventIdentity(
+                scope: ProgressScope(bookID: event.bookID, attemptID: event.attemptID),
+                deduplicationKey: event.stableDeduplicationKey
+            )
+        }
+
+        return grouped.values.compactMap { duplicates in
+            duplicates.min(by: compareProgressEvents)
+        }
+    }
+
+    static func compareProgressEvents(
+        _ lhs: ProgressEventSnapshot,
+        _ rhs: ProgressEventSnapshot
+    ) -> Bool {
+        if lhs.occurredAt != rhs.occurredAt {
+            return lhs.occurredAt < rhs.occurredAt
+        }
+        if lhs.stableDeduplicationKey != rhs.stableDeduplicationKey {
+            return lhs.stableDeduplicationKey < rhs.stableDeduplicationKey
+        }
+        return lhs.id.uuidString < rhs.id.uuidString
+    }
+}
+
+private nonisolated struct ProgressScope: Hashable, Sendable {
+    let bookID: UUID?
+    let attemptID: UUID?
+}
+
+private nonisolated struct ProviderEventIdentity: Hashable, Sendable {
+    let scope: ProgressScope
+    let deduplicationKey: String
 }
 
 // MARK: - Date math + helpers

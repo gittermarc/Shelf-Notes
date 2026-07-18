@@ -164,10 +164,9 @@ nonisolated enum ChallengeTemplateRegistry {
             fallbackTarget: 1,
             baselineMultiplier: 1.0,
             baselineOffset: 1,
-            detail: "Ein Buch zählt, sobald du in dieser Woche Seitenfortschritt dafür loggst.",
+            detail: "Ein Buch zählt, sobald du in dieser Woche einen echten Fortschrittsanstieg dafür erfasst.",
             rewardText: "Nicht nur gelesen, sondern ein Buch wirklich vorangebracht. Sehr sauber.",
-            emptyBaselinePriority: 52,
-            requiresPageHistory: true
+            emptyBaselinePriority: 52
         ),
         ChallengeTemplate(
             kind: .weekly,
@@ -281,10 +280,9 @@ nonisolated enum ChallengeTemplateRegistry {
             fallbackTarget: 2,
             baselineMultiplier: 1.0,
             baselineOffset: 1,
-            detail: "Ein Buch zählt, sobald du in diesem Monat Seitenfortschritt dafür loggst.",
+            detail: "Ein Buch zählt, sobald du in diesem Monat einen echten Fortschrittsanstieg dafür erfasst.",
             rewardText: "Mehr als ein Buch bewegt. Dein Regal ist nicht nur hübsch, es lebt.",
-            emptyBaselinePriority: 54,
-            requiresPageHistory: true
+            emptyBaselinePriority: 54
         ),
         ChallengeTemplate(
             kind: .monthly,
