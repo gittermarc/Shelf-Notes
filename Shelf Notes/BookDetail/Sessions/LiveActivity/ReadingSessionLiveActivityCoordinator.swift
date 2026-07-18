@@ -147,7 +147,8 @@ final class ReadingSessionLiveActivityCoordinator {
         let snapshot = active.liveActivitySnapshot ?? ReadingSessionLiveActivitySnapshot.fallback(
             bookID: active.bookID,
             bookTitle: active.bookTitle,
-            isPaused: active.isPaused
+            isPaused: active.isPaused,
+            source: active.sourceSnapshot
         )
 
         let attributes = ReadingSessionActivityAttributes(snapshot: snapshot)
@@ -157,6 +158,7 @@ final class ReadingSessionLiveActivityCoordinator {
             effectiveStartDate: effectiveStartDate,
             pausedElapsedSeconds: elapsed,
             snapshot: snapshot,
+            source: active.sourceSnapshot,
             contentUpdatedAt: now
         )
 

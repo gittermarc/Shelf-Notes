@@ -71,7 +71,8 @@ final class ReadingTimerManager: ObservableObject {
         bookTitle: String,
         startedAt: Date = Date(),
         coverThumbnailData: Data? = nil,
-        liveActivitySnapshot: ReadingSessionLiveActivitySnapshot? = nil
+        liveActivitySnapshot: ReadingSessionLiveActivitySnapshot? = nil,
+        sourceSnapshot: ReadingTimerSessionSourceSnapshot = .legacyPhysical
     ) -> String? {
         // Ensure UI updates immediately (BookDetail timer label + Root sheet triggers later).
         objectWillChange.send()
@@ -91,6 +92,9 @@ final class ReadingTimerManager: ObservableObject {
         let safeTitle = bookTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         let title = safeTitle.isEmpty ? "Buch" : safeTitle
         let refreshBookID = bookID
+        var normalizedSnapshot = liveActivitySnapshot
+        normalizedSnapshot?.stateLabel = ReadingSessionLiveActivitySnapshot.runningStateLabel
+        normalizedSnapshot?.applySourceSnapshot(sourceSnapshot)
 
         self.active = ActiveState(
             bookID: bookID,
@@ -100,7 +104,8 @@ final class ReadingTimerManager: ObservableObject {
             accumulatedSeconds: 0,
             isPaused: false,
             pausedAt: nil,
-            liveActivitySnapshot: liveActivitySnapshot
+            sourceSnapshot: sourceSnapshot,
+            liveActivitySnapshot: normalizedSnapshot
         )
 
         backgroundEnteredAt = nil
@@ -148,6 +153,7 @@ final class ReadingTimerManager: ObservableObject {
         a.accumulatedSeconds = max(0, a.accumulatedSeconds + segment)
         a.isPaused = true
         a.pausedAt = now
+        a.clearBackgrounded()
         a.liveActivitySnapshot?.stateLabel = ReadingSessionLiveActivitySnapshot.pausedStateLabel
         active = a
 
@@ -166,6 +172,7 @@ final class ReadingTimerManager: ObservableObject {
         a.isPaused = false
         a.pausedAt = nil
         a.lastResumedAt = resumedAt
+        a.clearBackgrounded()
         a.liveActivitySnapshot?.stateLabel = ReadingSessionLiveActivitySnapshot.runningStateLabel
         active = a
 
@@ -200,7 +207,8 @@ final class ReadingTimerManager: ObservableObject {
             endedAt: end,
             durationSeconds: duration,
             wasAutoStopped: wasAutoStopped,
-            autoStopMinutes: autoStopMinutes
+            autoStopMinutes: autoStopMinutes,
+            sourceSnapshot: a.sourceSnapshot
         )
 
         persistPendingCompletion()
@@ -253,17 +261,26 @@ final class ReadingTimerManager: ObservableObject {
 
     func clearBackgroundEnteredAt() {
         backgroundEnteredAt = nil
+        guard var current = active else { return }
+        current.clearBackgrounded()
+        setActiveForInternalUse(current)
     }
 
     func setBackgroundEnteredAtIfNeeded(_ date: Date) {
         if backgroundEnteredAt == nil {
             backgroundEnteredAt = date
         }
+        guard var current = active else { return }
+        current.markBackgroundedIfNeeded(at: date)
+        setActiveForInternalUse(current)
     }
 
     func takeBackgroundEnteredAtAndClear() -> Date? {
         let value = backgroundEnteredAt
         backgroundEnteredAt = nil
+        guard var current = active else { return value }
+        current.clearBackgrounded()
+        setActiveForInternalUse(current)
         return value
     }
 

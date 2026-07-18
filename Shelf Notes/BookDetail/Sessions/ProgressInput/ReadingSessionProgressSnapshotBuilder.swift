@@ -12,7 +12,8 @@ enum ReadingSessionProgressSnapshotBuilder {
         attempt: ReadingAttempt?,
         context: ReadingSessionContext,
         sessions: [ReadingSession],
-        excludingSessionID: UUID? = nil
+        excludingSessionID: UUID? = nil,
+        useContextSource: Bool = false
     ) -> ReadingProgressSnapshot {
         guard let attempt else {
             return ReadingSessionLogging.progressSnapshot(
@@ -44,12 +45,13 @@ enum ReadingSessionProgressSnapshotBuilder {
             }
             return relatedAttemptID == attemptID
         }
-        let fallbackPageCount = attempt.progressUnit == .pages
+        let snapshotUnit = useContextSource ? context.progressUnit : attempt.progressUnit
+        let fallbackPageCount = snapshotUnit == .pages
             ? ReadingAttemptRepair.normalizedPageCount(book.pageCount)
             : nil
-        let totalValueSnapshot = attempt.totalValueSnapshot
-            ?? context.totalValue
-            ?? fallbackPageCount.map(Double.init)
+        let totalValueSnapshot = useContextSource
+            ? context.totalValue ?? fallbackPageCount.map(Double.init)
+            : attempt.totalValueSnapshot ?? context.totalValue ?? fallbackPageCount.map(Double.init)
         var updates: [ReadingProgressUpdate] = []
         updates.reserveCapacity((relatedSessions.count * 2) + relatedEvents.count)
 
@@ -59,16 +61,22 @@ enum ReadingSessionProgressSnapshotBuilder {
         for event in relatedEvents {
             updates.append(ReadingProgressUpdate(event: event))
         }
+        let snapshotUpdates = useContextSource
+            ? updates.filter { $0.unit == snapshotUnit || $0.semantics == .completion }
+            : updates
+        let sessionPageValues = snapshotUnit == .pages
+            ? relatedSessions.compactMap(\.pagesRead)
+            : []
 
         return ReadingProgressEngine.snapshot(
             for: ReadingProgressAttemptSnapshot(
                 attemptID: attemptID,
                 status: attempt.status,
-                unit: attempt.progressUnit,
-                pageCountSnapshot: attempt.pageCountSnapshot ?? fallbackPageCount,
+                unit: snapshotUnit,
+                pageCountSnapshot: snapshotUnit == .pages ? attempt.pageCountSnapshot ?? fallbackPageCount : nil,
                 totalValueSnapshot: totalValueSnapshot,
-                sessionPageValues: relatedSessions.compactMap(\.pagesRead),
-                updates: updates
+                sessionPageValues: sessionPageValues,
+                updates: snapshotUpdates
             )
         )
     }

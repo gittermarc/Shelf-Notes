@@ -160,24 +160,77 @@ struct TimerSessionCompletionSheet: View {
 
     @MainActor
     private var progressInputContext: ReadingSessionProgressInputContext {
+        let source = pendingSessionSource
+        let presentation = ReadingSourcePresentation.make(
+            medium: source.medium,
+            provider: source.provider,
+            progressUnit: source.progressUnit
+        )
+        let sourceSelection = ReadingSourceSelection.resolved(
+            medium: source.medium,
+            provider: source.provider,
+            progressUnit: source.progressUnit
+        )
+
         guard let book else {
-            let snapshot = ReadingProgressSnapshot.unknown(unit: .pages)
+            let snapshot = ReadingProgressSnapshot.unknown(
+                unit: source.progressUnit,
+                totalValue: source.totalValue
+            )
             return ReadingSessionProgressInputContext(
-                source: ReadingSessionSource(origin: .timer),
+                source: source,
                 currentProgress: snapshot,
                 configuration: ReadingProgressInputConfiguration(
-                    unit: .pages,
+                    unit: source.progressUnit,
                     currentProgress: snapshot,
-                    sourceTitle: ReadingSourceSelection.physical.title,
-                    isManuallyTracked: true
+                    remainingPages: source.progressUnit == .pages ? snapshot.remainingPages : nil,
+                    sourceTitle: presentation.title,
+                    isManuallyTracked: sourceSelection.isManuallyTracked
                 )
             )
         }
 
-        return ReadingSessionMutationService.makeProgressInputContext(
+        let attempt = pendingReadingAttempt
+        let sessionContext = ReadingSessionContext.resolved(
+            readingAttempt: attempt,
+            requestedSource: source,
+            preserveRequestedSource: true
+        )
+        let currentProgress = ReadingSessionProgressSnapshotBuilder.make(
             book: book,
-            allSessions: book.readingSessionsSafe,
-            origin: .timer
+            attempt: attempt,
+            context: sessionContext,
+            sessions: book.readingSessionsSafe,
+            useContextSource: true
+        )
+
+        return ReadingSessionProgressInputContext(
+            source: source,
+            currentProgress: currentProgress,
+            configuration: ReadingProgressInputConfiguration(
+                unit: source.progressUnit,
+                currentProgress: currentProgress,
+                remainingPages: source.progressUnit == .pages ? currentProgress.remainingPages : nil,
+                allowsPageOverflow: book.status == .finished && attempt == nil,
+                sourceTitle: presentation.title,
+                isManuallyTracked: sourceSelection.isManuallyTracked
+            )
+        )
+    }
+
+    @MainActor
+    private var pendingReadingAttempt: ReadingAttempt? {
+        guard let book, let readingAttemptID = pending.readingAttemptID else { return nil }
+        return book.readingAttemptsSafe.first { $0.id == readingAttemptID }
+    }
+
+    private var pendingSessionSource: ReadingSessionSource {
+        ReadingSessionSource(
+            medium: pending.readingMedium,
+            provider: pending.readingProvider,
+            progressUnit: pending.progressUnit,
+            origin: pending.origin,
+            totalValue: pending.totalValue
         )
     }
 
@@ -201,7 +254,9 @@ struct TimerSessionCompletionSheet: View {
             progressUpdate: submission?.progressUpdate,
             note: nil,
             source: progressInputContext.source,
-            mutationMode: submission?.mutationMode ?? .standard
+            mutationMode: submission?.mutationMode ?? .standard,
+            activeAttempt: pendingReadingAttempt,
+            preserveRequestedSource: true
         )
 
         switch planResult {
@@ -222,7 +277,7 @@ struct TimerSessionCompletionSheet: View {
             didMarkBookFinished: didMarkBookFinished,
             hasNote: !noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             progressUnit: progressInputContext.source.progressUnit,
-            origin: .timer,
+            origin: progressInputContext.source.origin,
             startValue: plannedProgress?.startValue,
             endValue: plannedProgress?.endValue,
             startNormalizedProgress: plannedProgress?.startNormalizedProgress,
@@ -285,6 +340,8 @@ struct TimerSessionCompletionSheet: View {
             mutationMode: submission.mutationMode,
             allSessions: book.readingSessionsSafe,
             now: pending.endedAt,
+            activeAttempt: pendingReadingAttempt,
+            preserveRequestedSource: true,
             externalEventIdentifier: nil
         )
 

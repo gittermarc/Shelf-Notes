@@ -12,6 +12,7 @@ nonisolated struct ReadingSessionLiveActivityPresentation: Hashable, Sendable {
     let compactTitle: String
     let authorText: String?
     let attemptText: String?
+    let sourceText: String?
     let statusText: String
     let timerCaption: String
     let progressText: String?
@@ -55,6 +56,15 @@ nonisolated struct ReadingSessionLiveActivityPresentation: Hashable, Sendable {
         let pagesRead = Self.normalizedNonNegativeInt(state.pagesRead)
         let pageCount = Self.normalizedPositiveInt(state.pageCount)
         let remainingPages = Self.normalizedNonNegativeInt(state.remainingPages)
+        let locator = Self.normalizedOptionalText(state.locator, maxLength: 96)
+        let progressPayload = Self.makeProgressPayload(
+            unit: state.progressUnit,
+            progress: progress,
+            pagesRead: pagesRead,
+            pageCount: pageCount,
+            remainingPages: remainingPages,
+            locator: locator
+        )
         let challengeTitle = Self.normalizedOptionalText(state.challengeTitle, maxLength: 64)
         let challengeDetail = Self.normalizedOptionalText(state.challengeDetail, maxLength: 96)
         let challengeProgress = Self.normalizedFraction(state.challengeProgressFraction)
@@ -64,32 +74,29 @@ nonisolated struct ReadingSessionLiveActivityPresentation: Hashable, Sendable {
         self.compactTitle = Self.limited(normalizedTitle, maxLength: 28)
         self.authorText = author
         self.attemptText = attempt
+        self.sourceText = Self.makeSourceText(
+            medium: state.readingMedium,
+            provider: state.readingProvider
+        )
         self.statusText = stateText
         self.timerCaption = state.isPaused ? "Angehalten" : "Lesezeit"
-        self.progressText = Self.makeProgressText(progress)
-        self.progressDetailText = Self.makeProgressDetailText(
-            pagesRead: pagesRead,
-            pageCount: pageCount,
-            remainingPages: remainingPages
-        )
-        self.remainingPagesText = Self.makeRemainingPagesText(remainingPages)
-        self.progressFraction = progress
+        self.progressText = progressPayload.progressText
+        self.progressDetailText = progressPayload.detailText
+        self.remainingPagesText = progressPayload.remainingPagesText
+        self.progressFraction = progressPayload.progressFraction
         self.challengeTitle = challengeTitle
         self.challengeDetail = challengeDetail
         self.challengeProgressFraction = challengeProgress
         self.hasStoredCover = hasStoredCover
         self.compactStatusText = state.isPaused ? "Pause" : "Live"
-        self.compactProgressText = Self.makeCompactProgressText(progress)
+        self.compactProgressText = progressPayload.compactProgressText
         self.minimalSystemImage = state.isPaused ? "pause.fill" : "book.closed.fill"
         self.toggleTitle = state.isPaused ? "Weiter" : "Pause"
         self.toggleSystemImage = state.isPaused ? "play.fill" : "pause.fill"
         self.toggleAccessibilityLabel = state.isPaused ? "Lesesession fortsetzen" : "Lesesession pausieren"
         self.stopAccessibilityLabel = "Lesesession beenden"
         self.coverAccessibilityLabel = hasStoredCover ? "Cover von \(normalizedTitle)" : "Cover-Platzhalter für \(normalizedTitle)"
-        self.progressAccessibilityLabel = Self.makeProgressAccessibilityLabel(
-            progressText: Self.makeProgressText(progress),
-            detailText: Self.makeProgressDetailText(pagesRead: pagesRead, pageCount: pageCount, remainingPages: remainingPages)
-        )
+        self.progressAccessibilityLabel = progressPayload.accessibilityLabel
         self.challengeAccessibilityLabel = Self.makeChallengeAccessibilityLabel(
             title: challengeTitle,
             detail: challengeDetail
@@ -106,6 +113,75 @@ nonisolated struct ReadingSessionLiveActivityPresentation: Hashable, Sendable {
         challengeTitle != nil || challengeDetail != nil
     }
 
+    private struct ProgressPayload: Hashable, Sendable {
+        var progressText: String?
+        var detailText: String?
+        var remainingPagesText: String?
+        var progressFraction: Double?
+        var compactProgressText: String?
+        var accessibilityLabel: String?
+    }
+
+    private static func makeProgressPayload(
+        unit: ReadingProgressUnit,
+        progress: Double?,
+        pagesRead: Int?,
+        pageCount: Int?,
+        remainingPages: Int?,
+        locator: String?
+    ) -> ProgressPayload {
+        switch unit {
+        case .pages:
+            let detail = makePageProgressDetailText(
+                pagesRead: pagesRead,
+                pageCount: pageCount,
+                remainingPages: remainingPages
+            )
+            let text = makeProgressText(progress)
+            return ProgressPayload(
+                progressText: text,
+                detailText: detail,
+                remainingPagesText: makeRemainingPagesText(remainingPages),
+                progressFraction: progress,
+                compactProgressText: makeCompactProgressText(progress),
+                accessibilityLabel: makeProgressAccessibilityLabel(progressText: text, detailText: detail)
+            )
+
+        case .percentage:
+            let text = makeProgressText(progress)
+            return ProgressPayload(
+                progressText: text,
+                detailText: text == nil ? nil : "Prozentstand",
+                remainingPagesText: nil,
+                progressFraction: progress,
+                compactProgressText: makeCompactProgressText(progress),
+                accessibilityLabel: makeProgressAccessibilityLabel(progressText: text, detailText: nil)
+            )
+
+        case .locator:
+            let detail = locator.map { "Position: \($0)" }
+            let text = makeProgressText(progress)
+            return ProgressPayload(
+                progressText: text,
+                detailText: detail,
+                remainingPagesText: nil,
+                progressFraction: progress,
+                compactProgressText: makeCompactProgressText(progress),
+                accessibilityLabel: makeProgressAccessibilityLabel(progressText: text, detailText: detail)
+            )
+
+        case .none:
+            return ProgressPayload(
+                progressText: nil,
+                detailText: nil,
+                remainingPagesText: nil,
+                progressFraction: nil,
+                compactProgressText: nil,
+                accessibilityLabel: nil
+            )
+        }
+    }
+
     private static func makeProgressText(_ fraction: Double?) -> String? {
         guard let fraction else { return nil }
         let percent = Int((fraction * 100).rounded())
@@ -118,7 +194,7 @@ nonisolated struct ReadingSessionLiveActivityPresentation: Hashable, Sendable {
         return "\(percent) %"
     }
 
-    private static func makeProgressDetailText(
+    private static func makePageProgressDetailText(
         pagesRead: Int?,
         pageCount: Int?,
         remainingPages: Int?
@@ -144,6 +220,30 @@ nonisolated struct ReadingSessionLiveActivityPresentation: Hashable, Sendable {
             return "noch 1 Seite"
         }
         return "noch \(remainingPages) Seiten"
+    }
+
+    private static func makeSourceText(
+        medium: ReadingMedium,
+        provider: ReadingProvider
+    ) -> String? {
+        if medium == .physical {
+            return "Physisch"
+        }
+
+        switch provider {
+        case .appleBooks:
+            return "Apple Books"
+        case .kindle:
+            return "Kindle"
+        case .googleBooks:
+            return "Google Books"
+        case .localFile:
+            return "Lokale Datei"
+        case .other:
+            return "E-Book-App"
+        case .none:
+            return "E-Book"
+        }
     }
 
     private static func makeProgressAccessibilityLabel(

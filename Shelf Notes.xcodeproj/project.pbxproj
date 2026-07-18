@@ -85,10 +85,15 @@
 		60CF7A702F4F276A000F12A7 /* Exceptions for "Shelf Notes" folder in "ShelfNotesLiveActivityExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				ReadingSources/ReadingMedium.swift,
+				ReadingSources/ReadingProgressUnit.swift,
+				ReadingSources/ReadingProvider.swift,
+				ReadingSources/ReadingSessionOrigin.swift,
 				Shared/LiveActivity/LiveActivitySharedStore.swift,
 				Shared/LiveActivity/ReadingSessionActivityAttributes.swift,
 				Shared/LiveActivity/ReadingSessionLiveActivityPresentation.swift,
 				Shared/LiveActivity/ReadingSessionLiveActivitySnapshot.swift,
+				Shared/LiveActivity/ReadingTimerSessionPolicy.swift,
 				Shared/LiveActivity/ReadingTimerSharedModels.swift,
 			);
 			target = 60CF7A4B2F4F22A1000F12A7 /* ShelfNotesLiveActivityExtension */;

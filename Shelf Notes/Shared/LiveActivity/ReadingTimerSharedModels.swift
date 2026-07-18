@@ -51,7 +51,7 @@ nonisolated enum ReadingTimerSharedCodec {
 /// This is intentionally duplicated (instead of referencing `ReadingTimerManager.ActiveState`)
 /// so the widget extension can decode it without importing the app module.
 nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
-    static let currentSchemaVersion = 2
+    static let currentSchemaVersion = 3
 
     var schemaVersion: Int
     var bookID: UUID
@@ -61,6 +61,14 @@ nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
     var accumulatedSeconds: Int
     var isPaused: Bool
     var pausedAt: Date?
+    var readingAttemptID: UUID?
+    var readingMedium: ReadingMedium
+    var readingProvider: ReadingProvider
+    var progressUnit: ReadingProgressUnit
+    var origin: ReadingSessionOrigin
+    var expectedExternalReading: Bool
+    var totalValue: Double?
+    var lastBackgroundedAt: Date?
     var liveActivitySnapshot: ReadingSessionLiveActivitySnapshot?
 
     init(
@@ -72,6 +80,14 @@ nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
         accumulatedSeconds: Int,
         isPaused: Bool,
         pausedAt: Date?,
+        readingAttemptID: UUID? = nil,
+        readingMedium: ReadingMedium = .physical,
+        readingProvider: ReadingProvider = .none,
+        progressUnit: ReadingProgressUnit = .pages,
+        origin: ReadingSessionOrigin = .legacy,
+        expectedExternalReading: Bool? = nil,
+        totalValue: Double? = nil,
+        lastBackgroundedAt: Date? = nil,
         liveActivitySnapshot: ReadingSessionLiveActivitySnapshot? = nil
     ) {
         self.schemaVersion = schemaVersion
@@ -82,7 +98,22 @@ nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
         self.accumulatedSeconds = max(0, accumulatedSeconds)
         self.isPaused = isPaused
         self.pausedAt = isPaused ? (pausedAt ?? lastResumedAt) : pausedAt
-        self.liveActivitySnapshot = liveActivitySnapshot
+        self.readingAttemptID = readingAttemptID
+        self.readingMedium = readingMedium
+        self.readingProvider = readingProvider
+        self.progressUnit = progressUnit
+        self.origin = origin
+        self.expectedExternalReading = expectedExternalReading ?? ReadingTimerSessionSourceSnapshot.defaultExpectedExternalReading(
+            medium: readingMedium,
+            provider: readingProvider,
+            origin: origin
+        )
+        self.totalValue = Self.normalizedPositiveDouble(totalValue)
+        self.lastBackgroundedAt = isPaused ? nil : lastBackgroundedAt
+
+        var snapshot = liveActivitySnapshot
+        snapshot?.applySourceSnapshot(sourceSnapshot)
+        self.liveActivitySnapshot = snapshot
     }
 
     enum CodingKeys: String, CodingKey {
@@ -94,6 +125,14 @@ nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
         case accumulatedSeconds
         case isPaused
         case pausedAt
+        case readingAttemptID
+        case readingMedium
+        case readingProvider
+        case progressUnit
+        case origin
+        case expectedExternalReading
+        case totalValue
+        case lastBackgroundedAt
         case liveActivitySnapshot
     }
 
@@ -106,6 +145,14 @@ nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
         let accumulatedSeconds = (try? container.decode(Int.self, forKey: .accumulatedSeconds)) ?? 0
         let isPaused = (try? container.decode(Bool.self, forKey: .isPaused)) ?? false
         let pausedAt = try? container.decode(Date.self, forKey: .pausedAt)
+        let readingAttemptID = try? container.decode(UUID.self, forKey: .readingAttemptID)
+        let readingMedium = (try? container.decode(ReadingMedium.self, forKey: .readingMedium)) ?? .physical
+        let readingProvider = (try? container.decode(ReadingProvider.self, forKey: .readingProvider)) ?? .none
+        let progressUnit = (try? container.decode(ReadingProgressUnit.self, forKey: .progressUnit)) ?? .pages
+        let origin = (try? container.decode(ReadingSessionOrigin.self, forKey: .origin)) ?? .legacy
+        let expectedExternalReading = try? container.decode(Bool.self, forKey: .expectedExternalReading)
+        let totalValue = try? container.decode(Double.self, forKey: .totalValue)
+        let lastBackgroundedAt = try? container.decode(Date.self, forKey: .lastBackgroundedAt)
         let snapshot = try? container.decode(ReadingSessionLiveActivitySnapshot.self, forKey: .liveActivitySnapshot)
         let schemaVersion = (try? container.decode(Int.self, forKey: .schemaVersion)) ?? 1
 
@@ -118,6 +165,14 @@ nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
             accumulatedSeconds: accumulatedSeconds,
             isPaused: isPaused,
             pausedAt: pausedAt,
+            readingAttemptID: readingAttemptID,
+            readingMedium: readingMedium,
+            readingProvider: readingProvider,
+            progressUnit: progressUnit,
+            origin: origin,
+            expectedExternalReading: expectedExternalReading,
+            totalValue: totalValue,
+            lastBackgroundedAt: lastBackgroundedAt,
             liveActivitySnapshot: snapshot
         )
     }
@@ -132,11 +187,31 @@ nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
         try container.encode(accumulatedSeconds, forKey: .accumulatedSeconds)
         try container.encode(isPaused, forKey: .isPaused)
         try container.encodeIfPresent(pausedAt, forKey: .pausedAt)
+        try container.encodeIfPresent(readingAttemptID, forKey: .readingAttemptID)
+        try container.encode(readingMedium, forKey: .readingMedium)
+        try container.encode(readingProvider, forKey: .readingProvider)
+        try container.encode(progressUnit, forKey: .progressUnit)
+        try container.encode(origin, forKey: .origin)
+        try container.encode(expectedExternalReading, forKey: .expectedExternalReading)
+        try container.encodeIfPresent(totalValue, forKey: .totalValue)
+        try container.encodeIfPresent(lastBackgroundedAt, forKey: .lastBackgroundedAt)
         try container.encodeIfPresent(liveActivitySnapshot, forKey: .liveActivitySnapshot)
     }
 
     var hasSupportedSchemaVersion: Bool {
         schemaVersion > 0 && schemaVersion <= Self.currentSchemaVersion
+    }
+
+    var sourceSnapshot: ReadingTimerSessionSourceSnapshot {
+        ReadingTimerSessionSourceSnapshot(
+            readingAttemptID: readingAttemptID,
+            readingMedium: readingMedium,
+            readingProvider: readingProvider,
+            progressUnit: progressUnit,
+            origin: origin,
+            expectedExternalReading: expectedExternalReading,
+            totalValue: totalValue
+        )
     }
 
     func totalElapsedSeconds(now: Date) -> Int {
@@ -154,6 +229,7 @@ nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
         accumulatedSeconds = max(0, accumulatedSeconds + segment)
         isPaused = true
         pausedAt = now
+        lastBackgroundedAt = nil
         liveActivitySnapshot?.stateLabel = ReadingSessionLiveActivitySnapshot.pausedStateLabel
     }
 
@@ -162,6 +238,7 @@ nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
         isPaused = false
         pausedAt = nil
         lastResumedAt = now
+        lastBackgroundedAt = nil
         liveActivitySnapshot?.stateLabel = ReadingSessionLiveActivitySnapshot.runningStateLabel
     }
 
@@ -169,11 +246,16 @@ nonisolated struct ReadingTimerActiveBlob: Codable, Equatable {
         let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? ReadingSessionLiveActivitySnapshot.defaultTitle : value
     }
+
+    private static func normalizedPositiveDouble(_ raw: Double?) -> Double? {
+        guard let raw, raw.isFinite, raw > 0 else { return nil }
+        return raw
+    }
 }
 
 /// Shared, Codable representation of a timer session completion that still needs user input.
 nonisolated struct ReadingTimerPendingCompletionBlob: Codable, Equatable {
-    static let currentSchemaVersion = 2
+    static let currentSchemaVersion = 3
 
     var schemaVersion: Int
     var id: UUID
@@ -184,6 +266,13 @@ nonisolated struct ReadingTimerPendingCompletionBlob: Codable, Equatable {
     var durationSeconds: Int
     var wasAutoStopped: Bool
     var autoStopMinutes: Int?
+    var readingAttemptID: UUID?
+    var readingMedium: ReadingMedium
+    var readingProvider: ReadingProvider
+    var progressUnit: ReadingProgressUnit
+    var origin: ReadingSessionOrigin
+    var expectedExternalReading: Bool
+    var totalValue: Double?
 
     init(
         schemaVersion: Int = ReadingTimerPendingCompletionBlob.currentSchemaVersion,
@@ -194,7 +283,14 @@ nonisolated struct ReadingTimerPendingCompletionBlob: Codable, Equatable {
         endedAt: Date,
         durationSeconds: Int,
         wasAutoStopped: Bool,
-        autoStopMinutes: Int?
+        autoStopMinutes: Int?,
+        readingAttemptID: UUID? = nil,
+        readingMedium: ReadingMedium = .physical,
+        readingProvider: ReadingProvider = .none,
+        progressUnit: ReadingProgressUnit = .pages,
+        origin: ReadingSessionOrigin = .legacy,
+        expectedExternalReading: Bool? = nil,
+        totalValue: Double? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.id = id
@@ -205,6 +301,17 @@ nonisolated struct ReadingTimerPendingCompletionBlob: Codable, Equatable {
         self.durationSeconds = max(0, durationSeconds)
         self.wasAutoStopped = wasAutoStopped
         self.autoStopMinutes = autoStopMinutes
+        self.readingAttemptID = readingAttemptID
+        self.readingMedium = readingMedium
+        self.readingProvider = readingProvider
+        self.progressUnit = progressUnit
+        self.origin = origin
+        self.expectedExternalReading = expectedExternalReading ?? ReadingTimerSessionSourceSnapshot.defaultExpectedExternalReading(
+            medium: readingMedium,
+            provider: readingProvider,
+            origin: origin
+        )
+        self.totalValue = Self.normalizedPositiveDouble(totalValue)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -217,6 +324,13 @@ nonisolated struct ReadingTimerPendingCompletionBlob: Codable, Equatable {
         case durationSeconds
         case wasAutoStopped
         case autoStopMinutes
+        case readingAttemptID
+        case readingMedium
+        case readingProvider
+        case progressUnit
+        case origin
+        case expectedExternalReading
+        case totalValue
     }
 
     init(from decoder: Decoder) throws {
@@ -229,6 +343,13 @@ nonisolated struct ReadingTimerPendingCompletionBlob: Codable, Equatable {
         let durationSeconds = (try? container.decode(Int.self, forKey: .durationSeconds)) ?? 0
         let wasAutoStopped = (try? container.decode(Bool.self, forKey: .wasAutoStopped)) ?? false
         let autoStopMinutes = try? container.decode(Int.self, forKey: .autoStopMinutes)
+        let readingAttemptID = try? container.decode(UUID.self, forKey: .readingAttemptID)
+        let readingMedium = (try? container.decode(ReadingMedium.self, forKey: .readingMedium)) ?? .physical
+        let readingProvider = (try? container.decode(ReadingProvider.self, forKey: .readingProvider)) ?? .none
+        let progressUnit = (try? container.decode(ReadingProgressUnit.self, forKey: .progressUnit)) ?? .pages
+        let origin = (try? container.decode(ReadingSessionOrigin.self, forKey: .origin)) ?? .legacy
+        let expectedExternalReading = try? container.decode(Bool.self, forKey: .expectedExternalReading)
+        let totalValue = try? container.decode(Double.self, forKey: .totalValue)
         let schemaVersion = (try? container.decode(Int.self, forKey: .schemaVersion)) ?? 1
 
         self.init(
@@ -240,7 +361,14 @@ nonisolated struct ReadingTimerPendingCompletionBlob: Codable, Equatable {
             endedAt: endedAt,
             durationSeconds: durationSeconds,
             wasAutoStopped: wasAutoStopped,
-            autoStopMinutes: autoStopMinutes
+            autoStopMinutes: autoStopMinutes,
+            readingAttemptID: readingAttemptID,
+            readingMedium: readingMedium,
+            readingProvider: readingProvider,
+            progressUnit: progressUnit,
+            origin: origin,
+            expectedExternalReading: expectedExternalReading,
+            totalValue: totalValue
         )
     }
 
@@ -255,14 +383,38 @@ nonisolated struct ReadingTimerPendingCompletionBlob: Codable, Equatable {
         try container.encode(durationSeconds, forKey: .durationSeconds)
         try container.encode(wasAutoStopped, forKey: .wasAutoStopped)
         try container.encodeIfPresent(autoStopMinutes, forKey: .autoStopMinutes)
+        try container.encodeIfPresent(readingAttemptID, forKey: .readingAttemptID)
+        try container.encode(readingMedium, forKey: .readingMedium)
+        try container.encode(readingProvider, forKey: .readingProvider)
+        try container.encode(progressUnit, forKey: .progressUnit)
+        try container.encode(origin, forKey: .origin)
+        try container.encode(expectedExternalReading, forKey: .expectedExternalReading)
+        try container.encodeIfPresent(totalValue, forKey: .totalValue)
     }
 
     var hasSupportedSchemaVersion: Bool {
         schemaVersion > 0 && schemaVersion <= Self.currentSchemaVersion
     }
 
+    var sourceSnapshot: ReadingTimerSessionSourceSnapshot {
+        ReadingTimerSessionSourceSnapshot(
+            readingAttemptID: readingAttemptID,
+            readingMedium: readingMedium,
+            readingProvider: readingProvider,
+            progressUnit: progressUnit,
+            origin: origin,
+            expectedExternalReading: expectedExternalReading,
+            totalValue: totalValue
+        )
+    }
+
     private static func normalizedTitle(_ raw: String) -> String {
         let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? ReadingSessionLiveActivitySnapshot.defaultTitle : value
+    }
+
+    private static func normalizedPositiveDouble(_ raw: Double?) -> Double? {
+        guard let raw, raw.isFinite, raw > 0 else { return nil }
+        return raw
     }
 }

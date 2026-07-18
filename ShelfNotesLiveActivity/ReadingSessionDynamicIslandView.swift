@@ -50,6 +50,10 @@ struct ReadingSessionDynamicIslandCenterView: View {
                     Text(compactProgress)
                         .font(.caption2.weight(.semibold))
                         .lineLimit(1)
+                } else if let source = presentation.sourceText {
+                    Text(source)
+                        .font(.caption2.weight(.medium))
+                        .lineLimit(1)
                 }
             }
             .foregroundStyle(.secondary)

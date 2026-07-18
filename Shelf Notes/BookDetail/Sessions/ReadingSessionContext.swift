@@ -50,8 +50,16 @@ struct ReadingSessionContext {
 
     static func resolved(
         readingAttempt: ReadingAttempt?,
-        requestedSource: ReadingSessionSource
+        requestedSource: ReadingSessionSource,
+        preserveRequestedSource: Bool = false
     ) -> ReadingSessionContext {
+        if preserveRequestedSource {
+            return ReadingSessionContext(
+                readingAttempt: readingAttempt,
+                source: requestedSource
+            )
+        }
+
         guard let readingAttempt else {
             return ReadingSessionContext(
                 readingAttempt: nil,

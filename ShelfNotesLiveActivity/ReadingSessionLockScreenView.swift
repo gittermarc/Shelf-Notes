@@ -127,6 +127,18 @@ private struct ReadingSessionStatusHeader: View {
                     .foregroundStyle(accent)
                     .accessibilityLabel("Lesedurchgang: \(attempt)")
             }
+
+            if let source = presentation.sourceText {
+                Text(source)
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(.white.opacity(0.08), in: Capsule())
+                    .foregroundStyle(.white.opacity(0.72))
+                    .accessibilityLabel("Quelle: \(source)")
+            }
         }
     }
 }

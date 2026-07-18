@@ -13,18 +13,21 @@ extension ReadingSessionMutationService {
         origin: ReadingSessionOrigin
     ) -> ReadingSessionProgressInputContext {
         let activeAttempt = book.activeReadingAttempt
-        let sourceDraft = ReadingSourceDraft.resolved(
-            medium: activeAttempt?.readingMedium ?? .physical,
-            provider: activeAttempt?.defaultProvider ?? .none,
-            progressUnit: activeAttempt?.progressUnit ?? .pages
+        let medium = activeAttempt?.readingMedium ?? .physical
+        let provider = activeAttempt?.defaultProvider ?? .none
+        let progressUnit = activeAttempt?.progressUnit ?? .pages
+        let selection = ReadingSourceSelection.resolved(
+            medium: medium,
+            provider: provider,
+            progressUnit: progressUnit
         )
         let source = ReadingSessionSource(
-            medium: sourceDraft.medium,
-            provider: sourceDraft.provider,
-            progressUnit: sourceDraft.progressUnit,
+            medium: medium,
+            provider: provider,
+            progressUnit: progressUnit,
             origin: origin,
             totalValue: activeAttempt?.totalValueSnapshot
-                ?? sourceDraft.totalValue(bookPageCount: book.pageCount)
+                ?? fallbackTotalValue(progressUnit: progressUnit, bookPageCount: book.pageCount)
         )
         let sessionContext = ReadingSessionContext.resolved(
             readingAttempt: activeAttempt,
@@ -53,8 +56,23 @@ extension ReadingSessionMutationService {
                     : nil,
                 allowsPageOverflow: book.status == .finished && activeAttempt == nil,
                 sourceTitle: presentation.title,
-                isManuallyTracked: sourceDraft.isManuallyTracked
+                isManuallyTracked: selection.isManuallyTracked
             )
         )
+    }
+
+    private static func fallbackTotalValue(
+        progressUnit: ReadingProgressUnit,
+        bookPageCount: Int?
+    ) -> Double? {
+        switch progressUnit {
+        case .pages:
+            guard let bookPageCount, bookPageCount > 0 else { return nil }
+            return Double(bookPageCount)
+        case .percentage:
+            return 100
+        case .locator, .none:
+            return nil
+        }
     }
 }

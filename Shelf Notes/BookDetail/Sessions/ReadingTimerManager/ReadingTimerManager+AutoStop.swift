@@ -12,8 +12,14 @@ extension ReadingTimerManager {
 
     var liveActivityAutoStopMinutes: Int? {
         let settings = readAutoStopSettings()
-        guard settings.enabled, settings.minutes > 0 else { return nil }
-        return settings.minutes
+        if let seconds = ReadingTimerAutoStopPolicy.backgroundLimitSeconds(
+            expectedExternalReading: active?.expectedExternalReading ?? false,
+            autoStopEnabled: settings.enabled,
+            autoStopMinutes: settings.minutes
+        ) {
+            return max(1, Int(ceil(Double(seconds) / 60.0)))
+        }
+        return nil
     }
 
     func handleScenePhaseChange(_ phase: ScenePhase) {
@@ -26,26 +32,36 @@ extension ReadingTimerManager {
         // Auto-stop only applies to an actually running timer.
         guard let a = active, !a.isPaused else {
             clearBackgroundEnteredAt()
+            persistActiveIfNeeded()
             return
         }
 
         switch phase {
         case .inactive, .background:
             setBackgroundEnteredAtIfNeeded(Date())
+            persistActive()
 
         case .active:
-            guard let bgAt = takeBackgroundEnteredAtAndClear() else { return }
+            let bgAt = takeBackgroundEnteredAtAndClear() ?? a.lastBackgroundedAt
+            guard let bgAt else { return }
 
             let settings = readAutoStopSettings()
-            guard settings.enabled, settings.minutes > 0 else { return }
+            guard let decision = ReadingTimerAutoStopPolicy.autoStopDecision(
+                backgroundEnteredAt: bgAt,
+                now: Date(),
+                expectedExternalReading: a.expectedExternalReading,
+                autoStopEnabled: settings.enabled,
+                autoStopMinutes: settings.minutes
+            ) else {
+                persistActive()
+                return
+            }
 
-            let awaySeconds = Date().timeIntervalSince(bgAt)
-            let thresholdSeconds = TimeInterval(settings.minutes * 60)
-            guard awaySeconds >= thresholdSeconds else { return }
-
-            // Stop at the threshold time (not at "now") so we don't log 6-hour naps.
-            let autoEnd = bgAt.addingTimeInterval(thresholdSeconds)
-            stop(endedAt: autoEnd, wasAutoStopped: true, autoStopMinutes: settings.minutes)
+            stop(
+                endedAt: decision.endDate,
+                wasAutoStopped: true,
+                autoStopMinutes: decision.limitMinutes
+            )
 
         @unknown default:
             break
@@ -57,5 +73,11 @@ extension ReadingTimerManager {
         let enabled = d.bool(forKey: Keys.autoStopEnabled)
         let minutes = max(0, d.integer(forKey: Keys.autoStopMinutes))
         return AutoStopSettings(enabled: enabled, minutes: minutes)
+    }
+
+    private func persistActiveIfNeeded() {
+        if active != nil {
+            persistActive()
+        }
     }
 }

@@ -16,6 +16,7 @@ extension ReadingTimerManager {
         normalizedSnapshot.stateLabel = activeState.isPaused
             ? ReadingSessionLiveActivitySnapshot.pausedStateLabel
             : ReadingSessionLiveActivitySnapshot.runningStateLabel
+        normalizedSnapshot.applySourceSnapshot(activeState.sourceSnapshot)
 
         guard activeState.liveActivitySnapshot != normalizedSnapshot else { return }
 
@@ -23,7 +24,7 @@ extension ReadingTimerManager {
         activeState.liveActivitySnapshot = normalizedSnapshot
         setActiveForInternalUse(activeState)
         persistActive()
-        liveActivityCoordinator.startOrUpdate(from: activeState)
+        liveActivityCoordinator.startOrUpdate(from: activeState, autoStopMinutes: liveActivityAutoStopMinutes)
         objectWillChange.send()
     }
 }

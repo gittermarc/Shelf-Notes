@@ -30,6 +30,16 @@ nonisolated struct ReadingSessionActivityAttributes: ActivityAttributes {
         var pagesRead: Int?
         var remainingPages: Int?
         var progressFraction: Double?
+        var locator: String?
+
+        /// Source snapshot captured when the timer started.
+        var readingAttemptID: UUID?
+        var readingMedium: ReadingMedium
+        var readingProvider: ReadingProvider
+        var progressUnit: ReadingProgressUnit
+        var origin: ReadingSessionOrigin
+        var expectedExternalReading: Bool
+        var totalValue: Double?
 
         /// Optional challenge or streak-adjacent motivation payload.
         var challengeTitle: String?
@@ -49,16 +59,26 @@ nonisolated struct ReadingSessionActivityAttributes: ActivityAttributes {
             effectiveStartDate: Date,
             pausedElapsedSeconds: Int,
             snapshot: ReadingSessionLiveActivitySnapshot? = nil,
+            source: ReadingTimerSessionSourceSnapshot? = nil,
             contentUpdatedAt: Date? = nil
         ) {
+            let resolvedSource = source ?? snapshot?.sourceSnapshot ?? .legacyPhysical
             self.isPaused = isPaused
             self.effectiveStartDate = effectiveStartDate
             self.pausedElapsedSeconds = max(0, pausedElapsedSeconds)
             self.stateLabel = isPaused ? ReadingSessionLiveActivitySnapshot.pausedStateLabel : ReadingSessionLiveActivitySnapshot.runningStateLabel
-            self.pageCount = snapshot?.pageCount
-            self.pagesRead = snapshot?.pagesRead
-            self.remainingPages = snapshot?.remainingPages
+            self.pageCount = resolvedSource.progressUnit == .pages ? snapshot?.pageCount : nil
+            self.pagesRead = resolvedSource.progressUnit == .pages ? snapshot?.pagesRead : nil
+            self.remainingPages = resolvedSource.progressUnit == .pages ? snapshot?.remainingPages : nil
             self.progressFraction = snapshot?.progressFraction
+            self.locator = snapshot?.locator
+            self.readingAttemptID = resolvedSource.readingAttemptID
+            self.readingMedium = resolvedSource.readingMedium
+            self.readingProvider = resolvedSource.readingProvider
+            self.progressUnit = resolvedSource.progressUnit
+            self.origin = resolvedSource.origin
+            self.expectedExternalReading = resolvedSource.expectedExternalReading
+            self.totalValue = resolvedSource.totalValue
             self.challengeTitle = snapshot?.challengeTitle
             self.challengeDetail = snapshot?.challengeDetail
             self.challengeProgressFraction = snapshot?.challengeProgressFraction
@@ -66,6 +86,108 @@ nonisolated struct ReadingSessionActivityAttributes: ActivityAttributes {
             self.coverRevision = snapshot?.coverRevision
             self.accentHex = snapshot?.accentHex
             self.contentUpdatedAt = contentUpdatedAt
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case isPaused
+            case effectiveStartDate
+            case pausedElapsedSeconds
+            case stateLabel
+            case pageCount
+            case pagesRead
+            case remainingPages
+            case progressFraction
+            case locator
+            case readingAttemptID
+            case readingMedium
+            case readingProvider
+            case progressUnit
+            case origin
+            case expectedExternalReading
+            case totalValue
+            case challengeTitle
+            case challengeDetail
+            case challengeProgressFraction
+            case hasCover
+            case coverRevision
+            case accentHex
+            case contentUpdatedAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            let isPaused = (try? container.decode(Bool.self, forKey: .isPaused)) ?? false
+            let effectiveStartDate = (try? container.decode(Date.self, forKey: .effectiveStartDate)) ?? Date()
+            let pausedElapsedSeconds = (try? container.decode(Int.self, forKey: .pausedElapsedSeconds)) ?? 0
+            let readingMedium = (try? container.decode(ReadingMedium.self, forKey: .readingMedium)) ?? .physical
+            let readingProvider = (try? container.decode(ReadingProvider.self, forKey: .readingProvider)) ?? .none
+            let progressUnit = (try? container.decode(ReadingProgressUnit.self, forKey: .progressUnit)) ?? .pages
+            let origin = (try? container.decode(ReadingSessionOrigin.self, forKey: .origin)) ?? .legacy
+            let expectedExternalReading = try? container.decode(Bool.self, forKey: .expectedExternalReading)
+            let source = ReadingTimerSessionSourceSnapshot(
+                readingAttemptID: try? container.decode(UUID.self, forKey: .readingAttemptID),
+                readingMedium: readingMedium,
+                readingProvider: readingProvider,
+                progressUnit: progressUnit,
+                origin: origin,
+                expectedExternalReading: expectedExternalReading,
+                totalValue: try? container.decode(Double.self, forKey: .totalValue)
+            )
+
+            self.init(
+                isPaused: isPaused,
+                effectiveStartDate: effectiveStartDate,
+                pausedElapsedSeconds: pausedElapsedSeconds,
+                snapshot: nil,
+                source: source,
+                contentUpdatedAt: try? container.decode(Date.self, forKey: .contentUpdatedAt)
+            )
+
+            self.stateLabel = (try? container.decode(String.self, forKey: .stateLabel)) ?? self.stateLabel
+            if progressUnit == .pages {
+                self.pageCount = try? container.decode(Int.self, forKey: .pageCount)
+                self.pagesRead = try? container.decode(Int.self, forKey: .pagesRead)
+                self.remainingPages = try? container.decode(Int.self, forKey: .remainingPages)
+            } else {
+                self.pageCount = nil
+                self.pagesRead = nil
+                self.remainingPages = nil
+            }
+            self.progressFraction = try? container.decode(Double.self, forKey: .progressFraction)
+            self.locator = try? container.decode(String.self, forKey: .locator)
+            self.challengeTitle = try? container.decode(String.self, forKey: .challengeTitle)
+            self.challengeDetail = try? container.decode(String.self, forKey: .challengeDetail)
+            self.challengeProgressFraction = try? container.decode(Double.self, forKey: .challengeProgressFraction)
+            self.hasCover = try? container.decode(Bool.self, forKey: .hasCover)
+            self.coverRevision = try? container.decode(Int.self, forKey: .coverRevision)
+            self.accentHex = try? container.decode(String.self, forKey: .accentHex)
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(isPaused, forKey: .isPaused)
+            try container.encode(effectiveStartDate, forKey: .effectiveStartDate)
+            try container.encode(pausedElapsedSeconds, forKey: .pausedElapsedSeconds)
+            try container.encodeIfPresent(stateLabel, forKey: .stateLabel)
+            try container.encodeIfPresent(pageCount, forKey: .pageCount)
+            try container.encodeIfPresent(pagesRead, forKey: .pagesRead)
+            try container.encodeIfPresent(remainingPages, forKey: .remainingPages)
+            try container.encodeIfPresent(progressFraction, forKey: .progressFraction)
+            try container.encodeIfPresent(locator, forKey: .locator)
+            try container.encodeIfPresent(readingAttemptID, forKey: .readingAttemptID)
+            try container.encode(readingMedium, forKey: .readingMedium)
+            try container.encode(readingProvider, forKey: .readingProvider)
+            try container.encode(progressUnit, forKey: .progressUnit)
+            try container.encode(origin, forKey: .origin)
+            try container.encode(expectedExternalReading, forKey: .expectedExternalReading)
+            try container.encodeIfPresent(totalValue, forKey: .totalValue)
+            try container.encodeIfPresent(challengeTitle, forKey: .challengeTitle)
+            try container.encodeIfPresent(challengeDetail, forKey: .challengeDetail)
+            try container.encodeIfPresent(challengeProgressFraction, forKey: .challengeProgressFraction)
+            try container.encodeIfPresent(hasCover, forKey: .hasCover)
+            try container.encodeIfPresent(coverRevision, forKey: .coverRevision)
+            try container.encodeIfPresent(accentHex, forKey: .accentHex)
+            try container.encodeIfPresent(contentUpdatedAt, forKey: .contentUpdatedAt)
         }
     }
 
@@ -78,6 +200,16 @@ nonisolated struct ReadingSessionActivityAttributes: ActivityAttributes {
     /// Optional display metadata that is stable for the lifetime of the activity.
     var bookAuthor: String?
     var attemptName: String?
+
+    /// Source snapshot captured when the timer started.
+    var readingAttemptID: UUID?
+    var readingMedium: ReadingMedium
+    var readingProvider: ReadingProvider
+    var progressUnit: ReadingProgressUnit
+    var origin: ReadingSessionOrigin
+    var expectedExternalReading: Bool
+    var totalValue: Double?
+
     var hasCover: Bool?
     var coverRevision: Int?
     var accentHex: String?
@@ -87,14 +219,37 @@ nonisolated struct ReadingSessionActivityAttributes: ActivityAttributes {
         bookTitle: String,
         bookAuthor: String? = nil,
         attemptName: String? = nil,
+        readingAttemptID: UUID? = nil,
+        readingMedium: ReadingMedium = .physical,
+        readingProvider: ReadingProvider = .none,
+        progressUnit: ReadingProgressUnit = .pages,
+        origin: ReadingSessionOrigin = .legacy,
+        expectedExternalReading: Bool? = nil,
+        totalValue: Double? = nil,
         hasCover: Bool? = nil,
         coverRevision: Int? = nil,
         accentHex: String? = nil
     ) {
+        let source = ReadingTimerSessionSourceSnapshot(
+            readingAttemptID: readingAttemptID,
+            readingMedium: readingMedium,
+            readingProvider: readingProvider,
+            progressUnit: progressUnit,
+            origin: origin,
+            expectedExternalReading: expectedExternalReading,
+            totalValue: totalValue
+        )
         self.bookID = bookID
         self.bookTitle = bookTitle
         self.bookAuthor = bookAuthor
         self.attemptName = attemptName
+        self.readingAttemptID = source.readingAttemptID
+        self.readingMedium = source.readingMedium
+        self.readingProvider = source.readingProvider
+        self.progressUnit = source.progressUnit
+        self.origin = source.origin
+        self.expectedExternalReading = source.expectedExternalReading
+        self.totalValue = source.totalValue
         self.hasCover = hasCover
         self.coverRevision = coverRevision
         self.accentHex = accentHex
@@ -106,9 +261,28 @@ nonisolated struct ReadingSessionActivityAttributes: ActivityAttributes {
             bookTitle: snapshot.bookTitle,
             bookAuthor: snapshot.bookAuthor,
             attemptName: snapshot.attemptName,
+            readingAttemptID: snapshot.readingAttemptID,
+            readingMedium: snapshot.readingMedium,
+            readingProvider: snapshot.readingProvider,
+            progressUnit: snapshot.progressUnit,
+            origin: snapshot.origin,
+            expectedExternalReading: snapshot.expectedExternalReading,
+            totalValue: snapshot.totalValue,
             hasCover: snapshot.hasCover,
             coverRevision: snapshot.coverRevision,
             accentHex: snapshot.accentHex
+        )
+    }
+
+    var sourceSnapshot: ReadingTimerSessionSourceSnapshot {
+        ReadingTimerSessionSourceSnapshot(
+            readingAttemptID: readingAttemptID,
+            readingMedium: readingMedium,
+            readingProvider: readingProvider,
+            progressUnit: progressUnit,
+            origin: origin,
+            expectedExternalReading: expectedExternalReading,
+            totalValue: totalValue
         )
     }
 }
@@ -122,36 +296,43 @@ nonisolated extension ReadingSessionActivityAttributes.ContentState {
             effectiveStartDate: effectiveStartDate,
             pausedElapsedSeconds: elapsed,
             snapshot: active.liveActivitySnapshot,
+            source: active.sourceSnapshot,
             contentUpdatedAt: now
+        )
+    }
+
+    var sourceSnapshot: ReadingTimerSessionSourceSnapshot {
+        ReadingTimerSessionSourceSnapshot(
+            readingAttemptID: readingAttemptID,
+            readingMedium: readingMedium,
+            readingProvider: readingProvider,
+            progressUnit: progressUnit,
+            origin: origin,
+            expectedExternalReading: expectedExternalReading,
+            totalValue: totalValue
         )
     }
 }
 
 nonisolated enum ReadingSessionLiveActivityLifecyclePolicy {
-    static let fallbackRunningFreshSeconds = 8 * 60 * 60
-    static let pausedFreshSeconds = 12 * 60 * 60
-    static let minimumFreshSeconds = 15 * 60
-    static let autoStopGraceSeconds = 5 * 60
+    static let fallbackRunningFreshSeconds = ReadingTimerAutoStopPolicy.fallbackRunningFreshSeconds
+    static let pausedFreshSeconds = ReadingTimerAutoStopPolicy.pausedFreshSeconds
+    static let minimumFreshSeconds = ReadingTimerAutoStopPolicy.minimumFreshSeconds
+    static let autoStopGraceSeconds = ReadingTimerAutoStopPolicy.autoStopGraceSeconds
 
     static func staleDate(
         now: Date,
         isPaused: Bool,
-        autoStopMinutes: Int? = nil
+        autoStopMinutes: Int? = nil,
+        expectedExternalReading: Bool = false
     ) -> Date {
-        let seconds: Int
-
-        if isPaused {
-            seconds = pausedFreshSeconds
-        } else if let autoStopMinutes, autoStopMinutes > 0 {
-            seconds = max(
-                minimumFreshSeconds,
-                autoStopMinutes * 60 + autoStopGraceSeconds
-            )
-        } else {
-            seconds = fallbackRunningFreshSeconds
-        }
-
-        return now.addingTimeInterval(TimeInterval(seconds))
+        ReadingTimerAutoStopPolicy.staleDate(
+            now: now,
+            isPaused: isPaused,
+            expectedExternalReading: expectedExternalReading,
+            autoStopEnabled: autoStopMinutes != nil,
+            autoStopMinutes: autoStopMinutes ?? 0
+        )
     }
 
     static func staleDate(
@@ -162,7 +343,8 @@ nonisolated enum ReadingSessionLiveActivityLifecyclePolicy {
         staleDate(
             now: now,
             isPaused: state.isPaused,
-            autoStopMinutes: autoStopMinutes
+            autoStopMinutes: autoStopMinutes,
+            expectedExternalReading: state.expectedExternalReading
         )
     }
 }

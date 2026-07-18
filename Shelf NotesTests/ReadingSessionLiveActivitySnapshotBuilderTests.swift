@@ -267,6 +267,116 @@ struct ReadingSessionLiveActivitySnapshotBuilderTests {
         #expect(snapshot.accentHex == nil)
     }
 
+    @Test @MainActor func percentageAttemptBuildsPercentSnapshot() {
+        let book = Book(title: "Percent Book", author: "Autor", status: .reading)
+        let attempt = ReadingAttempt(
+            book: book,
+            status: .active,
+            readingMedium: .ebook,
+            defaultProvider: .kindle,
+            progressUnit: .percentage,
+            totalValueSnapshot: 100
+        )
+        let event = ReadingProgressEvent(
+            book: book,
+            readingAttempt: attempt,
+            occurredAt: Date(timeIntervalSince1970: 6_000),
+            medium: .ebook,
+            provider: .kindle,
+            progressUnit: .percentage,
+            nativeValue: 42,
+            totalValue: 100,
+            normalizedProgress: 0.42,
+            origin: .timer,
+            deduplicationKey: "percentage"
+        )
+        book.readingAttemptsSafe = [attempt]
+        attempt.progressEventsSafe = [event]
+
+        let snapshot = ReadingSessionLiveActivitySnapshotBuilder.make(
+            book: book,
+            allSessions: [],
+            isPaused: false,
+            hasCover: false
+        )
+
+        #expect(snapshot.readingAttemptID == attempt.id)
+        #expect(snapshot.readingMedium == .ebook)
+        #expect(snapshot.readingProvider == .kindle)
+        #expect(snapshot.progressUnit == .percentage)
+        #expect(snapshot.expectedExternalReading)
+        #expect(snapshot.pageCount == nil)
+        #expect(snapshot.pagesRead == nil)
+        #expect(snapshot.remainingPages == nil)
+        #expect(abs((snapshot.progressFraction ?? 0) - 0.42) < 0.0001)
+        #expect(snapshot.totalValue == 100)
+    }
+
+    @Test @MainActor func locatorAttemptDoesNotInventProgressWithoutPercent() {
+        let book = Book(title: "Locator Book", author: "Autor", status: .reading)
+        let attempt = ReadingAttempt(
+            book: book,
+            status: .active,
+            readingMedium: .ebook,
+            defaultProvider: .localFile,
+            progressUnit: .locator
+        )
+        let event = ReadingProgressEvent(
+            book: book,
+            readingAttempt: attempt,
+            occurredAt: Date(timeIntervalSince1970: 6_100),
+            medium: .ebook,
+            provider: .localFile,
+            progressUnit: .locator,
+            nativeValue: 0,
+            locator: "cfi:/6/12",
+            origin: .integratedReader,
+            deduplicationKey: "locator"
+        )
+        book.readingAttemptsSafe = [attempt]
+        attempt.progressEventsSafe = [event]
+
+        let snapshot = ReadingSessionLiveActivitySnapshotBuilder.make(
+            book: book,
+            allSessions: [],
+            isPaused: false,
+            hasCover: false
+        )
+
+        #expect(snapshot.progressUnit == .locator)
+        #expect(snapshot.readingProvider == .localFile)
+        #expect(snapshot.locator == "cfi:/6/12")
+        #expect(snapshot.progressFraction == nil)
+        #expect(snapshot.pageCount == nil)
+        #expect(!snapshot.expectedExternalReading)
+    }
+
+    @Test @MainActor func noneProgressAttemptOmitsProgressPayload() {
+        let book = Book(title: "No Progress Book", author: "Autor", status: .reading)
+        let attempt = ReadingAttempt(
+            book: book,
+            status: .active,
+            readingMedium: .ebook,
+            defaultProvider: .other,
+            progressUnit: .none
+        )
+        book.readingAttemptsSafe = [attempt]
+
+        let snapshot = ReadingSessionLiveActivitySnapshotBuilder.make(
+            book: book,
+            allSessions: [],
+            isPaused: false,
+            hasCover: false
+        )
+
+        #expect(snapshot.progressUnit == .none)
+        #expect(snapshot.pageCount == nil)
+        #expect(snapshot.pagesRead == nil)
+        #expect(snapshot.remainingPages == nil)
+        #expect(snapshot.progressFraction == nil)
+        #expect(snapshot.locator == nil)
+    }
+
     private func makeHint(
         title: String,
         detail: String,

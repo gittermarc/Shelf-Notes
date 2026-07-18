@@ -17,6 +17,7 @@ enum ReadingSessionMutationService {
         source: ReadingSessionSource,
         mutationMode: ReadingProgressMutationMode = .standard,
         activeAttempt explicitActiveAttempt: ReadingAttempt? = nil,
+        preserveRequestedSource: Bool = false,
         replacingSession: ReadingSession? = nil
     ) -> Result<ReadingSessionMutationPlan, ReadingSessionLogging.ValidationError> {
         let activeAttempt = explicitActiveAttempt ?? book.activeReadingAttempt
@@ -27,14 +28,16 @@ enum ReadingSessionMutationService {
         let allowsFinishedBookSupplement = book.status == .finished && activeAttempt == nil
         let context = ReadingSessionContext.resolved(
             readingAttempt: activeAttempt,
-            requestedSource: source
+            requestedSource: source,
+            preserveRequestedSource: preserveRequestedSource
         )
         let currentProgress = ReadingSessionProgressSnapshotBuilder.make(
             book: book,
             attempt: activeAttempt,
             context: context,
             sessions: scopedSessions,
-            excludingSessionID: replacingSession?.id
+            excludingSessionID: replacingSession?.id,
+            useContextSource: preserveRequestedSource
         )
 
         return ReadingSessionLogging.plan(
@@ -102,10 +105,12 @@ enum ReadingSessionMutationService {
         mutationMode: ReadingProgressMutationMode = .standard,
         allSessions: [ReadingSession],
         now: Date,
+        activeAttempt explicitActiveAttempt: ReadingAttempt? = nil,
+        preserveRequestedSource: Bool = false,
         externalEventIdentifier: String? = nil,
         existingSession: ReadingSession? = nil
     ) -> Result<SavedReadingSessionMutationResult, ReadingSessionMutationError> {
-        let existingActiveAttempt = book.activeReadingAttempt
+        let existingActiveAttempt = explicitActiveAttempt ?? book.activeReadingAttempt
         let mutationPlan: ReadingSessionMutationPlan
 
         switch makePlan(
@@ -117,6 +122,7 @@ enum ReadingSessionMutationService {
             source: source,
             mutationMode: mutationMode,
             activeAttempt: existingActiveAttempt,
+            preserveRequestedSource: preserveRequestedSource,
             replacingSession: existingSession
         ) {
         case .failure(let error):
@@ -125,7 +131,7 @@ enum ReadingSessionMutationService {
             mutationPlan = plan
         }
 
-        let activeAttempt = ReadingAttemptSessionCoordinator.ensureActiveAttemptForSessionIfNeeded(
+        let activeAttempt = explicitActiveAttempt ?? ReadingAttemptSessionCoordinator.ensureActiveAttemptForSessionIfNeeded(
             book: book,
             startedAt: timing.startedAt,
             now: now,
@@ -134,7 +140,8 @@ enum ReadingSessionMutationService {
         )
         let context = ReadingSessionContext.resolved(
             readingAttempt: activeAttempt,
-            requestedSource: source
+            requestedSource: source,
+            preserveRequestedSource: preserveRequestedSource
         )
 
         mutationPlan.plan.apply(to: book)

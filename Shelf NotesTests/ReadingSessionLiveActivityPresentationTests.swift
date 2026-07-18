@@ -196,6 +196,94 @@ struct ReadingSessionLiveActivityPresentationTests {
         #expect(presentation.challengeProgressFraction == nil)
     }
 
+    @Test func percentageProgressUsesPercentWithoutPageDetail() {
+        let snapshot = ReadingSessionLiveActivitySnapshot(
+            bookID: UUID(),
+            bookTitle: "Percent",
+            progressFraction: 0.57,
+            readingMedium: .ebook,
+            readingProvider: .kindle,
+            progressUnit: .percentage,
+            origin: .timer,
+            totalValue: 100,
+            hasCover: false
+        )
+        let attributes = ReadingSessionActivityAttributes(snapshot: snapshot)
+        let state = ReadingSessionActivityAttributes.ContentState(
+            isPaused: false,
+            effectiveStartDate: Date(timeIntervalSince1970: 4_000),
+            pausedElapsedSeconds: 0,
+            snapshot: snapshot
+        )
+
+        let presentation = ReadingSessionLiveActivityPresentation(attributes: attributes, state: state)
+
+        #expect(presentation.sourceText == "Kindle")
+        #expect(presentation.progressText == "57 % gelesen")
+        #expect(presentation.compactProgressText == "57 %")
+        #expect(presentation.progressDetailText == "Prozentstand")
+        #expect(presentation.remainingPagesText == nil)
+        #expect(abs((presentation.progressFraction ?? 0) - 0.57) < 0.0001)
+    }
+
+    @Test func locatorWithoutPercentShowsPositionWithoutArtificialProgress() {
+        let snapshot = ReadingSessionLiveActivitySnapshot(
+            bookID: UUID(),
+            bookTitle: "Locator",
+            locator: "Kapitel 4, Abschnitt 2",
+            readingMedium: .ebook,
+            readingProvider: .localFile,
+            progressUnit: .locator,
+            origin: .integratedReader,
+            hasCover: false
+        )
+        let attributes = ReadingSessionActivityAttributes(snapshot: snapshot)
+        let state = ReadingSessionActivityAttributes.ContentState(
+            isPaused: false,
+            effectiveStartDate: Date(timeIntervalSince1970: 4_100),
+            pausedElapsedSeconds: 0,
+            snapshot: snapshot
+        )
+
+        let presentation = ReadingSessionLiveActivityPresentation(attributes: attributes, state: state)
+
+        #expect(presentation.sourceText == "Lokale Datei")
+        #expect(presentation.progressText == nil)
+        #expect(presentation.compactProgressText == nil)
+        #expect(presentation.progressFraction == nil)
+        #expect(presentation.progressDetailText == "Position: Kapitel 4, Abschnitt 2")
+        #expect(presentation.progressAccessibilityLabel == "Fortschritt: Position: Kapitel 4, Abschnitt 2")
+    }
+
+    @Test func noProgressUnitSuppressesProgressPresentation() {
+        let snapshot = ReadingSessionLiveActivitySnapshot(
+            bookID: UUID(),
+            bookTitle: "None",
+            progressFraction: 0.9,
+            readingMedium: .ebook,
+            readingProvider: .other,
+            progressUnit: .none,
+            origin: .timer,
+            hasCover: false
+        )
+        let attributes = ReadingSessionActivityAttributes(snapshot: snapshot)
+        let state = ReadingSessionActivityAttributes.ContentState(
+            isPaused: false,
+            effectiveStartDate: Date(timeIntervalSince1970: 4_200),
+            pausedElapsedSeconds: 0,
+            snapshot: snapshot
+        )
+
+        let presentation = ReadingSessionLiveActivityPresentation(attributes: attributes, state: state)
+
+        #expect(presentation.sourceText == "E-Book-App")
+        #expect(!presentation.hasProgress)
+        #expect(presentation.progressText == nil)
+        #expect(presentation.compactProgressText == nil)
+        #expect(presentation.progressFraction == nil)
+        #expect(presentation.progressDetailText == nil)
+    }
+
     private func makePayload(
         title: String = "Testbuch",
         author: String? = "Autorin",

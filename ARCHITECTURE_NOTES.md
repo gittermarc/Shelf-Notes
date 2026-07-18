@@ -1,8 +1,16 @@
 # ARCHITECTURE_NOTES.md
 
-Stand: E-Book-Erweiterung PR 5 vom 2026-07-17 auf Basis des aktuellen Projektarchivs. Aussagen beziehen sich auf den geprüften Codebestand. Unklare Punkte sind als **UNKNOWN** markiert.
+Stand: E-Book-Erweiterung PR 7 vom 2026-07-18 auf Basis des aktuellen Projektarchivs. Aussagen beziehen sich auf den geprüften Codebestand. Unklare Punkte sind als **UNKNOWN** markiert.
 
 ## Scope und Methode
+
+## PR 7 Architekturergänzung
+
+- Timer-Source ist ein expliziter Wert-Snapshot. App-State, PendingCompletion, Shared Blobs, Live-Activity-Attribute und Snapshot-Presentation speichern dieselben Source-Felder. Dadurch bleiben externe E-Book-Sessions nach App-Neustart und nach späteren Book-Änderungen stabil.
+- Die Hintergrundlogik liegt in `ReadingTimerAutoStopPolicy`. SwiftUI-Views entscheiden nicht selbst über Auto-Stop oder Stale-Date. `ReadingTimerManager+AutoStop` ruft nur diese Policy auf.
+- Shared Blob Schema-Versionen wurden auf 3 erhöht. Payloads ohne neue Felder werden als physische Legacy-Sessions decodiert. Payloads mit einer Schema-Version größer als die aktuelle Version werden über die unterstützten Decode-Pfade verworfen.
+- Live-Activity-Controls verwenden `LiveActivitySharedStore.togglePauseForActiveSession` und `stopActiveSession`. Die Extension dupliziert damit keine PendingCompletion- oder Source-Mapping-Regeln.
+- `ReadingSessionMutationService` kann für Timer-Completions eine persistierte Quelle und einen konkreten Attempt beibehalten. Standardpfade ohne diese Parameter behalten ihr bisheriges Verhalten.
 
 Geprüft wurden:
 
@@ -11,7 +19,7 @@ Geprüft wurden:
 - SwiftData-Modelle und Container-Konfiguration
 - CloudKit-/Entitlement-Konfiguration
 - Root Navigation, Tabs, Sheets und Startup-Maintenance
-- Formatneutrale Fortschrittsberechnung, Reading-Attempt-Isolation, Session-/Import-Mutationen, adaptive Quellen-/Fortschritts-UX, Mixed-Media-Analytics und Legacy-Backfill
+- Formatneutrale Fortschrittsberechnung, Reading-Attempt-Isolation, Session-/Import-Mutationen, adaptive Quellen-/Fortschritts-UX, Mixed-Media-Analytics, Timer-/Live-Activity-Source-Snapshots und Legacy-Backfill
 - Große Dateien nach Zeilenzahl
 - Hot Paths für Rendering, Scroll, Sync, Storage, Concurrency und Caching
 - Tests und Testpläne

@@ -31,34 +31,11 @@ struct ReadingSessionTogglePauseIntent: LiveActivityIntent {
             return .result()
         }
 
-        let shared = LiveActivitySharedStore.userDefaults
-        let activeData = shared.data(forKey: ReadingTimerSharedKeys.activeBlob)
-        guard let blob = ReadingTimerSharedCodec.decodeActive(from: activeData) else {
-            if activeData != nil {
-                shared.removeObject(forKey: ReadingTimerSharedKeys.activeBlob)
-            }
-            return .result()
-        }
-
-        guard blob.hasSupportedSchemaVersion else {
-            shared.removeObject(forKey: ReadingTimerSharedKeys.activeBlob)
-            return .result()
-        }
-
-        guard blob.bookID == uuid else {
-            return .result()
-        }
-
-        var updatedBlob = blob
-        if updatedBlob.isPaused {
-            updatedBlob.resume(now: now)
-        } else {
-            updatedBlob.pause(now: now)
-        }
-
-        if let out = ReadingTimerSharedCodec.encodeActive(updatedBlob) {
-            shared.set(out, forKey: ReadingTimerSharedKeys.activeBlob)
-            await updateLiveActivity(bookIDString: bookID, active: updatedBlob, now: now)
+        switch LiveActivitySharedStore.togglePauseForActiveSession(bookID: uuid, now: now) {
+        case .updated(let active):
+            await updateLiveActivity(bookIDString: bookID, active: active, now: now)
+        case .failure:
+            break
         }
 
         return .result()
@@ -107,68 +84,27 @@ struct ReadingSessionStopIntent: LiveActivityIntent {
             return .result()
         }
 
-        let shared = LiveActivitySharedStore.userDefaults
-        var endingState = ReadingSessionActivityAttributes.ContentState(
-            isPaused: true,
-            effectiveStartDate: now,
-            pausedElapsedSeconds: 0,
-            contentUpdatedAt: now
-        )
-
-        let activeData = shared.data(forKey: ReadingTimerSharedKeys.activeBlob)
-        guard let active = ReadingTimerSharedCodec.decodeActive(from: activeData) else {
-            if activeData != nil {
-                shared.removeObject(forKey: ReadingTimerSharedKeys.activeBlob)
-            }
-            await endLiveActivity(bookIDString: bookID, state: endingState, now: now)
-            return .result()
+        switch LiveActivitySharedStore.stopActiveSession(bookID: uuid, now: now) {
+        case .stopped(let active, let pending):
+            let state = ReadingSessionActivityAttributes.ContentState(
+                isPaused: true,
+                effectiveStartDate: pending.endedAt.addingTimeInterval(-Double(pending.durationSeconds)),
+                pausedElapsedSeconds: pending.durationSeconds,
+                snapshot: active.liveActivitySnapshot,
+                source: active.sourceSnapshot,
+                contentUpdatedAt: now
+            )
+            await endLiveActivity(bookIDString: bookID, state: state, now: now)
+        case .failure:
+            let state = ReadingSessionActivityAttributes.ContentState(
+                isPaused: true,
+                effectiveStartDate: now,
+                pausedElapsedSeconds: 0,
+                contentUpdatedAt: now
+            )
+            await endLiveActivity(bookIDString: bookID, state: state, now: now)
         }
 
-        guard active.hasSupportedSchemaVersion else {
-            shared.removeObject(forKey: ReadingTimerSharedKeys.activeBlob)
-            await endLiveActivity(bookIDString: bookID, state: endingState, now: now)
-            return .result()
-        }
-
-        guard active.bookID == uuid else {
-            await endLiveActivity(bookIDString: bookID, state: endingState, now: now)
-            return .result()
-        }
-
-        let end: Date
-        if active.isPaused {
-            end = active.pausedAt ?? now
-        } else {
-            end = now
-        }
-
-        let duration = active.totalElapsedSeconds(now: end)
-        endingState = ReadingSessionActivityAttributes.ContentState(
-            isPaused: true,
-            effectiveStartDate: end.addingTimeInterval(-Double(duration)),
-            pausedElapsedSeconds: duration,
-            snapshot: active.liveActivitySnapshot,
-            contentUpdatedAt: now
-        )
-        let pending = ReadingTimerPendingCompletionBlob(
-            id: UUID(),
-            bookID: active.bookID,
-            bookTitle: active.bookTitle,
-            startedAt: active.startedAt,
-            endedAt: end,
-            durationSeconds: duration,
-            wasAutoStopped: false,
-            autoStopMinutes: nil
-        )
-
-        if let pendingData = ReadingTimerSharedCodec.encodePendingCompletion(pending) {
-            shared.set(pendingData, forKey: ReadingTimerSharedKeys.pendingCompletionBlob)
-        }
-
-        shared.removeObject(forKey: ReadingTimerSharedKeys.activeBlob)
-        LiveActivitySharedStore.removeCoverFile(bookIDString: bookID)
-
-        await endLiveActivity(bookIDString: bookID, state: endingState, now: now)
         return .result()
     }
 

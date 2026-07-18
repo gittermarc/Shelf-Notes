@@ -30,6 +30,14 @@ extension ReadingTimerManager {
             accumulatedSeconds: active.accumulatedSeconds,
             isPaused: active.isPaused,
             pausedAt: active.pausedAt,
+            readingAttemptID: active.readingAttemptID,
+            readingMedium: active.readingMedium,
+            readingProvider: active.readingProvider,
+            progressUnit: active.progressUnit,
+            origin: active.origin,
+            expectedExternalReading: active.expectedExternalReading,
+            totalValue: active.totalValue,
+            lastBackgroundedAt: active.lastBackgroundedAt,
             liveActivitySnapshot: active.liveActivitySnapshot
         )
 
@@ -49,18 +57,24 @@ extension ReadingTimerManager {
             return
         }
 
-        let active = ActiveState(
-            bookID: decoded.bookID,
-            bookTitle: decoded.bookTitle,
-            startedAt: decoded.startedAt,
-            lastResumedAt: decoded.lastResumedAt,
-            accumulatedSeconds: decoded.accumulatedSeconds,
-            isPaused: decoded.isPaused,
-            pausedAt: decoded.pausedAt,
-            liveActivitySnapshot: decoded.liveActivitySnapshot
-        )
+        var active = makeActiveState(from: decoded)
+
+        if let decision = restartAutoStopDecision(for: active, now: Date()) {
+            setActiveForInternalUse(active)
+            stop(
+                endedAt: decision.endDate,
+                wasAutoStopped: true,
+                autoStopMinutes: decision.limitMinutes
+            )
+            return
+        }
+
+        if !active.isPaused, active.lastBackgroundedAt != nil {
+            active.clearBackgrounded()
+        }
 
         setActiveForInternalUse(active)
+        persistActive()
         liveActivityCoordinator.startOrUpdate(from: active, autoStopMinutes: liveActivityAutoStopMinutes)
 
         // Ensure any views (e.g. BookDetail) show the running/paused state immediately.
@@ -84,7 +98,14 @@ extension ReadingTimerManager {
             endedAt: pendingCompletion.endedAt,
             durationSeconds: pendingCompletion.durationSeconds,
             wasAutoStopped: pendingCompletion.wasAutoStopped,
-            autoStopMinutes: pendingCompletion.autoStopMinutes
+            autoStopMinutes: pendingCompletion.autoStopMinutes,
+            readingAttemptID: pendingCompletion.readingAttemptID,
+            readingMedium: pendingCompletion.readingMedium,
+            readingProvider: pendingCompletion.readingProvider,
+            progressUnit: pendingCompletion.progressUnit,
+            origin: pendingCompletion.origin,
+            expectedExternalReading: pendingCompletion.expectedExternalReading,
+            totalValue: pendingCompletion.totalValue
         )
         if let data = ReadingTimerSharedCodec.encodePendingCompletion(blob) {
             LiveActivitySharedStore.userDefaults.set(data, forKey: ReadingTimerSharedKeys.pendingCompletionBlob)
@@ -98,17 +119,7 @@ extension ReadingTimerManager {
             return
         }
 
-        let pending = PendingCompletion(
-            id: decoded.id,
-            bookID: decoded.bookID,
-            bookTitle: decoded.bookTitle,
-            startedAt: decoded.startedAt,
-            endedAt: decoded.endedAt,
-            durationSeconds: decoded.durationSeconds,
-            wasAutoStopped: decoded.wasAutoStopped,
-            autoStopMinutes: decoded.autoStopMinutes
-        )
-        pendingCompletion = pending
+        pendingCompletion = makePendingCompletion(from: decoded)
     }
 
     func clearPersistedPendingCompletion() {
@@ -126,20 +137,17 @@ extension ReadingTimerManager {
         let shared = LiveActivitySharedStore.userDefaults
         if let data = shared.data(forKey: ReadingTimerSharedKeys.activeBlob) {
             if let decoded = ReadingTimerSharedCodec.decodeSupportedActive(from: data) {
-                let mapped = ActiveState(
-                    bookID: decoded.bookID,
-                    bookTitle: decoded.bookTitle,
-                    startedAt: decoded.startedAt,
-                    lastResumedAt: decoded.lastResumedAt,
-                    accumulatedSeconds: decoded.accumulatedSeconds,
-                    isPaused: decoded.isPaused,
-                    pausedAt: decoded.pausedAt,
-                    liveActivitySnapshot: decoded.liveActivitySnapshot
-                )
+                let mapped = makeActiveState(from: decoded)
 
                 if active != mapped {
                     setActiveForInternalUse(mapped)
-                    clearBackgroundEnteredAt()
+                    if mapped.isPaused {
+                        clearBackgroundEnteredAt()
+                    } else if let lastBackgroundedAt = mapped.lastBackgroundedAt {
+                        setBackgroundEnteredAtIfNeeded(lastBackgroundedAt)
+                    } else {
+                        clearBackgroundEnteredAt()
+                    }
                     liveActivityCoordinator.startOrUpdate(from: mapped, autoStopMinutes: liveActivityAutoStopMinutes)
                 }
             } else {
@@ -172,5 +180,49 @@ extension ReadingTimerManager {
             shared.set(data, forKey: ReadingTimerSharedKeys.activeBlob)
             UserDefaults.standard.removeObject(forKey: Keys.activeBlob)
         }
+    }
+
+    private func makeActiveState(from decoded: ReadingTimerActiveBlob) -> ActiveState {
+        ActiveState(
+            bookID: decoded.bookID,
+            bookTitle: decoded.bookTitle,
+            startedAt: decoded.startedAt,
+            lastResumedAt: decoded.lastResumedAt,
+            accumulatedSeconds: decoded.accumulatedSeconds,
+            isPaused: decoded.isPaused,
+            pausedAt: decoded.pausedAt,
+            sourceSnapshot: decoded.sourceSnapshot,
+            lastBackgroundedAt: decoded.lastBackgroundedAt,
+            liveActivitySnapshot: decoded.liveActivitySnapshot
+        )
+    }
+
+    private func makePendingCompletion(from decoded: ReadingTimerPendingCompletionBlob) -> PendingCompletion {
+        PendingCompletion(
+            id: decoded.id,
+            bookID: decoded.bookID,
+            bookTitle: decoded.bookTitle,
+            startedAt: decoded.startedAt,
+            endedAt: decoded.endedAt,
+            durationSeconds: decoded.durationSeconds,
+            wasAutoStopped: decoded.wasAutoStopped,
+            autoStopMinutes: decoded.autoStopMinutes,
+            sourceSnapshot: decoded.sourceSnapshot
+        )
+    }
+
+    private func restartAutoStopDecision(for active: ActiveState, now: Date) -> ReadingTimerAutoStopPolicy.Decision? {
+        guard !active.isPaused, let lastBackgroundedAt = active.lastBackgroundedAt else {
+            return nil
+        }
+
+        let settings = readAutoStopSettings()
+        return ReadingTimerAutoStopPolicy.autoStopDecision(
+            backgroundEnteredAt: lastBackgroundedAt,
+            now: now,
+            expectedExternalReading: active.expectedExternalReading,
+            autoStopEnabled: settings.enabled,
+            autoStopMinutes: settings.minutes
+        )
     }
 }

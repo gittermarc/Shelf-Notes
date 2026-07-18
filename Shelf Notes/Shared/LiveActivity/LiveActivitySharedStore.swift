@@ -73,6 +73,117 @@ nonisolated enum LiveActivitySharedStore {
             try? FileManager.default.removeItem(at: url)
         }
     }
+
+    static func togglePauseForActiveSession(
+        bookID: UUID,
+        now: Date = Date(),
+        defaults: UserDefaults = LiveActivitySharedStore.userDefaults
+    ) -> ReadingTimerSharedPauseMutationResult {
+        switch readSupportedActive(bookID: bookID, defaults: defaults) {
+        case .failure(let failure):
+            return .failure(failure)
+        case .success(var active):
+            if active.isPaused {
+                active.resume(now: now)
+            } else {
+                active.pause(now: now)
+            }
+
+            guard let encoded = ReadingTimerSharedCodec.encodeActive(active) else {
+                return .failure(.encodingFailed)
+            }
+
+            defaults.set(encoded, forKey: ReadingTimerSharedKeys.activeBlob)
+            return .updated(active)
+        }
+    }
+
+    static func stopActiveSession(
+        bookID: UUID,
+        now: Date = Date(),
+        pendingID: UUID = UUID(),
+        defaults: UserDefaults = LiveActivitySharedStore.userDefaults,
+        removeCover: Bool = true
+    ) -> ReadingTimerSharedStopMutationResult {
+        switch readSupportedActive(bookID: bookID, defaults: defaults) {
+        case .failure(let failure):
+            return .failure(failure)
+        case .success(let active):
+            let end = active.isPaused ? (active.pausedAt ?? now) : now
+            let duration = active.totalElapsedSeconds(now: end)
+            let pending = ReadingTimerPendingCompletionBlob(
+                id: pendingID,
+                bookID: active.bookID,
+                bookTitle: active.bookTitle,
+                startedAt: active.startedAt,
+                endedAt: end,
+                durationSeconds: duration,
+                wasAutoStopped: false,
+                autoStopMinutes: nil,
+                readingAttemptID: active.readingAttemptID,
+                readingMedium: active.readingMedium,
+                readingProvider: active.readingProvider,
+                progressUnit: active.progressUnit,
+                origin: active.origin,
+                expectedExternalReading: active.expectedExternalReading,
+                totalValue: active.totalValue
+            )
+
+            guard let pendingData = ReadingTimerSharedCodec.encodePendingCompletion(pending) else {
+                return .failure(.encodingFailed)
+            }
+
+            defaults.set(pendingData, forKey: ReadingTimerSharedKeys.pendingCompletionBlob)
+            defaults.removeObject(forKey: ReadingTimerSharedKeys.activeBlob)
+
+            if removeCover {
+                removeCoverFile(bookIDString: bookID.uuidString)
+            }
+
+            return .stopped(active: active, pending: pending)
+        }
+    }
+
+    private static func readSupportedActive(
+        bookID: UUID,
+        defaults: UserDefaults
+    ) -> Result<ReadingTimerActiveBlob, ReadingTimerSharedMutationFailure> {
+        let activeData = defaults.data(forKey: ReadingTimerSharedKeys.activeBlob)
+        guard let blob = ReadingTimerSharedCodec.decodeActive(from: activeData) else {
+            if activeData != nil {
+                defaults.removeObject(forKey: ReadingTimerSharedKeys.activeBlob)
+            }
+            return .failure(.missingActive)
+        }
+
+        guard blob.hasSupportedSchemaVersion else {
+            defaults.removeObject(forKey: ReadingTimerSharedKeys.activeBlob)
+            return .failure(.unsupportedSchema)
+        }
+
+        guard blob.bookID == bookID else {
+            return .failure(.mismatchedBookID)
+        }
+
+        return .success(blob)
+    }
+}
+
+nonisolated enum ReadingTimerSharedMutationFailure: Error, Equatable, Sendable {
+    case missingActive
+    case unsupportedSchema
+    case mismatchedBookID
+    case encodingFailed
+}
+
+nonisolated enum ReadingTimerSharedPauseMutationResult: Equatable, Sendable {
+    case updated(ReadingTimerActiveBlob)
+    case failure(ReadingTimerSharedMutationFailure)
+}
+
+nonisolated enum ReadingTimerSharedStopMutationResult: Equatable, Sendable {
+    case stopped(active: ReadingTimerActiveBlob, pending: ReadingTimerPendingCompletionBlob)
+    case failure(ReadingTimerSharedMutationFailure)
 }
 
 nonisolated enum LiveActivityCoverCleanupPolicy {

@@ -511,7 +511,8 @@ struct SessionsCard: View {
             bookID: book.id,
             bookTitle: title,
             coverThumbnailData: book.userCoverData,
-            liveActivitySnapshot: liveActivitySnapshot
+            liveActivitySnapshot: liveActivitySnapshot,
+            sourceSnapshot: liveActivitySnapshot.sourceSnapshot
         )
     }
 
